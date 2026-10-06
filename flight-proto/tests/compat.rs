@@ -81,7 +81,7 @@ fn unknown_enum_value_rejects_the_message() {
     p.state = 99;
     let frame = NodeFrame {
         body: Some(node_body::Body::Delta(Delta {
-            generation: 1,
+            incarnation: inc(1).as_bytes().to_vec(),
             sequence: 1,
             change: Some(delta_change::Change::PaneUpsert(p)),
         })),
@@ -131,9 +131,23 @@ fn empty_identity_fields_are_rejected() {
 }
 
 #[test]
+fn incarnation_must_be_exactly_sixteen_bytes() {
+    for bad in [vec![], vec![1u8; 15], vec![1u8; 17]] {
+        let d = Delta {
+            incarnation: bad,
+            sequence: 1,
+            change: Some(delta_change::Change::PaneRemoved(
+                pane_state("%1", StateCode::Busy).pane_ref.expect("ref"),
+            )),
+        };
+        assert_eq!(d.validate(), Err(Reject::OutOfRange("incarnation")));
+    }
+}
+
+#[test]
 fn delta_sequence_starts_at_one_and_needs_a_change() {
     let d = Delta {
-        generation: 1,
+        incarnation: inc(1).as_bytes().to_vec(),
         sequence: 0,
         change: None,
     };

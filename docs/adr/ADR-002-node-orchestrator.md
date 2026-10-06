@@ -2,7 +2,7 @@
 
 # ADR-002: Node / orchestrator architecture
 
-Status: Accepted with refinements (see "Sign-off refinements"). Slice 1 (`flight-proto`) implemented.
+Status: Accepted with refinements (see "Sign-off refinements"). Slices 1 (`flight-proto`) and 2 (`flight-node` core) implemented.
 
 ## Decision
 
@@ -30,6 +30,11 @@ These supersede the earlier text where they differ.
 - The wire carries semantic pane/node state only (`PaneState`: ref, agent kind, resolved state, provenance summary, times). Classifier internals (hook-file changes, screen matches, glyph anchors) never appear on the wire.
 - Replication: `Snapshot(generation = N)`, then `Delta(generation = N, sequence = 1, 2, ...)`. A missing, duplicate or foreign-generation delta, or a reconnect, means "request a fresh snapshot"; there is no repair. Added invariant: a delta is never required for correctness; a complete snapshot always suffices to reconstruct the node's externally visible state.
 - Compatibility rules, enforced in `flight-proto`: major mismatch rejects the connection; unknown optional fields are ignored; unknown capabilities are negotiated away; an unknown or unspecified enum value rejects that message and is never guessed.
+- `proto/flight.proto` is the normative wire schema. The `prost` types stay hand-written (no `protoc` at build time), and `flight-proto/tests/schema.rs` fails if message names, field names and numbers, types, oneofs or enum values drift between the two.
+- The replication epoch is an incarnation, not a counter: 16 random bytes per producer process, never persisted. A restarted node gets a new one, so old messages can never be mistaken for a continuation. `Snapshot` and `Delta` carry `incarnation`; `sequence` restarts at 1 after every snapshot.
+- Fields that change on every poll are not replicated: `observed_at` and the terminal title (tags 7 and 13 are retired). Liveness comes from heartbeats and snapshots; otherwise every poll would be a delta storm. `changed_at` is when the state value last changed.
+- `NodeCore` owns authoritative current state, not history. Deltas are state replacement (`PaneUpsert`, `PaneRemoved`, `ServerStatus`), derived by diffing state before and after a round. `Tracking` is node-local and never replicated. A pane id is keyed with its pid, so a reused tmux `%id` under a new process starts with fresh Tracking.
+- A tmux server that is gone (`NoServer`, tmux missing) drops its panes and their Tracking; a transient failure keeps both (stale) and only changes the server status.
 - `GetHostStatus` is dropped; per-server availability is carried by `ServerStatus` in snapshots and deltas.
 
 ## Invariants
@@ -125,7 +130,7 @@ UI side: the UI speaks the same protocol to the orchestrator (`Subscribe`, then 
 ## Proposed slicing (each independently testable; only after sign-off)
 
 1. `flight-proto` (done): types, versioning, validation, replication cursor, golden wire fixtures, malformed-input tests. No sockets.
-2. `flight-node` core over an in-memory `Session`: wraps today's collector and resolve, emits Snapshot and deltas; tests with scripted tmux.
+2. `flight-node` core (done): `NodeCore` (state, Tracking, snapshot, semantic deltas), `NodeSession` (frame state machine: handshake, resync, routed requests), `TmuxServers` adapter. Snapshot + deltas = final snapshot is checked over 300 generated 60-round sequences.
 3. `flight-orchestrator` core over in-memory sessions: registry, resync, stale handling, routing; tests for the two invariants (restart reconstructs state; one node failing leaves others intact).
 4. TLS transport and pairing, still on localhost with two processes.
 5. Move `flight-ui` onto the `Fleet` trait with the `Orchestrated` backend; keep the SSH backend working.

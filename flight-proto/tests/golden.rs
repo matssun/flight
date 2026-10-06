@@ -79,7 +79,7 @@ fn node_delta_v1() {
         "node_delta",
         NodeFrame {
             body: Some(node_body::Body::Delta(Delta {
-                generation: 3,
+                incarnation: inc(3).as_bytes().to_vec(),
                 sequence: 1,
                 change: Some(delta_change::Change::PaneUpsert(pane_state(
                     "%1",
@@ -114,7 +114,7 @@ fn ui_fleet_snapshot_v1() {
         "ui_fleet_snapshot",
         UiEvent {
             body: Some(ui_event_body::Body::Snapshot(FleetSnapshot {
-                generation: 1,
+                incarnation: inc(1).as_bytes().to_vec(),
                 nodes: vec![NodeView {
                     node_id: "node-ab12".into(),
                     display_name: "mini-2".into(),

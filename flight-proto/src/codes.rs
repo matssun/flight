@@ -14,7 +14,7 @@ wire_enum! {
 
 wire_enum! {
     /// A coarse summary of where the state came from. Rule-level detail stays in the node.
-    SourceCode { Hook = 1, Event = 2, Scrape = 3, Title = 4, Timeout = 5, SynthesizedDone = 6, Default = 7 }
+    SourceCode { Hook = 1, Event = 2, Scrape = 3, Title = 4, Timeout = 5, SynthesizedDone = 6, Default = 7, Glyph = 8 }
 }
 
 wire_enum! {

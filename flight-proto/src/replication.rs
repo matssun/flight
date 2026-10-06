@@ -1,23 +1,25 @@
 // SPDX-License-Identifier: MIT
 
+use crate::Incarnation;
+
 /// What a receiver does with the next delta.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Step {
-    /// In order for the current generation: apply it.
+    /// In order for the current incarnation: apply it.
     Apply,
     /// Anything else: stop applying, ask for a fresh snapshot.
     Resync,
 }
 
-/// Receiver-side bookkeeping for `Snapshot(generation = N)`, then `Delta(N, 1)`, `Delta(N, 2)`…
+/// Receiver-side bookkeeping for `Snapshot(incarnation = N)`, then `Delta(N, 1)`, `Delta(N, 2)`...
 ///
-/// There is deliberately no repair: a missing, duplicate or foreign-generation delta, or a
+/// There is deliberately no repair: a missing, duplicate or foreign-incarnation delta, or a
 /// reconnect, means "ask for a snapshot". After a `Resync` every delta also answers `Resync`
 /// until the next snapshot arrives, so a stale tail can never be half-applied.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ReplicationCursor {
-    /// `Some((generation, next expected sequence))` once a snapshot is held and the stream is sound.
-    position: Option<(u64, u64)>,
+    /// `Some((incarnation, next expected sequence))` once a snapshot is held and the stream is sound.
+    position: Option<(Incarnation, u64)>,
 }
 
 impl ReplicationCursor {
@@ -26,14 +28,14 @@ impl ReplicationCursor {
     }
 
     /// A snapshot is always accepted: it is authoritative.
-    pub fn on_snapshot(&mut self, generation: u64) {
-        self.position = Some((generation, 1));
+    pub fn on_snapshot(&mut self, incarnation: Incarnation) {
+        self.position = Some((incarnation, 1));
     }
 
-    pub fn on_delta(&mut self, generation: u64, sequence: u64) -> Step {
+    pub fn on_delta(&mut self, incarnation: Incarnation, sequence: u64) -> Step {
         match self.position {
-            Some((g, next)) if g == generation && next == sequence => {
-                self.position = Some((g, next.saturating_add(1)));
+            Some((i, next)) if i == incarnation && next == sequence => {
+                self.position = Some((i, next.saturating_add(1)));
                 Step::Apply
             }
             _ => {

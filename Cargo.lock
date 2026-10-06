@@ -178,11 +178,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "flight-node"
+version = "0.0.1"
+dependencies = [
+ "flight-classify",
+ "flight-proto",
+ "flight-state",
+ "flight-tmux",
+ "getrandom",
+]
+
+[[package]]
 name = "flight-proto"
 version = "0.0.1"
 dependencies = [
  "flight-state",
  "prost",
+ "regex",
 ]
 
 [[package]]
@@ -214,6 +226,17 @@ name = "foldhash"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
+
+[[package]]
+name = "getrandom"
+version = "0.2.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ff2abc00be7fca6ebc474524697ae276ad847ad0a6b3faa4bcb027e9a4614ad0"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "wasi",
+]
 
 [[package]]
 name = "hashbrown"

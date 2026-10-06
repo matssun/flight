@@ -1,0 +1,33 @@
+// SPDX-License-Identifier: MIT
+
+//! flight-node: the observer that runs beside tmux.
+//!
+//! ```text
+//! tmux adapter -> Round -> NodeCore (classify, fuse, resolve, Tracking, state) -> Snapshot/Delta
+//! ```
+//!
+//! [`NodeCore`] knows nothing about tmux I/O, threads, sockets or clocks: callers hand it
+//! [`Round`]s (what was observed, and when). It owns the authoritative current state, never an
+//! event history; deltas are derived from changes in that state, so a full [`Snapshot`] is
+//! always sufficient. `Tracking` is node-local and never replicated; `PaneState` is.
+//!
+//! [`Snapshot`]: flight_proto::Snapshot
+
+mod codes;
+mod control;
+mod entry;
+mod incarnation;
+mod node_core;
+mod node_session;
+mod pane_resolve;
+mod round;
+mod tmux_servers;
+mod unavailable;
+
+pub use control::{Control, ControlError};
+pub use incarnation::fresh_incarnation;
+pub use node_core::NodeCore;
+pub use node_session::{NodeSession, SessionOutput, ADVERTISED_CAPABILITIES};
+pub use round::{PaneObservation, Round, ServerOutcome};
+pub use tmux_servers::TmuxServers;
+pub use unavailable::Unavailable;

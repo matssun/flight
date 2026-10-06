@@ -1,0 +1,15 @@
+[package]
+name = "flight-node"
+description = "Flight: node (local observation, authoritative pane state, Tracking, snapshot/delta replication)"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+flight-classify = { path = "../flight-classify" }
+flight-proto = { path = "../flight-proto" }
+flight-state = { path = "../flight-state" }
+flight-tmux = { path = "../flight-tmux" }
+getrandom = "0.2"

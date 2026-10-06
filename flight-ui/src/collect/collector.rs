@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-use super::agent_detect::detect_agent;
 use super::resolve_pane::resolve_pane;
-use super::why::why;
 use crate::snapshot::{HostHealth, HostView, PanePreview, PaneView, UiSnapshot};
-use flight_classify::{prune_tracking, ResolvedState};
+use flight_classify::{detect_agent, prune_tracking, why, ResolvedState};
 use flight_control::{HostError, HostPane, HostRegistry, PanesOutcome};
 use flight_state::{HostId, PaneRef, ServerId};
 use std::collections::{HashMap, HashSet};

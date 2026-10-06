@@ -2,7 +2,7 @@
 
 use crate::{ErrorKindCode, Reject, Validate};
 
-/// Ask the node for a fresh [`crate::Snapshot`]. Sent on any gap, generation mismatch or
+/// Ask the node for a fresh [`crate::Snapshot`]. Sent on any gap, incarnation mismatch or
 /// reconnect; the orchestrator never tries to repair a stream.
 #[derive(Clone, PartialEq, Eq, prost::Message)]
 pub struct ResyncRequest {

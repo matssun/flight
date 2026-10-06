@@ -14,13 +14,11 @@ pub fn pane_state(pane: &str, state: StateCode) -> PaneState {
         source: SourceCode::Scrape as i32,
         rule_id: "permit.do-you-want".into(),
         why: "permit.do-you-want".into(),
-        observed_at: 1_700_000_100,
         changed_at: 1_700_000_050,
         session: "work".into(),
         window: "agent".into(),
         path: "/home/u/proj".into(),
         command: "claude".into(),
-        title: "✳ task".into(),
     }
 }
 
@@ -37,7 +35,7 @@ pub fn node_hello() -> NodeHello {
 pub fn node_snapshot_frame() -> NodeFrame {
     NodeFrame {
         body: Some(node_body::Body::Snapshot(Snapshot {
-            generation: 3,
+            incarnation: inc(3).as_bytes().to_vec(),
             panes: vec![
                 pane_state("%1", StateCode::Permit),
                 pane_state("%2", StateCode::Busy),
@@ -49,4 +47,8 @@ pub fn node_snapshot_frame() -> NodeFrame {
             }],
         })),
     }
+}
+
+pub fn inc(n: u8) -> Incarnation {
+    Incarnation::from_bytes([n; Incarnation::LEN])
 }

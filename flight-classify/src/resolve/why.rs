@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-use flight_classify::{Reason, ResolvedState, Source};
+use super::ResolvedState;
+use crate::{Reason, Source};
 
 /// A short human reason for a resolved state, for the dashboard.
-pub(super) fn why(r: &ResolvedState) -> String {
+pub fn why(r: &ResolvedState) -> String {
     if r.provenance.synthesized_done {
         return "finished while away".to_owned();
     }

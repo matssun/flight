@@ -10,3 +10,6 @@ repository.workspace = true
 [dependencies]
 flight-state = { path = "../flight-state" }
 prost = "0.14"
+
+[dev-dependencies]
+regex = { workspace = true }

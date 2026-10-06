@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::validate::non_empty;
-use crate::{NodeStatusCode, PaneRefMsg, PaneState, Reject, ServerStatus, Validate};
+use crate::{Incarnation, NodeStatusCode, PaneRefMsg, PaneState, Reject, ServerStatus, Validate};
 
 /// One node as the orchestrator presents it to a UI.
 #[derive(Clone, PartialEq, Eq, prost::Message)]
@@ -30,14 +30,21 @@ impl Validate for NodeView {
 /// The whole fleet as the orchestrator currently knows it. Authoritative on its own.
 #[derive(Clone, PartialEq, Eq, prost::Message)]
 pub struct FleetSnapshot {
-    #[prost(uint64, tag = "1")]
-    pub generation: u64,
+    #[prost(bytes = "vec", tag = "1")]
+    pub incarnation: Vec<u8>,
     #[prost(message, repeated, tag = "2")]
     pub nodes: Vec<NodeView>,
 }
 
+impl FleetSnapshot {
+    pub fn incarnation(&self) -> Result<Incarnation, Reject> {
+        Incarnation::decode(&self.incarnation)
+    }
+}
+
 impl Validate for FleetSnapshot {
     fn validate(&self) -> Result<(), Reject> {
+        self.incarnation()?;
         self.nodes.iter().try_for_each(Validate::validate)
     }
 }
@@ -50,11 +57,11 @@ pub struct NodeStatusChanged {
     pub status: i32,
 }
 
-/// An ordered change to a [`FleetSnapshot`]; same generation/sequence rules as a node delta.
+/// An ordered change to a [`FleetSnapshot`]; same incarnation/sequence rules as a node delta.
 #[derive(Clone, PartialEq, Eq, prost::Message)]
 pub struct FleetDelta {
-    #[prost(uint64, tag = "1")]
-    pub generation: u64,
+    #[prost(bytes = "vec", tag = "1")]
+    pub incarnation: Vec<u8>,
     #[prost(uint64, tag = "2")]
     pub sequence: u64,
     #[prost(oneof = "fleet_change::Change", tags = "3, 4, 5, 6")]
@@ -79,8 +86,15 @@ pub mod fleet_change {
     }
 }
 
+impl FleetDelta {
+    pub fn incarnation(&self) -> Result<Incarnation, Reject> {
+        Incarnation::decode(&self.incarnation)
+    }
+}
+
 impl Validate for FleetDelta {
     fn validate(&self) -> Result<(), Reject> {
+        self.incarnation()?;
         if self.sequence == 0 {
             return Err(Reject::OutOfRange("fleet_delta.sequence"));
         }

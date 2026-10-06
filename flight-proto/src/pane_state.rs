@@ -21,9 +21,8 @@ pub struct PaneState {
     /// A short human reason, e.g. `finished while away`.
     #[prost(string, tag = "6")]
     pub why: String,
-    /// Seconds since the epoch at which the node last observed the pane.
-    #[prost(uint64, tag = "7")]
-    pub observed_at: u64,
+    // Tag 7 (observed_at) and tag 13 (title) are retired: both change on every poll and would
+    // turn every refresh into a delta. Liveness comes from heartbeats and snapshots.
     /// Seconds since the epoch at which `state` last changed.
     #[prost(uint64, tag = "8")]
     pub changed_at: u64,
@@ -35,8 +34,6 @@ pub struct PaneState {
     pub path: String,
     #[prost(string, tag = "12")]
     pub command: String,
-    #[prost(string, tag = "13")]
-    pub title: String,
 }
 
 impl PaneState {

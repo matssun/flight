@@ -10,6 +10,7 @@ members = [
     "flight-tmux",     # tmux IPC: list-panes, capture-pane, switch/attach/kill
     "flight-classify", # Pure classifier: Observation -> Classification (ordered rule manifests, with provenance)
     "flight-state",    # Agent state engine: hook + event + scrape fusion, 7-state model
+    "flight-control",  # Host registry: routes PaneRef to a runner per host (local, SSH), typed host errors
     "flight-sessions", # Session sources (tmux, zoxide, config, tmuxinator), dedup, naming, connect
     "flight-tui",      # Dashboard rendering and input
     "flight",          # The binary

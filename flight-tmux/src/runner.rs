@@ -14,6 +14,13 @@ pub trait TmuxRunner {
     fn run(&self, args: &[&str]) -> Result<TmuxOutput, TmuxError>;
 }
 
+/// Lets a registry hold runners of different kinds behind one type.
+impl<R: TmuxRunner + ?Sized> TmuxRunner for Box<R> {
+    fn run(&self, args: &[&str]) -> Result<TmuxOutput, TmuxError> {
+        (**self).run(args)
+    }
+}
+
 /// Runs the real `tmux` binary against one explicit endpoint.
 #[derive(Debug, Clone)]
 pub struct SystemRunner {

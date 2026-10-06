@@ -1,0 +1,12 @@
+[package]
+name = "flight-control"
+description = "Flight: route operations to hosts (local, SSH) with typed failures"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+flight-state = { path = "../flight-state" }
+flight-tmux = { path = "../flight-tmux" }

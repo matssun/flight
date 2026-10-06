@@ -26,6 +26,12 @@ A tmux endpoint belongs to a Flight host; neither localhost nor the default tmux
 - `flight-control` (not yet created) routes an operation on a `PaneRef` to the runner for its host.
 - Phasing: local explicit socket (done), SSH, measure, then decide on a `flight-node` daemon and control-mode streaming. No network daemon until then.
 
+## flight-control v0
+
+`HostRegistry` routes by identity: `PaneRef -> HostId -> transport -> TmuxEndpoint -> flight-tmux`. It does not parse panes or speak tmux. Transports: `Local` (`SystemRunner`) and `Ssh { alias }` (`SshRunner`: `ssh -o BatchMode=yes -o ConnectTimeout=5 -- <alias> tmux -L <name> ...`, every tmux argument shell-quoted because ssh re-parses the command). SSH configuration is not Flight's: keys, hostnames, ProxyJump, ControlMaster and host verification stay in `~/.ssh/config`.
+
+Failures are typed (`HostError`): `UnknownHost`, `UnknownServer`, `HostUnreachable`, `AuthenticationFailed`, `TmuxUnavailable`, `TmuxServerUnavailable`, `RemoteCommandFailed`, `InvalidConfig`. `HostStatus { reachable, tmux_available, endpoint_available, tmux_version, problem }` lets a UI render each host (online, unreachable, online with no Flight server) before any key is pressed. `list_all_panes` returns one outcome per endpoint so a down host never hides the others. No scheduling, no persistence, no daemon.
+
 ## Single-host semantics (frozen at parity with Fleet)
 
 `flight-classify` is the whole observation-to-state path for one host:

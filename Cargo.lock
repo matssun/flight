@@ -30,6 +30,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "flight-control"
+version = "0.0.1"
+dependencies = [
+ "flight-state",
+ "flight-tmux",
+]
+
+[[package]]
 name = "flight-sessions"
 version = "0.0.1"
 

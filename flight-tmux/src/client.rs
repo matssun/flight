@@ -23,6 +23,11 @@ impl<R: TmuxRunner> Tmux<R> {
         Self { runner }
     }
 
+    /// The underlying runner, for callers that need to issue their own tmux command.
+    pub fn runner(&self) -> &R {
+        &self.runner
+    }
+
     /// Every pane on the server. `Err(Failed)` usually means no server is running.
     pub fn list_panes(&self) -> Result<Vec<PaneInfo>, TmuxError> {
         let out = self.runner.run(&["list-panes", "-a", "-F", PANE_FORMAT])?;

@@ -1,21 +1,29 @@
 // SPDX-License-Identifier: MIT
 
 //! Runs against a real tmux server on a private socket. Skipped when tmux is absent.
-//! Never touches the default tmux server: every call carries `-L <unique name>`.
+//! Never touches the default tmux server: every call carries `-S <unique private path>`.
 
 use flight_tmux::{Tmux, TmuxEndpoint};
 use std::process::Command;
 
 struct Server {
     tmux: Tmux,
+    socket: std::path::PathBuf,
 }
 
 impl Server {
     fn start() -> Option<Self> {
         Command::new("tmux").arg("-V").output().ok()?;
-        let name = format!("flight-test-{}", std::process::id());
+        // A private socket path (outside tmux's shared socket dir), removed on drop. The
+        // thread id keeps parallel tests apart.
+        let socket = std::env::temp_dir().join(format!(
+            "flight-test-{}-{:?}.sock",
+            std::process::id(),
+            std::thread::current().id()
+        ));
         Some(Self {
-            tmux: Tmux::new(TmuxEndpoint::named(&name).ok()?),
+            tmux: Tmux::new(TmuxEndpoint::Path(socket.clone())),
+            socket,
         })
     }
 }
@@ -23,6 +31,7 @@ impl Server {
 impl Drop for Server {
     fn drop(&mut self) {
         let _ = self.tmux.kill_server();
+        let _ = std::fs::remove_file(&self.socket);
     }
 }
 

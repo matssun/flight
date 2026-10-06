@@ -1,0 +1,12 @@
+[package]
+name = "flight-proto"
+description = "Flight: node/orchestrator/UI wire protocol (types, versioning, validation; no I/O)"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+flight-state = { path = "../flight-state" }
+prost = "0.14"

@@ -2,7 +2,7 @@
 
 # ADR-002: Node / orchestrator architecture
 
-Status: Proposed (design only; no implementation until these boundaries are checked)
+Status: Accepted with refinements (see "Sign-off refinements"). Slice 1 (`flight-proto`) implemented.
 
 ## Decision
 
@@ -17,6 +17,20 @@ Flight moves from SSH-based multi-host access to a node/orchestrator architectur
 - LAN v0 uses an explicitly configured address.
 
 Out of scope for v0: mDNS, leader election, Raft, relays, NAT traversal, persistence of live state, scheduling ("start X" without naming a node).
+
+## Sign-off refinements
+
+These supersede the earlier text where they differ.
+
+- Transport: tonic (gRPC) + rustls/mTLS. Request correlation, deadlines, status codes and flow control come from the stack instead of being rebuilt in Flight. `flight-proto` messages are hand-written `prost` types (no `protoc` at build time) and plug into tonic's `ProstCodec`; a `.proto` file for non-Rust clients is deferred.
+- Pairing keeps two separate concepts: the orchestrator identity (stable public-key fingerprint, which the node authenticates against) and an independent short-lived single-use enrollment token (which authorizes joining). A human-copyable bootstrap bundle may carry both; the protocol models them separately. SPAKE2 is not used initially.
+- The UI is a client of the orchestrator over a separate interface (`UiRequest`/`UiEvent`), not a role on the node listener. Nodes publish state and execute control requests; a UI consumes state and issues operator commands.
+- The trust store is operator-managed configuration (`~/.config/flight/trust.toml`: identities, aliases, fingerprints), not live state. Private keys are separate files with restrictive permissions. No SQLite.
+- Hooks stay deferred and are node-local; they never reach the orchestrator.
+- The wire carries semantic pane/node state only (`PaneState`: ref, agent kind, resolved state, provenance summary, times). Classifier internals (hook-file changes, screen matches, glyph anchors) never appear on the wire.
+- Replication: `Snapshot(generation = N)`, then `Delta(generation = N, sequence = 1, 2, ...)`. A missing, duplicate or foreign-generation delta, or a reconnect, means "request a fresh snapshot"; there is no repair. Added invariant: a delta is never required for correctness; a complete snapshot always suffices to reconstruct the node's externally visible state.
+- Compatibility rules, enforced in `flight-proto`: major mismatch rejects the connection; unknown optional fields are ignored; unknown capabilities are negotiated away; an unknown or unspecified enum value rejects that message and is never guessed.
+- `GetHostStatus` is dropped; per-server availability is carried by `ServerStatus` in snapshots and deltas.
 
 ## Invariants
 
@@ -110,7 +124,7 @@ UI side: the UI speaks the same protocol to the orchestrator (`Subscribe`, then 
 
 ## Proposed slicing (each independently testable; only after sign-off)
 
-1. `flight-proto`: types, versioning, encode/decode round-trips, golden wire fixtures. No sockets.
+1. `flight-proto` (done): types, versioning, validation, replication cursor, golden wire fixtures, malformed-input tests. No sockets.
 2. `flight-node` core over an in-memory `Session`: wraps today's collector and resolve, emits Snapshot and deltas; tests with scripted tmux.
 3. `flight-orchestrator` core over in-memory sessions: registry, resync, stale handling, routing; tests for the two invariants (restart reconstructs state; one node failing leaves others intact).
 4. TLS transport and pairing, still on localhost with two processes.
@@ -118,10 +132,8 @@ UI side: the UI speaks the same protocol to the orchestrator (`Subscribe`, then 
 6. Real second machine on the LAN.
 7. Measure, then decide on packaging and the next UX changes.
 
-## Open questions for review
+## Open questions
 
-1. tonic/gRPC vs. a thinner framed protobuf over rustls.
-2. Pairing: fingerprint-carrying join code (simple, longer) vs. SPAKE2 short code.
-3. Does the UI connect to the orchestrator over the same node listener (role-tagged) or a separate local socket plus remote listener?
-4. Where the trust store lives and its file format.
-5. Hook ingestion path on the node (local socket vs. hook files as in Fleet): deferred to the node slice, hook-less behavior is the baseline.
+1. Authentication details of the enrollment token exchange (token format, expiry default).
+2. Trust-store file schema.
+3. Hook ingestion path on the node (slice 2+).

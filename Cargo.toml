@@ -1,0 +1,22 @@
+# Flight — Cargo workspace root
+#
+# A Rust tmux session manager with an agent dashboard. Combines the session-source
+# model of sesh (Go) with the agent-state dashboard of Fleet (TypeScript).
+# See docs/adr/ADR-001-architecture.md.
+
+[workspace]
+resolver = "2"
+members = [
+    "flight-tmux",     # tmux IPC: list-panes, capture-pane, switch/attach/kill
+    "flight-state",    # Agent state engine: hook + event + scrape fusion, 7-state model
+    "flight-sessions", # Session sources (tmux, zoxide, config, tmuxinator), dedup, naming, connect
+    "flight-tui",      # Dashboard rendering and input
+    "flight",          # The binary
+]
+
+[workspace.package]
+edition = "2021"
+version = "0.0.1"
+license = "Apache-2.0"
+authors = ["Mats Sundvall"]
+repository = "https://github.com/matssun/flight"

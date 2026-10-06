@@ -1,0 +1,8 @@
+[package]
+name = "flight-state"
+description = "Flight: state"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true

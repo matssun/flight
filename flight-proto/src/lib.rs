@@ -19,6 +19,7 @@ mod macros;
 mod codes;
 mod command;
 mod delta;
+mod enroll;
 mod error_info;
 mod fleet;
 mod heartbeat;
@@ -40,9 +41,10 @@ mod version;
 pub mod capability;
 pub mod codec;
 
-pub use codes::{AgentKindCode, ErrorKindCode, NodeStatusCode, SourceCode, StateCode};
+pub use codes::{AgentKindCode, ErrorKindCode, NodeStatusCode, RoleCode, SourceCode, StateCode};
 pub use command::{command_kind, Command, Request, MAX_PREVIEW_LINES};
 pub use delta::{delta_change, Delta};
+pub use enroll::{EnrollRequest, EnrollResponse};
 pub use error_info::ErrorInfo;
 pub use fleet::{
     fleet_change, FleetDelta, FleetSnapshot, NodeRemoved, NodeServerStatus, NodeStatusChanged,

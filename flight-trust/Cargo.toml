@@ -1,0 +1,22 @@
+[package]
+name = "flight-trust"
+description = "Flight: identity, fingerprints, trust store, enrollment tokens and pinned-fingerprint TLS verifiers"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+base64 = "0.22"
+flight-state = { path = "../flight-state" }
+getrandom = "0.2"
+rcgen = "0.14"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
+toml = "0.8"
+x509-parser = "0.18"
+
+[dev-dependencies]
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }

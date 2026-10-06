@@ -2,7 +2,7 @@
 
 # ADR-002: Node / orchestrator architecture
 
-Status: Accepted with refinements (see "Sign-off refinements"). Slices 1 (`flight-proto`), 2 (`flight-node` core) and 3 (`flight-orchestrator` core) implemented.
+Status: Accepted with refinements (see "Sign-off refinements"). Slices 1 (`flight-proto`), 2 (`flight-node` core) 3 (`flight-orchestrator` core) and 4 (`flight-trust`, `flight-transport`) implemented.
 
 ## Decision
 
@@ -186,10 +186,20 @@ UI side: the UI speaks the same protocol to the orchestrator (`Subscribe`, then 
 1. `flight-proto` (done): types, versioning, validation, replication cursor, golden wire fixtures, malformed-input tests. No sockets.
 2. `flight-node` core (done): `NodeCore` (state, Tracking, snapshot, semantic deltas), `NodeSession` (frame state machine: handshake, resync, routed requests), `TmuxServers` adapter. Snapshot + deltas = final snapshot is checked over 300 generated 60-round sequences.
 3. `flight-orchestrator` core (done): registry, per-node cursors and transactional images, liveness, routing, fleet image and per-UI deltas. Properties checked over generated histories: UI mirrors always equal the fleet image; connected nodes converge to what they publish; an orchestrator rebuilt only from node snapshots reconstructs the live image.
-4. TLS transport and pairing, still on localhost with two processes.
+4. Transport and pairing (done), on localhost:
+   - `flight-trust`: `Identity` (rcgen self-signed key + cert, `key.pem` mode 0600), `Fingerprint` (`sha256:` of the SPKI = `HostId`), `TrustStore` (`trust.toml`, atomic save, roles `node`/`ui`), `EnrollmentTokens` (256-bit, single-use, hashed, in memory), `EnrollmentBundle` (copy/paste form), and the rustls verifiers: the client pins exactly one server fingerprint; the server requires a client certificate and proves possession of its key but leaves authorization to the application, so an unenrolled node can still reach `Enroll`.
+   - `flight-transport`: a hand-bound tonic service (`flight.v1.Flight`: `NodeConnect`, `UiConnect`, `Enroll`; no codegen, paths checked against the `.proto`) over TLS 1.3 accepted by our own listener, so the peer's fingerprint travels with every request. `serve()` runs the `OrchestratorCore` behind one lock (never held across an await), re-checks trust every tick so revocation drops live connections, and ends streams at shutdown. `NodeLink` redials with backoff and holds the `NodeSession`; `UiClient` and `enroll()` are the other two clients.
+   - Verified on localhost with real sockets: hello, snapshot, deltas, preview, disconnect, reconnect and resync; unknown, disabled, removed, wrong-role and forged-hello identities refused; enrollment once, expired, replayed and against a wrong pinned fingerprint (the token is not spent).
 5. Move `flight-ui` onto the `Fleet` trait with the `Orchestrated` backend; keep the SSH backend working.
 6. Real second machine on the LAN.
 7. Measure, then decide on packaging and the next UX changes.
+
+## Known limits after slice 4
+
+- Outbound channels are unbounded; a stuck peer is dropped by the heartbeat timeout rather than back-pressured.
+- `Control` calls (tmux capture, kill) run inline under the session lock; a slow tmux call delays that node's frames.
+- Key rotation and certificate renewal are not designed (a new key is a new identity; re-enroll).
+- The CLI (`flight orchestrator enrollment create`, `flight node join`), the tmux observation driver loop, and the UI backend over `UiClient` are slice 5.
 
 ## Open questions
 

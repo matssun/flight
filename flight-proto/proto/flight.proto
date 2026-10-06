@@ -83,6 +83,12 @@ enum NodeStatusCode {
   NODE_STATUS_CODE_STALE = 3;
 }
 
+enum RoleCode {
+  ROLE_CODE_UNSPECIFIED = 0;
+  ROLE_CODE_NODE = 1;
+  ROLE_CODE_UI = 2;
+}
+
 enum AvailabilityCode {
   AVAILABILITY_CODE_UNSPECIFIED = 0;
   AVAILABILITY_CODE_AVAILABLE = 1;
@@ -310,4 +316,30 @@ message UiEvent {
     FleetDelta delta = 2;
     Response response = 3;
   }
+}
+
+// ---------------------------------------------------------------------------------------
+// Enrollment and the gRPC service (HTTP/2 over mutual TLS 1.3, identities pinned by
+// fingerprint). `Enroll` is the only call an authenticated but not yet authorized identity
+// may make; the two streams require an enabled entry in the orchestrator's trust store.
+
+// Join the fleet. The identity enrolled is the client certificate the request arrived
+// under; the token only authorizes the join. Failures are indistinguishable to the peer.
+message EnrollRequest {
+  string token = 1;
+  string display_name = 2;
+  RoleCode role = 3;
+}
+
+message EnrollResponse {
+  string node_id = 1;
+  string orchestrator_id = 2;
+}
+
+service Flight {
+  // A node's one long-lived stream, dialled by the node.
+  rpc NodeConnect(stream NodeFrame) returns (stream OrchestratorFrame);
+  // A UI's stream.
+  rpc UiConnect(stream UiRequest) returns (stream UiEvent);
+  rpc Enroll(EnrollRequest) returns (EnrollResponse);
 }

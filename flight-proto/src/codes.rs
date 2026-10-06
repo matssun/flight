@@ -33,6 +33,11 @@ wire_enum! {
 }
 
 wire_enum! {
+    /// What an enrolling identity is for.
+    RoleCode { Node = 1, Ui = 2 }
+}
+
+wire_enum! {
     /// The orchestrator's view of a node's connection: liveness only. It never rewrites the
     /// semantic state of the node's panes, which stay as last reported.
     NodeStatusCode { Online = 1, Disconnected = 2, Stale = 3 }

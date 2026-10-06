@@ -8,13 +8,15 @@
 //! (src/state/detection.ts, MIT, (c) 2026 Nick Nisi; see THIRD_PARTY.md) with unchanged
 //! meaning. Ordering is explicit data: each rule has a priority, lowest first.
 //!
-//! Not in scope here: fusing hook/event evidence with scrape results (Fleet's engine.ts).
+//! The `fuse` module weighs scrape, title, hook and event evidence into one final state
+//! (Fleet's engine.ts), keeping provenance.
 
 mod agent_kind;
 mod ansi;
 mod builtin;
 mod classification;
 mod error;
+mod fuse;
 mod manifest;
 mod observation;
 mod refine;
@@ -26,6 +28,11 @@ mod title;
 pub use agent_kind::AgentKind;
 pub use classification::Classification;
 pub use error::ClassifyError;
+pub use fuse::{
+    derive_status_from_events, fuse, Candidates, EventEntry, EventKind, EventObservation, Evidence,
+    FusedClassification, HookObservation, NotificationType, Reason, ScrapeVia, Source,
+    WORKING_TIMEOUT_SECS,
+};
 pub use manifest::Manifest;
 pub use observation::Observation;
 pub use refine::refine_title_with_screen;

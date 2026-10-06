@@ -43,6 +43,54 @@ These supersede the earlier text where they differ.
 - Routing goes only to a currently `Online` node and fails immediately with `NodeUnreachable` otherwise (also `Stale`, `Disconnected`, unknown node). Nothing is queued or replayed: in-flight requests fail on disconnect and on timeout. Capabilities are checked against what the node accepted. Node-facing request ids are the orchestrator's own, mapped back to the UI's.
 - `GetHostStatus` is dropped; per-server availability is carried by `ServerStatus` in snapshots and deltas.
 
+## Identity, trust and enrollment (frozen before slice 4)
+
+Concepts, kept separate:
+
+| Concept | What it is |
+|---|---|
+| Identity | A long-lived asymmetric keypair with a self-signed certificate, generated once per node / orchestrator / UI. |
+| `NodeId` = `HostId` | `sha256:<hex>` of the certificate's SubjectPublicKeyInfo. The fingerprint *is* the id; it is never stored twice. Same for the orchestrator's identity. |
+| Trust | An explicit allowlist of identities the orchestrator currently authorizes (`trust.toml`). |
+| Enrollment token | A random single-use secret with a short lifetime. It authorizes joining; it is not an identity and is not bound to a prospective `NodeId`. |
+| Authentication | Mutual TLS 1.3 with self-signed certificates, verified by fingerprint, never by CA or hostname. |
+
+Rules:
+
+- On first join the node authenticates the orchestrator by a pinned expected fingerprint. Possession of an enrollment token never bypasses that check: a node refuses a server whose fingerprint differs, before sending the token.
+- After joining, the node's fingerprint must be present and enabled in the orchestrator's trust store. Every connection is checked against it; an unknown, disabled or removed identity is refused.
+- The hello's `node_id` must equal the fingerprint of the key that authenticated the connection (ADR "Identity" above); a mismatch is refused.
+- A changed key under an existing display name is a different `NodeId` and is not trusted.
+
+Enrollment flow:
+
+1. `flight orchestrator enrollment create` yields `orchestrator=<fingerprint> address=<host:port> token=<secret> expires=<time>`; a copy/paste bundle may package them, the protocol keeps them independent.
+2. The node connects over TLS and verifies the server fingerprint equals the expected one.
+3. The node presents its client certificate (its public key) and the token in an `Enroll` request.
+4. The orchestrator validates the token (hash lookup; invalid, expired or used is refused), authorizes the key (writes the trust store), and consumes the token atomically.
+
+Tokens: 128-256 random bits, encoded base64url; single use; short lifetime (default 10 minutes); stored only as a SHA-256 hash; held in memory. An orchestrator restart discards outstanding tokens, which is an accepted v0 property. They never live in `trust.toml`.
+
+`trust.toml` (public trust decisions only, operator-readable, version 1):
+
+```toml
+version = 1
+
+[orchestrator]
+fingerprint = "sha256:..."        # this orchestrator's identity (a node's copy pins it)
+display_name = "flight-home"
+
+[[nodes]]
+id = "sha256:..."                 # the NodeId; no separate fingerprint field
+display_name = "mini-1"
+enabled = true                    # false = revoked, same as removing the entry
+role = "node"                     # "node" (default) or "ui"
+```
+
+Revocation is "set `enabled = false` or delete the entry"; the orchestrator refuses identities it does not currently authorize. No CRLs. Private material lives apart, under `~/.config/flight/identity/` (`key.pem` mode 0600, `cert.pem`); `trust.toml` sits in `~/.config/flight/`.
+
+Enrollment stays outside the replication protocol: it is its own unary RPC, the only call an authenticated-but-unauthorized identity may make.
+
 ## Invariants
 
 1. The orchestrator may disappear without affecting any running workload (tmux, agents and nodes keep running).
@@ -145,6 +193,4 @@ UI side: the UI speaks the same protocol to the orchestrator (`Subscribe`, then 
 
 ## Open questions
 
-1. Authentication details of the enrollment token exchange (token format, expiry default).
-2. Trust-store file schema.
-3. Hook ingestion path on the node (slice 2+).
+1. Hook ingestion path on the node (slice 2+).

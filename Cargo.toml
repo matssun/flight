@@ -8,6 +8,7 @@
 resolver = "2"
 members = [
     "flight-tmux",     # tmux IPC: list-panes, capture-pane, switch/attach/kill
+    "flight-classify", # Pure classifier: Observation -> Classification (ordered rule manifests, with provenance)
     "flight-state",    # Agent state engine: hook + event + scrape fusion, 7-state model
     "flight-sessions", # Session sources (tmux, zoxide, config, tmuxinator), dedup, naming, connect
     "flight-tui",      # Dashboard rendering and input
@@ -20,3 +21,6 @@ version = "0.0.1"
 license = "MIT"
 authors = ["Mats Sundvall"]
 repository = "https://github.com/matssun/flight"
+
+[workspace.dependencies]
+regex = "1"

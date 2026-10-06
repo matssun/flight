@@ -1,0 +1,12 @@
+[package]
+name = "flight-classify"
+description = "Flight: classify pane observations into agent states, with rule provenance"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+flight-state = { path = "../flight-state" }
+regex = { workspace = true }

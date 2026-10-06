@@ -1,8 +1,8 @@
-<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- SPDX-License-Identifier: MIT -->
 
 # Third-Party Notices
 
-Flight is Apache-2.0. The projects below are MIT-licensed. They informed Flight's design and are kept under `ref/` (gitignored) for study. Where code is copied or closely ported, its copyright and permission notice must be reproduced here and in the file that carries it.
+Flight is MIT-licensed, as are the projects below. They informed Flight's design and are kept under `ref/` (gitignored) for study. Where code is copied or closely ported, its copyright and permission notice must be reproduced here and in the file that carries it.
 
 | Project | Language | Copyright | License | Use |
 |---|---|---|---|---|

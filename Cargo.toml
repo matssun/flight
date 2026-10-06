@@ -17,6 +17,6 @@ members = [
 [workspace.package]
 edition = "2021"
 version = "0.0.1"
-license = "Apache-2.0"
+license = "MIT"
 authors = ["Mats Sundvall"]
 repository = "https://github.com/matssun/flight"

@@ -1,4 +1,4 @@
-<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- SPDX-License-Identifier: MIT -->
 
 # ADR-001: Architecture
 
@@ -22,7 +22,7 @@ tms is one crate with files well over the 200-line threshold, and is repo-centri
 
 ## Licensing
 
-Flight is Apache-2.0. All three references are MIT; see `THIRD_PARTY.md`.
+Flight is MIT, matching all three references; see `THIRD_PARTY.md`.
 
 ## Open
 

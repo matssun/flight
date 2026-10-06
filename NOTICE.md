@@ -1,4 +1,4 @@
-<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- SPDX-License-Identifier: MIT -->
 
 # NOTICE
 
@@ -10,6 +10,6 @@ Flight is an independent project. It is not affiliated with or endorsed by the a
 
 ## License
 
-Unless otherwise stated, all files in this repository are licensed under the Apache License, Version 2.0. See `LICENSE`.
+Unless otherwise stated, all files in this repository are licensed under the MIT License. See `LICENSE`.
 
 Third-party notices: see `THIRD_PARTY.md`.

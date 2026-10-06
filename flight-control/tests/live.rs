@@ -18,10 +18,11 @@ fn local_host_lifecycle_through_the_registry() {
         return;
     }
     let (host, server) = (HostId::new("local"), ServerId::new("flight-test"));
-    let sock = format!("flight-control-test-{}", std::process::id());
+    let sock =
+        std::env::temp_dir().join(format!("flight-control-test-{}.sock", std::process::id()));
     let mut r = HostRegistry::new();
     r.add_host(host.clone(), Transport::Local);
-    r.add_server(&host, server.clone(), TmuxEndpoint::named(&sock).unwrap())
+    r.add_server(&host, server.clone(), TmuxEndpoint::Path(sock.clone()))
         .unwrap();
 
     // tmux present, no server yet: a distinct state from "unreachable".
@@ -52,6 +53,7 @@ fn local_host_lifecycle_through_the_registry() {
         r.list_panes(&host, &server),
         Err(HostError::TmuxServerUnavailable)
     );
+    let _ = std::fs::remove_file(&sock);
 }
 
 #[test]

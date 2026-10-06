@@ -2,7 +2,7 @@
 
 # ADR-002: Node / orchestrator architecture
 
-Status: Accepted with refinements (see "Sign-off refinements"). Slices 1 (`flight-proto`) and 2 (`flight-node` core) implemented.
+Status: Accepted with refinements (see "Sign-off refinements"). Slices 1 (`flight-proto`), 2 (`flight-node` core) and 3 (`flight-orchestrator` core) implemented.
 
 ## Decision
 
@@ -35,6 +35,12 @@ These supersede the earlier text where they differ.
 - Fields that change on every poll are not replicated: `observed_at` and the terminal title (tags 7 and 13 are retired). Liveness comes from heartbeats and snapshots; otherwise every poll would be a delta storm. `changed_at` is when the state value last changed.
 - `NodeCore` owns authoritative current state, not history. Deltas are state replacement (`PaneUpsert`, `PaneRemoved`, `ServerStatus`), derived by diffing state before and after a round. `Tracking` is node-local and never replicated. A pane id is keyed with its pid, so a reused tmux `%id` under a new process starts with fresh Tracking.
 - A tmux server that is gone (`NoServer`, tmux missing) drops its panes and their Tracking; a transient failure keeps both (stale) and only changes the server status.
+- Identity: `HostId` is the stable `NodeId` (key fingerprint once keys exist); every `PaneRef` is rooted in it and routing uses only it. The transport authenticates the peer and hands the orchestrator its id; a node's hello must agree with it, and every pane in its snapshots and deltas must carry that host. Display names are mutable presentation: two nodes may share one, and a rename changes nothing about identity or routing.
+- Liveness is separate from state. `NodeStatusCode` is `Online | Stale | Disconnected`; missed heartbeats and dropped connections change only that, never a pane's state (`Down` keeps its classifier meaning). A dropped connection never removes a node: its last-known image stays visible, so selection is stable across a Wi-Fi glitch. Pruning is a separate explicit policy; `NodeRemoved` exists on the wire for it and is not yet emitted.
+- The orchestrator has its own incarnation (one process lifetime), carried by `FleetSnapshot`/`FleetDelta`. After an orchestrator restart a UI can never continue an old delta stream; it takes a full `FleetSnapshot`. Each UI subscriber has its own delta sequence, restarted by its snapshot.
+- Node images are transactional: a delta is validated (message, incarnation, sequence, host identity) before it touches the image. A gap keeps the last consistent image, asks the node for one snapshot, and ignores deltas until it arrives. Invariant: every node image a UI sees is a prefix of an accepted node replication stream. A reconnect, even with the same incarnation, resets the cursor: a snapshot comes first.
+- Fleet deltas are state-oriented (`NodeUpsert`, `NodeStatus`, `PaneUpsert`, `PaneRemoved`, `ServerStatus`, `NodeRemoved`); orchestration events (missed heartbeat, resync requested) are never published.
+- Routing goes only to a currently `Online` node and fails immediately with `NodeUnreachable` otherwise (also `Stale`, `Disconnected`, unknown node). Nothing is queued or replayed: in-flight requests fail on disconnect and on timeout. Capabilities are checked against what the node accepted. Node-facing request ids are the orchestrator's own, mapped back to the UI's.
 - `GetHostStatus` is dropped; per-server availability is carried by `ServerStatus` in snapshots and deltas.
 
 ## Invariants
@@ -131,7 +137,7 @@ UI side: the UI speaks the same protocol to the orchestrator (`Subscribe`, then 
 
 1. `flight-proto` (done): types, versioning, validation, replication cursor, golden wire fixtures, malformed-input tests. No sockets.
 2. `flight-node` core (done): `NodeCore` (state, Tracking, snapshot, semantic deltas), `NodeSession` (frame state machine: handshake, resync, routed requests), `TmuxServers` adapter. Snapshot + deltas = final snapshot is checked over 300 generated 60-round sequences.
-3. `flight-orchestrator` core over in-memory sessions: registry, resync, stale handling, routing; tests for the two invariants (restart reconstructs state; one node failing leaves others intact).
+3. `flight-orchestrator` core (done): registry, per-node cursors and transactional images, liveness, routing, fleet image and per-UI deltas. Properties checked over generated histories: UI mirrors always equal the fleet image; connected nodes converge to what they publish; an orchestrator rebuilt only from node snapshots reconstructs the live image.
 4. TLS transport and pairing, still on localhost with two processes.
 5. Move `flight-ui` onto the `Fleet` trait with the `Orchestrated` backend; keep the SSH backend working.
 6. Real second machine on the LAN.

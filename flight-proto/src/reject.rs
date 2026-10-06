@@ -15,6 +15,9 @@ pub enum Reject {
     Empty(&'static str),
     /// A numeric field was outside its allowed range.
     OutOfRange(&'static str),
+    /// A message contradicts what its stream established (e.g. a pane that claims another
+    /// node's identity).
+    Mismatch(&'static str),
     /// The encoded message exceeds the frame size limit.
     TooLarge { len: usize, max: usize },
     /// The bytes are not a valid protobuf message.
@@ -33,6 +36,7 @@ impl fmt::Display for Reject {
             Self::Missing(what) => write!(f, "missing {what}"),
             Self::Empty(what) => write!(f, "empty {what}"),
             Self::OutOfRange(what) => write!(f, "{what} out of range"),
+            Self::Mismatch(what) => write!(f, "{what} does not match its stream"),
             Self::TooLarge { len, max } => write!(f, "frame of {len} bytes exceeds {max}"),
             Self::Malformed(m) => write!(f, "malformed message: {m}"),
         }

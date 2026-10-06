@@ -44,7 +44,10 @@ pub use codes::{AgentKindCode, ErrorKindCode, NodeStatusCode, SourceCode, StateC
 pub use command::{command_kind, Command, Request, MAX_PREVIEW_LINES};
 pub use delta::{delta_change, Delta};
 pub use error_info::ErrorInfo;
-pub use fleet::{fleet_change, FleetDelta, FleetSnapshot, NodeStatusChanged, NodeView};
+pub use fleet::{
+    fleet_change, FleetDelta, FleetSnapshot, NodeRemoved, NodeServerStatus, NodeStatusChanged,
+    NodeView,
+};
 pub use heartbeat::Heartbeat;
 pub use hello::{NodeHello, OrchestratorHello};
 pub use incarnation::Incarnation;

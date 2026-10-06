@@ -33,6 +33,7 @@ wire_enum! {
 }
 
 wire_enum! {
-    /// Orchestrator's view of a node's connection.
-    NodeStatusCode { Online = 1, Unreachable = 2 }
+    /// The orchestrator's view of a node's connection: liveness only. It never rewrites the
+    /// semantic state of the node's panes, which stay as last reported.
+    NodeStatusCode { Online = 1, Disconnected = 2, Stale = 3 }
 }

@@ -6,6 +6,9 @@
 // tests/schema.rs proves they agree with this file: message names, field names, numbers,
 // types, oneofs and enum values. Change both together.
 //
+// Liveness vs state: a node's connection status (Online/Stale/Disconnected) is separate from its
+// panes' semantic state, which stays as last reported while the node is away.
+//
 // Rules: never renumber or reuse a number (retire it with `reserved`); only add. Enum zero
 // is always UNSPECIFIED and is never a valid value on the wire. The semantic boundary: the
 // wire carries semantic pane/node state only, never classifier internals.
@@ -76,7 +79,8 @@ enum ErrorKindCode {
 enum NodeStatusCode {
   NODE_STATUS_CODE_UNSPECIFIED = 0;
   NODE_STATUS_CODE_ONLINE = 1;
-  NODE_STATUS_CODE_UNREACHABLE = 2;
+  NODE_STATUS_CODE_DISCONNECTED = 2;
+  NODE_STATUS_CODE_STALE = 3;
 }
 
 enum AvailabilityCode {
@@ -267,6 +271,15 @@ message NodeStatusChanged {
   NodeStatusCode status = 2;
 }
 
+message NodeServerStatus {
+  string node_id = 1;
+  ServerStatus status = 2;
+}
+
+message NodeRemoved {
+  string node_id = 1;
+}
+
 message FleetDelta {
   bytes incarnation = 1;
   uint64 sequence = 2;
@@ -276,6 +289,8 @@ message FleetDelta {
     NodeStatusChanged node_status = 4;
     PaneState pane_upsert = 5;
     PaneRefMsg pane_removed = 6;
+    NodeServerStatus server_status = 7;
+    NodeRemoved node_removed = 8;
   }
 }
 

@@ -189,6 +189,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "flight-orchestrator"
+version = "0.0.1"
+dependencies = [
+ "flight-classify",
+ "flight-node",
+ "flight-proto",
+ "flight-state",
+]
+
+[[package]]
 name = "flight-proto"
 version = "0.0.1"
 dependencies = [

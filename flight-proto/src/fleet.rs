@@ -57,6 +57,23 @@ pub struct NodeStatusChanged {
     pub status: i32,
 }
 
+/// A node's tmux server availability changed.
+#[derive(Clone, PartialEq, Eq, prost::Message)]
+pub struct NodeServerStatus {
+    #[prost(string, tag = "1")]
+    pub node_id: String,
+    #[prost(message, optional, tag = "2")]
+    pub status: Option<ServerStatus>,
+}
+
+/// A node was pruned from the fleet (an explicit policy, never a side effect of a dropped
+/// connection).
+#[derive(Clone, PartialEq, Eq, prost::Message)]
+pub struct NodeRemoved {
+    #[prost(string, tag = "1")]
+    pub node_id: String,
+}
+
 /// An ordered change to a [`FleetSnapshot`]; same incarnation/sequence rules as a node delta.
 #[derive(Clone, PartialEq, Eq, prost::Message)]
 pub struct FleetDelta {
@@ -64,12 +81,14 @@ pub struct FleetDelta {
     pub incarnation: Vec<u8>,
     #[prost(uint64, tag = "2")]
     pub sequence: u64,
-    #[prost(oneof = "fleet_change::Change", tags = "3, 4, 5, 6")]
+    #[prost(oneof = "fleet_change::Change", tags = "3, 4, 5, 6, 7, 8")]
     pub change: Option<fleet_change::Change>,
 }
 
 pub mod fleet_change {
-    use super::{NodeStatusChanged, NodeView, PaneRefMsg, PaneState};
+    use super::{
+        NodeRemoved, NodeServerStatus, NodeStatusChanged, NodeView, PaneRefMsg, PaneState,
+    };
 
     #[derive(Clone, PartialEq, Eq, prost::Oneof)]
     #[allow(clippy::large_enum_variant)]
@@ -83,6 +102,10 @@ pub mod fleet_change {
         PaneUpsert(PaneState),
         #[prost(message, tag = "6")]
         PaneRemoved(PaneRefMsg),
+        #[prost(message, tag = "7")]
+        ServerStatus(NodeServerStatus),
+        #[prost(message, tag = "8")]
+        NodeRemoved(NodeRemoved),
     }
 }
 
@@ -110,6 +133,14 @@ impl Validate for FleetDelta {
             }
             fleet_change::Change::PaneUpsert(p) => p.validate(),
             fleet_change::Change::PaneRemoved(r) => r.validate(),
+            fleet_change::Change::ServerStatus(s) => {
+                non_empty(&s.node_id, "server_status.node_id")?;
+                s.status
+                    .as_ref()
+                    .ok_or(Reject::Missing("server_status.status"))?
+                    .validate()
+            }
+            fleet_change::Change::NodeRemoved(n) => non_empty(&n.node_id, "node_removed.node_id"),
         }
     }
 }

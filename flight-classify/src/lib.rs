@@ -17,6 +17,7 @@ mod builtin;
 mod classification;
 mod error;
 mod fuse;
+mod glyph;
 mod manifest;
 mod observation;
 mod refine;
@@ -34,6 +35,7 @@ pub use fuse::{
     FusedClassification, HookObservation, NotificationType, Reason, ScrapeVia, Source,
     WORKING_TIMEOUT_SECS,
 };
+pub use glyph::working_glyph_present;
 pub use manifest::Manifest;
 pub use observation::Observation;
 pub use refine::refine_title_with_screen;

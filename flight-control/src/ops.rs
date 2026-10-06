@@ -5,7 +5,7 @@
 
 use crate::panes_outcome::{HostPane, PanesOutcome};
 use crate::probe::probe;
-use crate::{HostError, HostRegistry, HostStatus};
+use crate::{HostError, HostRegistry, HostStatus, Transport};
 use flight_state::{HostId, PaneId, PaneRef, ServerId};
 use flight_tmux::Tmux;
 
@@ -54,6 +54,20 @@ impl HostRegistry {
     ) -> Result<String, HostError> {
         self.call(&pane.host, &pane.server, |t| {
             t.capture_pane(pane.pane.as_str(), ansi, lines)
+        })
+    }
+
+    /// Switch the tmux client on this host to `pane`. Local hosts only: showing a remote pane
+    /// needs an interactive attach over ssh, which is not part of v0.
+    pub fn switch_to_pane(&self, pane: &PaneRef) -> Result<(), HostError> {
+        let (h, _) = self.server(&pane.host, &pane.server)?;
+        if matches!(h.transport, Transport::Ssh { .. }) {
+            return Err(HostError::Unsupported(
+                "switching to a pane on a remote host needs an ssh attach (not in v0)".into(),
+            ));
+        }
+        self.call(&pane.host, &pane.server, |t| {
+            t.switch_client(pane.pane.as_str())
         })
     }
 

@@ -1,0 +1,16 @@
+[package]
+name = "flight-ui"
+description = "Flight: dashboard (snapshot, pure view model, ratatui rendering, terminal loop)"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+flight-classify = { path = "../flight-classify" }
+flight-control = { path = "../flight-control" }
+flight-state = { path = "../flight-state" }
+flight-tmux = { path = "../flight-tmux" }
+ratatui = { workspace = true }
+crossterm = { workspace = true }

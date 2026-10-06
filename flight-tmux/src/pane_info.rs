@@ -14,5 +14,7 @@ pub struct PaneInfo {
     pub pane_pid: u32,
     /// Active pane of the active window of a session with an attached client.
     pub focused: bool,
+    /// The foreground command (`#{pane_current_command}`), e.g. `zsh` or `claude`.
+    pub current_command: String,
     pub pane_title: String,
 }

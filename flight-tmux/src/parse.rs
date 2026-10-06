@@ -4,9 +4,9 @@ use crate::PaneInfo;
 
 /// Format string for `list-panes -F`. `pane_title` stays LAST so a tab inside a
 /// title cannot shift the other fields.
-pub const PANE_FORMAT: &str = "#{pane_id}\t#{session_name}\t#{window_name}\t#{window_id}\t#{window_index}\t#{pane_current_path}\t#{pane_pid}\t#{pane_active}\t#{window_active}\t#{session_attached}\t#{pane_title}";
+pub const PANE_FORMAT: &str = "#{pane_id}\t#{session_name}\t#{window_name}\t#{window_id}\t#{window_index}\t#{pane_current_path}\t#{pane_pid}\t#{pane_active}\t#{window_active}\t#{session_attached}\t#{pane_current_command}\t#{pane_title}";
 
-const FIELDS: usize = 11;
+const FIELDS: usize = 12;
 
 /// Parse `list-panes -F PANE_FORMAT` output. Malformed lines are skipped.
 pub fn parse_panes_output(stdout: &str) -> Vec<PaneInfo> {
@@ -25,6 +25,7 @@ fn parse_line(line: &str) -> Option<PaneInfo> {
     let pane_active = it.next()? == "1";
     let window_active = it.next()? == "1";
     let attached: u32 = it.next()?.parse().ok()?;
+    let current_command = it.next()?.to_owned();
     let pane_title = it.next()?.to_owned();
     Some(PaneInfo {
         pane_id,
@@ -35,6 +36,7 @@ fn parse_line(line: &str) -> Option<PaneInfo> {
         current_path,
         pane_pid,
         focused: pane_active && window_active && attached > 0,
+        current_command,
         pane_title,
     })
 }
@@ -44,7 +46,7 @@ mod tests {
     use super::*;
 
     fn line(title: &str, active: &str, attached: &str) -> String {
-        format!("%3\tapi\tbuild\t@5\t2\t/tmp/x\t99\t{active}\t1\t{attached}\t{title}")
+        format!("%3\tapi\tbuild\t@5\t2\t/tmp/x\t99\t{active}\t1\t{attached}\tclaude\t{title}")
     }
 
     #[test]

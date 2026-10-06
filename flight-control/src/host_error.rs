@@ -21,6 +21,8 @@ pub enum HostError {
     TmuxServerUnavailable,
     /// tmux ran and failed for another reason (e.g. no such pane).
     RemoteCommandFailed { code: Option<i32>, stderr: String },
+    /// The operation is not supported for this host's transport.
+    Unsupported(String),
     /// Invalid configuration (e.g. a malformed SSH alias or socket name).
     InvalidConfig(String),
 }
@@ -37,6 +39,7 @@ impl fmt::Display for HostError {
             Self::RemoteCommandFailed { code, stderr } => {
                 write!(f, "tmux failed ({code:?}): {stderr}")
             }
+            Self::Unsupported(m) => write!(f, "unsupported: {m}"),
             Self::InvalidConfig(m) => write!(f, "invalid configuration: {m}"),
         }
     }

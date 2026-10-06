@@ -68,7 +68,7 @@ fn registry_with(
 }
 
 fn pane_line(id: &str, session: &str) -> String {
-    format!("{id}\t{session}\tw\t@1\t0\t/tmp\t7\t1\t1\t1\ttitle\n")
+    format!("{id}\t{session}\tw\t@1\t0\t/tmp\t7\t1\t1\t1\tzsh\ttitle\n")
 }
 
 fn ssh() -> Transport {
@@ -343,4 +343,31 @@ fn bad_ssh_alias_is_rejected_when_the_server_is_added() {
     );
     let e = r.add_server(&host("h"), server(), TmuxEndpoint::named("flight").unwrap());
     assert!(matches!(e, Err(HostError::InvalidConfig(_))));
+}
+
+#[test]
+fn switching_to_a_remote_pane_is_unsupported_not_attempted() {
+    let (r, calls) = registry_with(ssh(), vec![]);
+    let pane = PaneRef {
+        host: host("h"),
+        server: server(),
+        pane: PaneId::new("%1"),
+    };
+    assert!(matches!(
+        r.switch_to_pane(&pane),
+        Err(HostError::Unsupported(_))
+    ));
+    assert!(calls.lock().unwrap().is_empty(), "no ssh was attempted");
+}
+
+#[test]
+fn switching_to_a_local_pane_targets_that_pane() {
+    let (r, calls) = registry_with(Transport::Local, vec![("switch-client", Ok(String::new()))]);
+    let pane = PaneRef {
+        host: host("h"),
+        server: server(),
+        pane: PaneId::new("%4"),
+    };
+    r.switch_to_pane(&pane).unwrap();
+    assert_eq!(calls.lock().unwrap()[0], ["switch-client", "-t", "%4"]);
 }

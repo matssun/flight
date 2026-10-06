@@ -9,6 +9,6 @@ repository.workspace = true
 
 [dependencies]
 flight-tmux = { path = "../flight-tmux" }
+flight-control = { path = "../flight-control" }
 flight-state = { path = "../flight-state" }
-flight-sessions = { path = "../flight-sessions" }
-flight-tui = { path = "../flight-tui" }
+flight-ui = { path = "../flight-ui" }

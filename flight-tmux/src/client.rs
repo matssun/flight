@@ -74,6 +74,18 @@ impl<R: TmuxRunner> Tmux<R> {
             .map(drop)
     }
 
+    /// Create a detached session rooted at `dir` running `command` (a shell command line).
+    pub fn new_session_running(
+        &self,
+        name: &str,
+        dir: &str,
+        command: &str,
+    ) -> Result<(), TmuxError> {
+        self.runner
+            .run(&["new-session", "-d", "-s", name, "-c", dir, command])
+            .map(drop)
+    }
+
     /// Stop the whole server, killing every session on it.
     pub fn kill_server(&self) -> Result<(), TmuxError> {
         self.runner.run(&["kill-server"]).map(drop)

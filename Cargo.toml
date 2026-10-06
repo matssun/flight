@@ -12,7 +12,7 @@ members = [
     "flight-state",    # Agent state engine: hook + event + scrape fusion, 7-state model
     "flight-control",  # Host registry: routes PaneRef to a runner per host (local, SSH), typed host errors
     "flight-sessions", # Session sources (tmux, zoxide, config, tmuxinator), dedup, naming, connect
-    "flight-tui",      # Dashboard rendering and input
+    "flight-ui",       # Dashboard: snapshot, pure view model, ratatui rendering, terminal loop
     "flight",          # The binary
 ]
 
@@ -25,3 +25,5 @@ repository = "https://github.com/matssun/flight"
 
 [workspace.dependencies]
 regex = "1"
+ratatui = "0.29"
+crossterm = "0.28"

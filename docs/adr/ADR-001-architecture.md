@@ -32,6 +32,14 @@ A tmux endpoint belongs to a Flight host; neither localhost nor the default tmux
 
 Failures are typed (`HostError`): `UnknownHost`, `UnknownServer`, `HostUnreachable`, `AuthenticationFailed`, `TmuxUnavailable`, `TmuxServerUnavailable`, `RemoteCommandFailed`, `InvalidConfig`. `HostStatus { reachable, tmux_available, endpoint_available, tmux_version, problem }` lets a UI render each host (online, unreachable, online with no Flight server) before any key is pressed. `list_all_panes` returns one outcome per endpoint so a down host never hides the others. No scheduling, no persistence, no daemon.
 
+## flight-ui v0
+
+    flight-control + flight-classify -> UiSnapshot -> ViewModel (pure) -> ratatui render (pure) -> terminal loop
+
+The terminal loop owns I/O, the view model owns presentation state, rendering owns nothing. A worker thread runs collection so a slow or dead host never freezes the UI. Selection is a `PaneRef`, never a row index, so it follows the same agent as states reorder (and follows it out of the attention section if it stops needing attention); a vanished pane falls back to its neighbour. The attention list is a projection of the same pane records the tree shows. Host failure is part of the view (`online`, `unreachable`, `no Flight tmux server`, ...), and one down host never fails a refresh. Keys: arrows/jk, Enter (switch, then exit), Tab, r, q.
+
+v0 limits, deliberately: agents are recognized from `pane_current_command` only (a version-named binary counts as Claude); there are no hooks or process-table discovery yet, so every agent is on the hook-less path (scrape, title, glyph, Done machine). Switching works for local panes only; a remote pane needs an ssh attach. The preview is plain text, not ANSI. Per-pane capture is one tmux call each, so remote refresh cost scales with agent count and must be measured before choosing control mode or a `flight-node`.
+
 ## Single-host semantics (frozen at parity with Fleet)
 
 `flight-classify` is the whole observation-to-state path for one host:

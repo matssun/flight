@@ -17,6 +17,8 @@ pub struct Evidence {
     /// `None` means there is no hook layer for this pane (a hook-less discovered agent).
     pub hook: Option<HookObservation>,
     pub event: Option<EventObservation>,
+    /// The user is looking at this pane right now. Used only by the temporal resolver.
+    pub focused: bool,
     /// A working glyph in the process scan. Counts as activity only when there is no event.
     pub working_glyph: bool,
     /// Seconds since the epoch.
@@ -33,6 +35,7 @@ impl Evidence {
             title: None,
             hook: None,
             event: None,
+            focused: false,
             working_glyph: false,
             now,
         }

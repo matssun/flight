@@ -1,0 +1,2728 @@
+aider;10;i
+aider;10 10;ii
+aider;10 10 10;iii
+aider;10 10 10 10;iiii
+aider;10 10 10 10 10;iiiii
+aider;10 10 10 10 11;iiiiW
+aider;10 10 10 10 30;iiiii
+aider;10 10 10 10 31;iiiiW
+aider;10 10 10 11;iiiW
+aider;10 10 10 11 10;iiiWW
+aider;10 10 10 11 11;iiiWW
+aider;10 10 10 11 30;iiiWi
+aider;10 10 10 11 31;iiiWW
+aider;10 10 10 30;iiii
+aider;10 10 10 30 10;iiiii
+aider;10 10 10 30 11;iiiiW
+aider;10 10 10 30 30;iiiii
+aider;10 10 10 30 31;iiiiW
+aider;10 10 10 31;iiiW
+aider;10 10 10 31 10;iiiWW
+aider;10 10 10 31 11;iiiWW
+aider;10 10 10 31 30;iiiWi
+aider;10 10 10 31 31;iiiWW
+aider;10 10 11;iiW
+aider;10 10 11 10;iiWW
+aider;10 10 11 10 10;iiWWW
+aider;10 10 11 10 11;iiWWW
+aider;10 10 11 10 30;iiWWi
+aider;10 10 11 10 31;iiWWW
+aider;10 10 11 11;iiWW
+aider;10 10 11 11 10;iiWWW
+aider;10 10 11 11 11;iiWWW
+aider;10 10 11 11 30;iiWWi
+aider;10 10 11 11 31;iiWWW
+aider;10 10 11 30;iiWi
+aider;10 10 11 30 10;iiWii
+aider;10 10 11 30 11;iiWiW
+aider;10 10 11 30 30;iiWii
+aider;10 10 11 30 31;iiWiW
+aider;10 10 11 31;iiWW
+aider;10 10 11 31 10;iiWWW
+aider;10 10 11 31 11;iiWWW
+aider;10 10 11 31 30;iiWWi
+aider;10 10 11 31 31;iiWWW
+aider;10 10 30;iii
+aider;10 10 30 10;iiii
+aider;10 10 30 10 10;iiiii
+aider;10 10 30 10 11;iiiiW
+aider;10 10 30 10 30;iiiii
+aider;10 10 30 10 31;iiiiW
+aider;10 10 30 11;iiiW
+aider;10 10 30 11 10;iiiWW
+aider;10 10 30 11 11;iiiWW
+aider;10 10 30 11 30;iiiWi
+aider;10 10 30 11 31;iiiWW
+aider;10 10 30 30;iiii
+aider;10 10 30 30 10;iiiii
+aider;10 10 30 30 11;iiiiW
+aider;10 10 30 30 30;iiiii
+aider;10 10 30 30 31;iiiiW
+aider;10 10 30 31;iiiW
+aider;10 10 30 31 10;iiiWW
+aider;10 10 30 31 11;iiiWW
+aider;10 10 30 31 30;iiiWi
+aider;10 10 30 31 31;iiiWW
+aider;10 10 31;iiW
+aider;10 10 31 10;iiWW
+aider;10 10 31 10 10;iiWWW
+aider;10 10 31 10 11;iiWWW
+aider;10 10 31 10 30;iiWWi
+aider;10 10 31 10 31;iiWWW
+aider;10 10 31 11;iiWW
+aider;10 10 31 11 10;iiWWW
+aider;10 10 31 11 11;iiWWW
+aider;10 10 31 11 30;iiWWi
+aider;10 10 31 11 31;iiWWW
+aider;10 10 31 30;iiWi
+aider;10 10 31 30 10;iiWii
+aider;10 10 31 30 11;iiWiW
+aider;10 10 31 30 30;iiWii
+aider;10 10 31 30 31;iiWiW
+aider;10 10 31 31;iiWW
+aider;10 10 31 31 10;iiWWW
+aider;10 10 31 31 11;iiWWW
+aider;10 10 31 31 30;iiWWi
+aider;10 10 31 31 31;iiWWW
+aider;10 11;iW
+aider;10 11 10;iWW
+aider;10 11 10 10;iWWW
+aider;10 11 10 10 10;iWWWi
+aider;10 11 10 10 11;iWWWW
+aider;10 11 10 10 30;iWWWi
+aider;10 11 10 10 31;iWWWW
+aider;10 11 10 11;iWWW
+aider;10 11 10 11 10;iWWWW
+aider;10 11 10 11 11;iWWWW
+aider;10 11 10 11 30;iWWWi
+aider;10 11 10 11 31;iWWWW
+aider;10 11 10 30;iWWi
+aider;10 11 10 30 10;iWWii
+aider;10 11 10 30 11;iWWiW
+aider;10 11 10 30 30;iWWii
+aider;10 11 10 30 31;iWWiW
+aider;10 11 10 31;iWWW
+aider;10 11 10 31 10;iWWWW
+aider;10 11 10 31 11;iWWWW
+aider;10 11 10 31 30;iWWWi
+aider;10 11 10 31 31;iWWWW
+aider;10 11 11;iWW
+aider;10 11 11 10;iWWW
+aider;10 11 11 10 10;iWWWW
+aider;10 11 11 10 11;iWWWW
+aider;10 11 11 10 30;iWWWi
+aider;10 11 11 10 31;iWWWW
+aider;10 11 11 11;iWWW
+aider;10 11 11 11 10;iWWWW
+aider;10 11 11 11 11;iWWWW
+aider;10 11 11 11 30;iWWWi
+aider;10 11 11 11 31;iWWWW
+aider;10 11 11 30;iWWi
+aider;10 11 11 30 10;iWWii
+aider;10 11 11 30 11;iWWiW
+aider;10 11 11 30 30;iWWii
+aider;10 11 11 30 31;iWWiW
+aider;10 11 11 31;iWWW
+aider;10 11 11 31 10;iWWWW
+aider;10 11 11 31 11;iWWWW
+aider;10 11 11 31 30;iWWWi
+aider;10 11 11 31 31;iWWWW
+aider;10 11 30;iWi
+aider;10 11 30 10;iWii
+aider;10 11 30 10 10;iWiii
+aider;10 11 30 10 11;iWiiW
+aider;10 11 30 10 30;iWiii
+aider;10 11 30 10 31;iWiiW
+aider;10 11 30 11;iWiW
+aider;10 11 30 11 10;iWiWW
+aider;10 11 30 11 11;iWiWW
+aider;10 11 30 11 30;iWiWi
+aider;10 11 30 11 31;iWiWW
+aider;10 11 30 30;iWii
+aider;10 11 30 30 10;iWiii
+aider;10 11 30 30 11;iWiiW
+aider;10 11 30 30 30;iWiii
+aider;10 11 30 30 31;iWiiW
+aider;10 11 30 31;iWiW
+aider;10 11 30 31 10;iWiWW
+aider;10 11 30 31 11;iWiWW
+aider;10 11 30 31 30;iWiWi
+aider;10 11 30 31 31;iWiWW
+aider;10 11 31;iWW
+aider;10 11 31 10;iWWW
+aider;10 11 31 10 10;iWWWW
+aider;10 11 31 10 11;iWWWW
+aider;10 11 31 10 30;iWWWi
+aider;10 11 31 10 31;iWWWW
+aider;10 11 31 11;iWWW
+aider;10 11 31 11 10;iWWWW
+aider;10 11 31 11 11;iWWWW
+aider;10 11 31 11 30;iWWWi
+aider;10 11 31 11 31;iWWWW
+aider;10 11 31 30;iWWi
+aider;10 11 31 30 10;iWWii
+aider;10 11 31 30 11;iWWiW
+aider;10 11 31 30 30;iWWii
+aider;10 11 31 30 31;iWWiW
+aider;10 11 31 31;iWWW
+aider;10 11 31 31 10;iWWWW
+aider;10 11 31 31 11;iWWWW
+aider;10 11 31 31 30;iWWWi
+aider;10 11 31 31 31;iWWWW
+aider;10 30;ii
+aider;10 30 10;iii
+aider;10 30 10 10;iiii
+aider;10 30 10 10 10;iiiii
+aider;10 30 10 10 11;iiiiW
+aider;10 30 10 10 30;iiiii
+aider;10 30 10 10 31;iiiiW
+aider;10 30 10 11;iiiW
+aider;10 30 10 11 10;iiiWW
+aider;10 30 10 11 11;iiiWW
+aider;10 30 10 11 30;iiiWi
+aider;10 30 10 11 31;iiiWW
+aider;10 30 10 30;iiii
+aider;10 30 10 30 10;iiiii
+aider;10 30 10 30 11;iiiiW
+aider;10 30 10 30 30;iiiii
+aider;10 30 10 30 31;iiiiW
+aider;10 30 10 31;iiiW
+aider;10 30 10 31 10;iiiWW
+aider;10 30 10 31 11;iiiWW
+aider;10 30 10 31 30;iiiWi
+aider;10 30 10 31 31;iiiWW
+aider;10 30 11;iiW
+aider;10 30 11 10;iiWW
+aider;10 30 11 10 10;iiWWW
+aider;10 30 11 10 11;iiWWW
+aider;10 30 11 10 30;iiWWi
+aider;10 30 11 10 31;iiWWW
+aider;10 30 11 11;iiWW
+aider;10 30 11 11 10;iiWWW
+aider;10 30 11 11 11;iiWWW
+aider;10 30 11 11 30;iiWWi
+aider;10 30 11 11 31;iiWWW
+aider;10 30 11 30;iiWi
+aider;10 30 11 30 10;iiWii
+aider;10 30 11 30 11;iiWiW
+aider;10 30 11 30 30;iiWii
+aider;10 30 11 30 31;iiWiW
+aider;10 30 11 31;iiWW
+aider;10 30 11 31 10;iiWWW
+aider;10 30 11 31 11;iiWWW
+aider;10 30 11 31 30;iiWWi
+aider;10 30 11 31 31;iiWWW
+aider;10 30 30;iii
+aider;10 30 30 10;iiii
+aider;10 30 30 10 10;iiiii
+aider;10 30 30 10 11;iiiiW
+aider;10 30 30 10 30;iiiii
+aider;10 30 30 10 31;iiiiW
+aider;10 30 30 11;iiiW
+aider;10 30 30 11 10;iiiWW
+aider;10 30 30 11 11;iiiWW
+aider;10 30 30 11 30;iiiWi
+aider;10 30 30 11 31;iiiWW
+aider;10 30 30 30;iiii
+aider;10 30 30 30 10;iiiii
+aider;10 30 30 30 11;iiiiW
+aider;10 30 30 30 30;iiiii
+aider;10 30 30 30 31;iiiiW
+aider;10 30 30 31;iiiW
+aider;10 30 30 31 10;iiiWW
+aider;10 30 30 31 11;iiiWW
+aider;10 30 30 31 30;iiiWi
+aider;10 30 30 31 31;iiiWW
+aider;10 30 31;iiW
+aider;10 30 31 10;iiWW
+aider;10 30 31 10 10;iiWWW
+aider;10 30 31 10 11;iiWWW
+aider;10 30 31 10 30;iiWWi
+aider;10 30 31 10 31;iiWWW
+aider;10 30 31 11;iiWW
+aider;10 30 31 11 10;iiWWW
+aider;10 30 31 11 11;iiWWW
+aider;10 30 31 11 30;iiWWi
+aider;10 30 31 11 31;iiWWW
+aider;10 30 31 30;iiWi
+aider;10 30 31 30 10;iiWii
+aider;10 30 31 30 11;iiWiW
+aider;10 30 31 30 30;iiWii
+aider;10 30 31 30 31;iiWiW
+aider;10 30 31 31;iiWW
+aider;10 30 31 31 10;iiWWW
+aider;10 30 31 31 11;iiWWW
+aider;10 30 31 31 30;iiWWi
+aider;10 30 31 31 31;iiWWW
+aider;10 31;iW
+aider;10 31 10;iWW
+aider;10 31 10 10;iWWW
+aider;10 31 10 10 10;iWWWi
+aider;10 31 10 10 11;iWWWW
+aider;10 31 10 10 30;iWWWi
+aider;10 31 10 10 31;iWWWW
+aider;10 31 10 11;iWWW
+aider;10 31 10 11 10;iWWWW
+aider;10 31 10 11 11;iWWWW
+aider;10 31 10 11 30;iWWWi
+aider;10 31 10 11 31;iWWWW
+aider;10 31 10 30;iWWi
+aider;10 31 10 30 10;iWWii
+aider;10 31 10 30 11;iWWiW
+aider;10 31 10 30 30;iWWii
+aider;10 31 10 30 31;iWWiW
+aider;10 31 10 31;iWWW
+aider;10 31 10 31 10;iWWWW
+aider;10 31 10 31 11;iWWWW
+aider;10 31 10 31 30;iWWWi
+aider;10 31 10 31 31;iWWWW
+aider;10 31 11;iWW
+aider;10 31 11 10;iWWW
+aider;10 31 11 10 10;iWWWW
+aider;10 31 11 10 11;iWWWW
+aider;10 31 11 10 30;iWWWi
+aider;10 31 11 10 31;iWWWW
+aider;10 31 11 11;iWWW
+aider;10 31 11 11 10;iWWWW
+aider;10 31 11 11 11;iWWWW
+aider;10 31 11 11 30;iWWWi
+aider;10 31 11 11 31;iWWWW
+aider;10 31 11 30;iWWi
+aider;10 31 11 30 10;iWWii
+aider;10 31 11 30 11;iWWiW
+aider;10 31 11 30 30;iWWii
+aider;10 31 11 30 31;iWWiW
+aider;10 31 11 31;iWWW
+aider;10 31 11 31 10;iWWWW
+aider;10 31 11 31 11;iWWWW
+aider;10 31 11 31 30;iWWWi
+aider;10 31 11 31 31;iWWWW
+aider;10 31 30;iWi
+aider;10 31 30 10;iWii
+aider;10 31 30 10 10;iWiii
+aider;10 31 30 10 11;iWiiW
+aider;10 31 30 10 30;iWiii
+aider;10 31 30 10 31;iWiiW
+aider;10 31 30 11;iWiW
+aider;10 31 30 11 10;iWiWW
+aider;10 31 30 11 11;iWiWW
+aider;10 31 30 11 30;iWiWi
+aider;10 31 30 11 31;iWiWW
+aider;10 31 30 30;iWii
+aider;10 31 30 30 10;iWiii
+aider;10 31 30 30 11;iWiiW
+aider;10 31 30 30 30;iWiii
+aider;10 31 30 30 31;iWiiW
+aider;10 31 30 31;iWiW
+aider;10 31 30 31 10;iWiWW
+aider;10 31 30 31 11;iWiWW
+aider;10 31 30 31 30;iWiWi
+aider;10 31 30 31 31;iWiWW
+aider;10 31 31;iWW
+aider;10 31 31 10;iWWW
+aider;10 31 31 10 10;iWWWW
+aider;10 31 31 10 11;iWWWW
+aider;10 31 31 10 30;iWWWi
+aider;10 31 31 10 31;iWWWW
+aider;10 31 31 11;iWWW
+aider;10 31 31 11 10;iWWWW
+aider;10 31 31 11 11;iWWWW
+aider;10 31 31 11 30;iWWWi
+aider;10 31 31 11 31;iWWWW
+aider;10 31 31 30;iWWi
+aider;10 31 31 30 10;iWWii
+aider;10 31 31 30 11;iWWiW
+aider;10 31 31 30 30;iWWii
+aider;10 31 31 30 31;iWWiW
+aider;10 31 31 31;iWWW
+aider;10 31 31 31 10;iWWWW
+aider;10 31 31 31 11;iWWWW
+aider;10 31 31 31 30;iWWWi
+aider;10 31 31 31 31;iWWWW
+aider;11;W
+aider;11 10;WW
+aider;11 10 10;WWW
+aider;11 10 10 10;WWWi
+aider;11 10 10 10 10;WWWii
+aider;11 10 10 10 11;WWWiW
+aider;11 10 10 10 30;WWWii
+aider;11 10 10 10 31;WWWiW
+aider;11 10 10 11;WWWW
+aider;11 10 10 11 10;WWWWW
+aider;11 10 10 11 11;WWWWW
+aider;11 10 10 11 30;WWWWi
+aider;11 10 10 11 31;WWWWW
+aider;11 10 10 30;WWWi
+aider;11 10 10 30 10;WWWii
+aider;11 10 10 30 11;WWWiW
+aider;11 10 10 30 30;WWWii
+aider;11 10 10 30 31;WWWiW
+aider;11 10 10 31;WWWW
+aider;11 10 10 31 10;WWWWW
+aider;11 10 10 31 11;WWWWW
+aider;11 10 10 31 30;WWWWi
+aider;11 10 10 31 31;WWWWW
+aider;11 10 11;WWW
+aider;11 10 11 10;WWWW
+aider;11 10 11 10 10;WWWWW
+aider;11 10 11 10 11;WWWWW
+aider;11 10 11 10 30;WWWWi
+aider;11 10 11 10 31;WWWWW
+aider;11 10 11 11;WWWW
+aider;11 10 11 11 10;WWWWW
+aider;11 10 11 11 11;WWWWW
+aider;11 10 11 11 30;WWWWi
+aider;11 10 11 11 31;WWWWW
+aider;11 10 11 30;WWWi
+aider;11 10 11 30 10;WWWii
+aider;11 10 11 30 11;WWWiW
+aider;11 10 11 30 30;WWWii
+aider;11 10 11 30 31;WWWiW
+aider;11 10 11 31;WWWW
+aider;11 10 11 31 10;WWWWW
+aider;11 10 11 31 11;WWWWW
+aider;11 10 11 31 30;WWWWi
+aider;11 10 11 31 31;WWWWW
+aider;11 10 30;WWi
+aider;11 10 30 10;WWii
+aider;11 10 30 10 10;WWiii
+aider;11 10 30 10 11;WWiiW
+aider;11 10 30 10 30;WWiii
+aider;11 10 30 10 31;WWiiW
+aider;11 10 30 11;WWiW
+aider;11 10 30 11 10;WWiWW
+aider;11 10 30 11 11;WWiWW
+aider;11 10 30 11 30;WWiWi
+aider;11 10 30 11 31;WWiWW
+aider;11 10 30 30;WWii
+aider;11 10 30 30 10;WWiii
+aider;11 10 30 30 11;WWiiW
+aider;11 10 30 30 30;WWiii
+aider;11 10 30 30 31;WWiiW
+aider;11 10 30 31;WWiW
+aider;11 10 30 31 10;WWiWW
+aider;11 10 30 31 11;WWiWW
+aider;11 10 30 31 30;WWiWi
+aider;11 10 30 31 31;WWiWW
+aider;11 10 31;WWW
+aider;11 10 31 10;WWWW
+aider;11 10 31 10 10;WWWWW
+aider;11 10 31 10 11;WWWWW
+aider;11 10 31 10 30;WWWWi
+aider;11 10 31 10 31;WWWWW
+aider;11 10 31 11;WWWW
+aider;11 10 31 11 10;WWWWW
+aider;11 10 31 11 11;WWWWW
+aider;11 10 31 11 30;WWWWi
+aider;11 10 31 11 31;WWWWW
+aider;11 10 31 30;WWWi
+aider;11 10 31 30 10;WWWii
+aider;11 10 31 30 11;WWWiW
+aider;11 10 31 30 30;WWWii
+aider;11 10 31 30 31;WWWiW
+aider;11 10 31 31;WWWW
+aider;11 10 31 31 10;WWWWW
+aider;11 10 31 31 11;WWWWW
+aider;11 10 31 31 30;WWWWi
+aider;11 10 31 31 31;WWWWW
+aider;11 11;WW
+aider;11 11 10;WWW
+aider;11 11 10 10;WWWW
+aider;11 11 10 10 10;WWWWi
+aider;11 11 10 10 11;WWWWW
+aider;11 11 10 10 30;WWWWi
+aider;11 11 10 10 31;WWWWW
+aider;11 11 10 11;WWWW
+aider;11 11 10 11 10;WWWWW
+aider;11 11 10 11 11;WWWWW
+aider;11 11 10 11 30;WWWWi
+aider;11 11 10 11 31;WWWWW
+aider;11 11 10 30;WWWi
+aider;11 11 10 30 10;WWWii
+aider;11 11 10 30 11;WWWiW
+aider;11 11 10 30 30;WWWii
+aider;11 11 10 30 31;WWWiW
+aider;11 11 10 31;WWWW
+aider;11 11 10 31 10;WWWWW
+aider;11 11 10 31 11;WWWWW
+aider;11 11 10 31 30;WWWWi
+aider;11 11 10 31 31;WWWWW
+aider;11 11 11;WWW
+aider;11 11 11 10;WWWW
+aider;11 11 11 10 10;WWWWW
+aider;11 11 11 10 11;WWWWW
+aider;11 11 11 10 30;WWWWi
+aider;11 11 11 10 31;WWWWW
+aider;11 11 11 11;WWWW
+aider;11 11 11 11 10;WWWWW
+aider;11 11 11 11 11;WWWWW
+aider;11 11 11 11 30;WWWWi
+aider;11 11 11 11 31;WWWWW
+aider;11 11 11 30;WWWi
+aider;11 11 11 30 10;WWWii
+aider;11 11 11 30 11;WWWiW
+aider;11 11 11 30 30;WWWii
+aider;11 11 11 30 31;WWWiW
+aider;11 11 11 31;WWWW
+aider;11 11 11 31 10;WWWWW
+aider;11 11 11 31 11;WWWWW
+aider;11 11 11 31 30;WWWWi
+aider;11 11 11 31 31;WWWWW
+aider;11 11 30;WWi
+aider;11 11 30 10;WWii
+aider;11 11 30 10 10;WWiii
+aider;11 11 30 10 11;WWiiW
+aider;11 11 30 10 30;WWiii
+aider;11 11 30 10 31;WWiiW
+aider;11 11 30 11;WWiW
+aider;11 11 30 11 10;WWiWW
+aider;11 11 30 11 11;WWiWW
+aider;11 11 30 11 30;WWiWi
+aider;11 11 30 11 31;WWiWW
+aider;11 11 30 30;WWii
+aider;11 11 30 30 10;WWiii
+aider;11 11 30 30 11;WWiiW
+aider;11 11 30 30 30;WWiii
+aider;11 11 30 30 31;WWiiW
+aider;11 11 30 31;WWiW
+aider;11 11 30 31 10;WWiWW
+aider;11 11 30 31 11;WWiWW
+aider;11 11 30 31 30;WWiWi
+aider;11 11 30 31 31;WWiWW
+aider;11 11 31;WWW
+aider;11 11 31 10;WWWW
+aider;11 11 31 10 10;WWWWW
+aider;11 11 31 10 11;WWWWW
+aider;11 11 31 10 30;WWWWi
+aider;11 11 31 10 31;WWWWW
+aider;11 11 31 11;WWWW
+aider;11 11 31 11 10;WWWWW
+aider;11 11 31 11 11;WWWWW
+aider;11 11 31 11 30;WWWWi
+aider;11 11 31 11 31;WWWWW
+aider;11 11 31 30;WWWi
+aider;11 11 31 30 10;WWWii
+aider;11 11 31 30 11;WWWiW
+aider;11 11 31 30 30;WWWii
+aider;11 11 31 30 31;WWWiW
+aider;11 11 31 31;WWWW
+aider;11 11 31 31 10;WWWWW
+aider;11 11 31 31 11;WWWWW
+aider;11 11 31 31 30;WWWWi
+aider;11 11 31 31 31;WWWWW
+aider;11 30;Wi
+aider;11 30 10;Wii
+aider;11 30 10 10;Wiii
+aider;11 30 10 10 10;Wiiii
+aider;11 30 10 10 11;WiiiW
+aider;11 30 10 10 30;Wiiii
+aider;11 30 10 10 31;WiiiW
+aider;11 30 10 11;WiiW
+aider;11 30 10 11 10;WiiWW
+aider;11 30 10 11 11;WiiWW
+aider;11 30 10 11 30;WiiWi
+aider;11 30 10 11 31;WiiWW
+aider;11 30 10 30;Wiii
+aider;11 30 10 30 10;Wiiii
+aider;11 30 10 30 11;WiiiW
+aider;11 30 10 30 30;Wiiii
+aider;11 30 10 30 31;WiiiW
+aider;11 30 10 31;WiiW
+aider;11 30 10 31 10;WiiWW
+aider;11 30 10 31 11;WiiWW
+aider;11 30 10 31 30;WiiWi
+aider;11 30 10 31 31;WiiWW
+aider;11 30 11;WiW
+aider;11 30 11 10;WiWW
+aider;11 30 11 10 10;WiWWW
+aider;11 30 11 10 11;WiWWW
+aider;11 30 11 10 30;WiWWi
+aider;11 30 11 10 31;WiWWW
+aider;11 30 11 11;WiWW
+aider;11 30 11 11 10;WiWWW
+aider;11 30 11 11 11;WiWWW
+aider;11 30 11 11 30;WiWWi
+aider;11 30 11 11 31;WiWWW
+aider;11 30 11 30;WiWi
+aider;11 30 11 30 10;WiWii
+aider;11 30 11 30 11;WiWiW
+aider;11 30 11 30 30;WiWii
+aider;11 30 11 30 31;WiWiW
+aider;11 30 11 31;WiWW
+aider;11 30 11 31 10;WiWWW
+aider;11 30 11 31 11;WiWWW
+aider;11 30 11 31 30;WiWWi
+aider;11 30 11 31 31;WiWWW
+aider;11 30 30;Wii
+aider;11 30 30 10;Wiii
+aider;11 30 30 10 10;Wiiii
+aider;11 30 30 10 11;WiiiW
+aider;11 30 30 10 30;Wiiii
+aider;11 30 30 10 31;WiiiW
+aider;11 30 30 11;WiiW
+aider;11 30 30 11 10;WiiWW
+aider;11 30 30 11 11;WiiWW
+aider;11 30 30 11 30;WiiWi
+aider;11 30 30 11 31;WiiWW
+aider;11 30 30 30;Wiii
+aider;11 30 30 30 10;Wiiii
+aider;11 30 30 30 11;WiiiW
+aider;11 30 30 30 30;Wiiii
+aider;11 30 30 30 31;WiiiW
+aider;11 30 30 31;WiiW
+aider;11 30 30 31 10;WiiWW
+aider;11 30 30 31 11;WiiWW
+aider;11 30 30 31 30;WiiWi
+aider;11 30 30 31 31;WiiWW
+aider;11 30 31;WiW
+aider;11 30 31 10;WiWW
+aider;11 30 31 10 10;WiWWW
+aider;11 30 31 10 11;WiWWW
+aider;11 30 31 10 30;WiWWi
+aider;11 30 31 10 31;WiWWW
+aider;11 30 31 11;WiWW
+aider;11 30 31 11 10;WiWWW
+aider;11 30 31 11 11;WiWWW
+aider;11 30 31 11 30;WiWWi
+aider;11 30 31 11 31;WiWWW
+aider;11 30 31 30;WiWi
+aider;11 30 31 30 10;WiWii
+aider;11 30 31 30 11;WiWiW
+aider;11 30 31 30 30;WiWii
+aider;11 30 31 30 31;WiWiW
+aider;11 30 31 31;WiWW
+aider;11 30 31 31 10;WiWWW
+aider;11 30 31 31 11;WiWWW
+aider;11 30 31 31 30;WiWWi
+aider;11 30 31 31 31;WiWWW
+aider;11 31;WW
+aider;11 31 10;WWW
+aider;11 31 10 10;WWWW
+aider;11 31 10 10 10;WWWWi
+aider;11 31 10 10 11;WWWWW
+aider;11 31 10 10 30;WWWWi
+aider;11 31 10 10 31;WWWWW
+aider;11 31 10 11;WWWW
+aider;11 31 10 11 10;WWWWW
+aider;11 31 10 11 11;WWWWW
+aider;11 31 10 11 30;WWWWi
+aider;11 31 10 11 31;WWWWW
+aider;11 31 10 30;WWWi
+aider;11 31 10 30 10;WWWii
+aider;11 31 10 30 11;WWWiW
+aider;11 31 10 30 30;WWWii
+aider;11 31 10 30 31;WWWiW
+aider;11 31 10 31;WWWW
+aider;11 31 10 31 10;WWWWW
+aider;11 31 10 31 11;WWWWW
+aider;11 31 10 31 30;WWWWi
+aider;11 31 10 31 31;WWWWW
+aider;11 31 11;WWW
+aider;11 31 11 10;WWWW
+aider;11 31 11 10 10;WWWWW
+aider;11 31 11 10 11;WWWWW
+aider;11 31 11 10 30;WWWWi
+aider;11 31 11 10 31;WWWWW
+aider;11 31 11 11;WWWW
+aider;11 31 11 11 10;WWWWW
+aider;11 31 11 11 11;WWWWW
+aider;11 31 11 11 30;WWWWi
+aider;11 31 11 11 31;WWWWW
+aider;11 31 11 30;WWWi
+aider;11 31 11 30 10;WWWii
+aider;11 31 11 30 11;WWWiW
+aider;11 31 11 30 30;WWWii
+aider;11 31 11 30 31;WWWiW
+aider;11 31 11 31;WWWW
+aider;11 31 11 31 10;WWWWW
+aider;11 31 11 31 11;WWWWW
+aider;11 31 11 31 30;WWWWi
+aider;11 31 11 31 31;WWWWW
+aider;11 31 30;WWi
+aider;11 31 30 10;WWii
+aider;11 31 30 10 10;WWiii
+aider;11 31 30 10 11;WWiiW
+aider;11 31 30 10 30;WWiii
+aider;11 31 30 10 31;WWiiW
+aider;11 31 30 11;WWiW
+aider;11 31 30 11 10;WWiWW
+aider;11 31 30 11 11;WWiWW
+aider;11 31 30 11 30;WWiWi
+aider;11 31 30 11 31;WWiWW
+aider;11 31 30 30;WWii
+aider;11 31 30 30 10;WWiii
+aider;11 31 30 30 11;WWiiW
+aider;11 31 30 30 30;WWiii
+aider;11 31 30 30 31;WWiiW
+aider;11 31 30 31;WWiW
+aider;11 31 30 31 10;WWiWW
+aider;11 31 30 31 11;WWiWW
+aider;11 31 30 31 30;WWiWi
+aider;11 31 30 31 31;WWiWW
+aider;11 31 31;WWW
+aider;11 31 31 10;WWWW
+aider;11 31 31 10 10;WWWWW
+aider;11 31 31 10 11;WWWWW
+aider;11 31 31 10 30;WWWWi
+aider;11 31 31 10 31;WWWWW
+aider;11 31 31 11;WWWW
+aider;11 31 31 11 10;WWWWW
+aider;11 31 31 11 11;WWWWW
+aider;11 31 31 11 30;WWWWi
+aider;11 31 31 11 31;WWWWW
+aider;11 31 31 30;WWWi
+aider;11 31 31 30 10;WWWii
+aider;11 31 31 30 11;WWWiW
+aider;11 31 31 30 30;WWWii
+aider;11 31 31 30 31;WWWiW
+aider;11 31 31 31;WWWW
+aider;11 31 31 31 10;WWWWW
+aider;11 31 31 31 11;WWWWW
+aider;11 31 31 31 30;WWWWi
+aider;11 31 31 31 31;WWWWW
+aider;30;i
+aider;30 10;ii
+aider;30 10 10;iii
+aider;30 10 10 10;iiii
+aider;30 10 10 10 10;iiiii
+aider;30 10 10 10 11;iiiiW
+aider;30 10 10 10 30;iiiii
+aider;30 10 10 10 31;iiiiW
+aider;30 10 10 11;iiiW
+aider;30 10 10 11 10;iiiWW
+aider;30 10 10 11 11;iiiWW
+aider;30 10 10 11 30;iiiWi
+aider;30 10 10 11 31;iiiWW
+aider;30 10 10 30;iiii
+aider;30 10 10 30 10;iiiii
+aider;30 10 10 30 11;iiiiW
+aider;30 10 10 30 30;iiiii
+aider;30 10 10 30 31;iiiiW
+aider;30 10 10 31;iiiW
+aider;30 10 10 31 10;iiiWW
+aider;30 10 10 31 11;iiiWW
+aider;30 10 10 31 30;iiiWi
+aider;30 10 10 31 31;iiiWW
+aider;30 10 11;iiW
+aider;30 10 11 10;iiWW
+aider;30 10 11 10 10;iiWWW
+aider;30 10 11 10 11;iiWWW
+aider;30 10 11 10 30;iiWWi
+aider;30 10 11 10 31;iiWWW
+aider;30 10 11 11;iiWW
+aider;30 10 11 11 10;iiWWW
+aider;30 10 11 11 11;iiWWW
+aider;30 10 11 11 30;iiWWi
+aider;30 10 11 11 31;iiWWW
+aider;30 10 11 30;iiWi
+aider;30 10 11 30 10;iiWii
+aider;30 10 11 30 11;iiWiW
+aider;30 10 11 30 30;iiWii
+aider;30 10 11 30 31;iiWiW
+aider;30 10 11 31;iiWW
+aider;30 10 11 31 10;iiWWW
+aider;30 10 11 31 11;iiWWW
+aider;30 10 11 31 30;iiWWi
+aider;30 10 11 31 31;iiWWW
+aider;30 10 30;iii
+aider;30 10 30 10;iiii
+aider;30 10 30 10 10;iiiii
+aider;30 10 30 10 11;iiiiW
+aider;30 10 30 10 30;iiiii
+aider;30 10 30 10 31;iiiiW
+aider;30 10 30 11;iiiW
+aider;30 10 30 11 10;iiiWW
+aider;30 10 30 11 11;iiiWW
+aider;30 10 30 11 30;iiiWi
+aider;30 10 30 11 31;iiiWW
+aider;30 10 30 30;iiii
+aider;30 10 30 30 10;iiiii
+aider;30 10 30 30 11;iiiiW
+aider;30 10 30 30 30;iiiii
+aider;30 10 30 30 31;iiiiW
+aider;30 10 30 31;iiiW
+aider;30 10 30 31 10;iiiWW
+aider;30 10 30 31 11;iiiWW
+aider;30 10 30 31 30;iiiWi
+aider;30 10 30 31 31;iiiWW
+aider;30 10 31;iiW
+aider;30 10 31 10;iiWW
+aider;30 10 31 10 10;iiWWW
+aider;30 10 31 10 11;iiWWW
+aider;30 10 31 10 30;iiWWi
+aider;30 10 31 10 31;iiWWW
+aider;30 10 31 11;iiWW
+aider;30 10 31 11 10;iiWWW
+aider;30 10 31 11 11;iiWWW
+aider;30 10 31 11 30;iiWWi
+aider;30 10 31 11 31;iiWWW
+aider;30 10 31 30;iiWi
+aider;30 10 31 30 10;iiWii
+aider;30 10 31 30 11;iiWiW
+aider;30 10 31 30 30;iiWii
+aider;30 10 31 30 31;iiWiW
+aider;30 10 31 31;iiWW
+aider;30 10 31 31 10;iiWWW
+aider;30 10 31 31 11;iiWWW
+aider;30 10 31 31 30;iiWWi
+aider;30 10 31 31 31;iiWWW
+aider;30 11;iW
+aider;30 11 10;iWW
+aider;30 11 10 10;iWWW
+aider;30 11 10 10 10;iWWWi
+aider;30 11 10 10 11;iWWWW
+aider;30 11 10 10 30;iWWWi
+aider;30 11 10 10 31;iWWWW
+aider;30 11 10 11;iWWW
+aider;30 11 10 11 10;iWWWW
+aider;30 11 10 11 11;iWWWW
+aider;30 11 10 11 30;iWWWi
+aider;30 11 10 11 31;iWWWW
+aider;30 11 10 30;iWWi
+aider;30 11 10 30 10;iWWii
+aider;30 11 10 30 11;iWWiW
+aider;30 11 10 30 30;iWWii
+aider;30 11 10 30 31;iWWiW
+aider;30 11 10 31;iWWW
+aider;30 11 10 31 10;iWWWW
+aider;30 11 10 31 11;iWWWW
+aider;30 11 10 31 30;iWWWi
+aider;30 11 10 31 31;iWWWW
+aider;30 11 11;iWW
+aider;30 11 11 10;iWWW
+aider;30 11 11 10 10;iWWWW
+aider;30 11 11 10 11;iWWWW
+aider;30 11 11 10 30;iWWWi
+aider;30 11 11 10 31;iWWWW
+aider;30 11 11 11;iWWW
+aider;30 11 11 11 10;iWWWW
+aider;30 11 11 11 11;iWWWW
+aider;30 11 11 11 30;iWWWi
+aider;30 11 11 11 31;iWWWW
+aider;30 11 11 30;iWWi
+aider;30 11 11 30 10;iWWii
+aider;30 11 11 30 11;iWWiW
+aider;30 11 11 30 30;iWWii
+aider;30 11 11 30 31;iWWiW
+aider;30 11 11 31;iWWW
+aider;30 11 11 31 10;iWWWW
+aider;30 11 11 31 11;iWWWW
+aider;30 11 11 31 30;iWWWi
+aider;30 11 11 31 31;iWWWW
+aider;30 11 30;iWi
+aider;30 11 30 10;iWii
+aider;30 11 30 10 10;iWiii
+aider;30 11 30 10 11;iWiiW
+aider;30 11 30 10 30;iWiii
+aider;30 11 30 10 31;iWiiW
+aider;30 11 30 11;iWiW
+aider;30 11 30 11 10;iWiWW
+aider;30 11 30 11 11;iWiWW
+aider;30 11 30 11 30;iWiWi
+aider;30 11 30 11 31;iWiWW
+aider;30 11 30 30;iWii
+aider;30 11 30 30 10;iWiii
+aider;30 11 30 30 11;iWiiW
+aider;30 11 30 30 30;iWiii
+aider;30 11 30 30 31;iWiiW
+aider;30 11 30 31;iWiW
+aider;30 11 30 31 10;iWiWW
+aider;30 11 30 31 11;iWiWW
+aider;30 11 30 31 30;iWiWi
+aider;30 11 30 31 31;iWiWW
+aider;30 11 31;iWW
+aider;30 11 31 10;iWWW
+aider;30 11 31 10 10;iWWWW
+aider;30 11 31 10 11;iWWWW
+aider;30 11 31 10 30;iWWWi
+aider;30 11 31 10 31;iWWWW
+aider;30 11 31 11;iWWW
+aider;30 11 31 11 10;iWWWW
+aider;30 11 31 11 11;iWWWW
+aider;30 11 31 11 30;iWWWi
+aider;30 11 31 11 31;iWWWW
+aider;30 11 31 30;iWWi
+aider;30 11 31 30 10;iWWii
+aider;30 11 31 30 11;iWWiW
+aider;30 11 31 30 30;iWWii
+aider;30 11 31 30 31;iWWiW
+aider;30 11 31 31;iWWW
+aider;30 11 31 31 10;iWWWW
+aider;30 11 31 31 11;iWWWW
+aider;30 11 31 31 30;iWWWi
+aider;30 11 31 31 31;iWWWW
+aider;30 30;ii
+aider;30 30 10;iii
+aider;30 30 10 10;iiii
+aider;30 30 10 10 10;iiiii
+aider;30 30 10 10 11;iiiiW
+aider;30 30 10 10 30;iiiii
+aider;30 30 10 10 31;iiiiW
+aider;30 30 10 11;iiiW
+aider;30 30 10 11 10;iiiWW
+aider;30 30 10 11 11;iiiWW
+aider;30 30 10 11 30;iiiWi
+aider;30 30 10 11 31;iiiWW
+aider;30 30 10 30;iiii
+aider;30 30 10 30 10;iiiii
+aider;30 30 10 30 11;iiiiW
+aider;30 30 10 30 30;iiiii
+aider;30 30 10 30 31;iiiiW
+aider;30 30 10 31;iiiW
+aider;30 30 10 31 10;iiiWW
+aider;30 30 10 31 11;iiiWW
+aider;30 30 10 31 30;iiiWi
+aider;30 30 10 31 31;iiiWW
+aider;30 30 11;iiW
+aider;30 30 11 10;iiWW
+aider;30 30 11 10 10;iiWWW
+aider;30 30 11 10 11;iiWWW
+aider;30 30 11 10 30;iiWWi
+aider;30 30 11 10 31;iiWWW
+aider;30 30 11 11;iiWW
+aider;30 30 11 11 10;iiWWW
+aider;30 30 11 11 11;iiWWW
+aider;30 30 11 11 30;iiWWi
+aider;30 30 11 11 31;iiWWW
+aider;30 30 11 30;iiWi
+aider;30 30 11 30 10;iiWii
+aider;30 30 11 30 11;iiWiW
+aider;30 30 11 30 30;iiWii
+aider;30 30 11 30 31;iiWiW
+aider;30 30 11 31;iiWW
+aider;30 30 11 31 10;iiWWW
+aider;30 30 11 31 11;iiWWW
+aider;30 30 11 31 30;iiWWi
+aider;30 30 11 31 31;iiWWW
+aider;30 30 30;iii
+aider;30 30 30 10;iiii
+aider;30 30 30 10 10;iiiii
+aider;30 30 30 10 11;iiiiW
+aider;30 30 30 10 30;iiiii
+aider;30 30 30 10 31;iiiiW
+aider;30 30 30 11;iiiW
+aider;30 30 30 11 10;iiiWW
+aider;30 30 30 11 11;iiiWW
+aider;30 30 30 11 30;iiiWi
+aider;30 30 30 11 31;iiiWW
+aider;30 30 30 30;iiii
+aider;30 30 30 30 10;iiiii
+aider;30 30 30 30 11;iiiiW
+aider;30 30 30 30 30;iiiii
+aider;30 30 30 30 31;iiiiW
+aider;30 30 30 31;iiiW
+aider;30 30 30 31 10;iiiWW
+aider;30 30 30 31 11;iiiWW
+aider;30 30 30 31 30;iiiWi
+aider;30 30 30 31 31;iiiWW
+aider;30 30 31;iiW
+aider;30 30 31 10;iiWW
+aider;30 30 31 10 10;iiWWW
+aider;30 30 31 10 11;iiWWW
+aider;30 30 31 10 30;iiWWi
+aider;30 30 31 10 31;iiWWW
+aider;30 30 31 11;iiWW
+aider;30 30 31 11 10;iiWWW
+aider;30 30 31 11 11;iiWWW
+aider;30 30 31 11 30;iiWWi
+aider;30 30 31 11 31;iiWWW
+aider;30 30 31 30;iiWi
+aider;30 30 31 30 10;iiWii
+aider;30 30 31 30 11;iiWiW
+aider;30 30 31 30 30;iiWii
+aider;30 30 31 30 31;iiWiW
+aider;30 30 31 31;iiWW
+aider;30 30 31 31 10;iiWWW
+aider;30 30 31 31 11;iiWWW
+aider;30 30 31 31 30;iiWWi
+aider;30 30 31 31 31;iiWWW
+aider;30 31;iW
+aider;30 31 10;iWW
+aider;30 31 10 10;iWWW
+aider;30 31 10 10 10;iWWWi
+aider;30 31 10 10 11;iWWWW
+aider;30 31 10 10 30;iWWWi
+aider;30 31 10 10 31;iWWWW
+aider;30 31 10 11;iWWW
+aider;30 31 10 11 10;iWWWW
+aider;30 31 10 11 11;iWWWW
+aider;30 31 10 11 30;iWWWi
+aider;30 31 10 11 31;iWWWW
+aider;30 31 10 30;iWWi
+aider;30 31 10 30 10;iWWii
+aider;30 31 10 30 11;iWWiW
+aider;30 31 10 30 30;iWWii
+aider;30 31 10 30 31;iWWiW
+aider;30 31 10 31;iWWW
+aider;30 31 10 31 10;iWWWW
+aider;30 31 10 31 11;iWWWW
+aider;30 31 10 31 30;iWWWi
+aider;30 31 10 31 31;iWWWW
+aider;30 31 11;iWW
+aider;30 31 11 10;iWWW
+aider;30 31 11 10 10;iWWWW
+aider;30 31 11 10 11;iWWWW
+aider;30 31 11 10 30;iWWWi
+aider;30 31 11 10 31;iWWWW
+aider;30 31 11 11;iWWW
+aider;30 31 11 11 10;iWWWW
+aider;30 31 11 11 11;iWWWW
+aider;30 31 11 11 30;iWWWi
+aider;30 31 11 11 31;iWWWW
+aider;30 31 11 30;iWWi
+aider;30 31 11 30 10;iWWii
+aider;30 31 11 30 11;iWWiW
+aider;30 31 11 30 30;iWWii
+aider;30 31 11 30 31;iWWiW
+aider;30 31 11 31;iWWW
+aider;30 31 11 31 10;iWWWW
+aider;30 31 11 31 11;iWWWW
+aider;30 31 11 31 30;iWWWi
+aider;30 31 11 31 31;iWWWW
+aider;30 31 30;iWi
+aider;30 31 30 10;iWii
+aider;30 31 30 10 10;iWiii
+aider;30 31 30 10 11;iWiiW
+aider;30 31 30 10 30;iWiii
+aider;30 31 30 10 31;iWiiW
+aider;30 31 30 11;iWiW
+aider;30 31 30 11 10;iWiWW
+aider;30 31 30 11 11;iWiWW
+aider;30 31 30 11 30;iWiWi
+aider;30 31 30 11 31;iWiWW
+aider;30 31 30 30;iWii
+aider;30 31 30 30 10;iWiii
+aider;30 31 30 30 11;iWiiW
+aider;30 31 30 30 30;iWiii
+aider;30 31 30 30 31;iWiiW
+aider;30 31 30 31;iWiW
+aider;30 31 30 31 10;iWiWW
+aider;30 31 30 31 11;iWiWW
+aider;30 31 30 31 30;iWiWi
+aider;30 31 30 31 31;iWiWW
+aider;30 31 31;iWW
+aider;30 31 31 10;iWWW
+aider;30 31 31 10 10;iWWWW
+aider;30 31 31 10 11;iWWWW
+aider;30 31 31 10 30;iWWWi
+aider;30 31 31 10 31;iWWWW
+aider;30 31 31 11;iWWW
+aider;30 31 31 11 10;iWWWW
+aider;30 31 31 11 11;iWWWW
+aider;30 31 31 11 30;iWWWi
+aider;30 31 31 11 31;iWWWW
+aider;30 31 31 30;iWWi
+aider;30 31 31 30 10;iWWii
+aider;30 31 31 30 11;iWWiW
+aider;30 31 31 30 30;iWWii
+aider;30 31 31 30 31;iWWiW
+aider;30 31 31 31;iWWW
+aider;30 31 31 31 10;iWWWW
+aider;30 31 31 31 11;iWWWW
+aider;30 31 31 31 30;iWWWi
+aider;30 31 31 31 31;iWWWW
+aider;31;W
+aider;31 10;WW
+aider;31 10 10;WWW
+aider;31 10 10 10;WWWi
+aider;31 10 10 10 10;WWWii
+aider;31 10 10 10 11;WWWiW
+aider;31 10 10 10 30;WWWii
+aider;31 10 10 10 31;WWWiW
+aider;31 10 10 11;WWWW
+aider;31 10 10 11 10;WWWWW
+aider;31 10 10 11 11;WWWWW
+aider;31 10 10 11 30;WWWWi
+aider;31 10 10 11 31;WWWWW
+aider;31 10 10 30;WWWi
+aider;31 10 10 30 10;WWWii
+aider;31 10 10 30 11;WWWiW
+aider;31 10 10 30 30;WWWii
+aider;31 10 10 30 31;WWWiW
+aider;31 10 10 31;WWWW
+aider;31 10 10 31 10;WWWWW
+aider;31 10 10 31 11;WWWWW
+aider;31 10 10 31 30;WWWWi
+aider;31 10 10 31 31;WWWWW
+aider;31 10 11;WWW
+aider;31 10 11 10;WWWW
+aider;31 10 11 10 10;WWWWW
+aider;31 10 11 10 11;WWWWW
+aider;31 10 11 10 30;WWWWi
+aider;31 10 11 10 31;WWWWW
+aider;31 10 11 11;WWWW
+aider;31 10 11 11 10;WWWWW
+aider;31 10 11 11 11;WWWWW
+aider;31 10 11 11 30;WWWWi
+aider;31 10 11 11 31;WWWWW
+aider;31 10 11 30;WWWi
+aider;31 10 11 30 10;WWWii
+aider;31 10 11 30 11;WWWiW
+aider;31 10 11 30 30;WWWii
+aider;31 10 11 30 31;WWWiW
+aider;31 10 11 31;WWWW
+aider;31 10 11 31 10;WWWWW
+aider;31 10 11 31 11;WWWWW
+aider;31 10 11 31 30;WWWWi
+aider;31 10 11 31 31;WWWWW
+aider;31 10 30;WWi
+aider;31 10 30 10;WWii
+aider;31 10 30 10 10;WWiii
+aider;31 10 30 10 11;WWiiW
+aider;31 10 30 10 30;WWiii
+aider;31 10 30 10 31;WWiiW
+aider;31 10 30 11;WWiW
+aider;31 10 30 11 10;WWiWW
+aider;31 10 30 11 11;WWiWW
+aider;31 10 30 11 30;WWiWi
+aider;31 10 30 11 31;WWiWW
+aider;31 10 30 30;WWii
+aider;31 10 30 30 10;WWiii
+aider;31 10 30 30 11;WWiiW
+aider;31 10 30 30 30;WWiii
+aider;31 10 30 30 31;WWiiW
+aider;31 10 30 31;WWiW
+aider;31 10 30 31 10;WWiWW
+aider;31 10 30 31 11;WWiWW
+aider;31 10 30 31 30;WWiWi
+aider;31 10 30 31 31;WWiWW
+aider;31 10 31;WWW
+aider;31 10 31 10;WWWW
+aider;31 10 31 10 10;WWWWW
+aider;31 10 31 10 11;WWWWW
+aider;31 10 31 10 30;WWWWi
+aider;31 10 31 10 31;WWWWW
+aider;31 10 31 11;WWWW
+aider;31 10 31 11 10;WWWWW
+aider;31 10 31 11 11;WWWWW
+aider;31 10 31 11 30;WWWWi
+aider;31 10 31 11 31;WWWWW
+aider;31 10 31 30;WWWi
+aider;31 10 31 30 10;WWWii
+aider;31 10 31 30 11;WWWiW
+aider;31 10 31 30 30;WWWii
+aider;31 10 31 30 31;WWWiW
+aider;31 10 31 31;WWWW
+aider;31 10 31 31 10;WWWWW
+aider;31 10 31 31 11;WWWWW
+aider;31 10 31 31 30;WWWWi
+aider;31 10 31 31 31;WWWWW
+aider;31 11;WW
+aider;31 11 10;WWW
+aider;31 11 10 10;WWWW
+aider;31 11 10 10 10;WWWWi
+aider;31 11 10 10 11;WWWWW
+aider;31 11 10 10 30;WWWWi
+aider;31 11 10 10 31;WWWWW
+aider;31 11 10 11;WWWW
+aider;31 11 10 11 10;WWWWW
+aider;31 11 10 11 11;WWWWW
+aider;31 11 10 11 30;WWWWi
+aider;31 11 10 11 31;WWWWW
+aider;31 11 10 30;WWWi
+aider;31 11 10 30 10;WWWii
+aider;31 11 10 30 11;WWWiW
+aider;31 11 10 30 30;WWWii
+aider;31 11 10 30 31;WWWiW
+aider;31 11 10 31;WWWW
+aider;31 11 10 31 10;WWWWW
+aider;31 11 10 31 11;WWWWW
+aider;31 11 10 31 30;WWWWi
+aider;31 11 10 31 31;WWWWW
+aider;31 11 11;WWW
+aider;31 11 11 10;WWWW
+aider;31 11 11 10 10;WWWWW
+aider;31 11 11 10 11;WWWWW
+aider;31 11 11 10 30;WWWWi
+aider;31 11 11 10 31;WWWWW
+aider;31 11 11 11;WWWW
+aider;31 11 11 11 10;WWWWW
+aider;31 11 11 11 11;WWWWW
+aider;31 11 11 11 30;WWWWi
+aider;31 11 11 11 31;WWWWW
+aider;31 11 11 30;WWWi
+aider;31 11 11 30 10;WWWii
+aider;31 11 11 30 11;WWWiW
+aider;31 11 11 30 30;WWWii
+aider;31 11 11 30 31;WWWiW
+aider;31 11 11 31;WWWW
+aider;31 11 11 31 10;WWWWW
+aider;31 11 11 31 11;WWWWW
+aider;31 11 11 31 30;WWWWi
+aider;31 11 11 31 31;WWWWW
+aider;31 11 30;WWi
+aider;31 11 30 10;WWii
+aider;31 11 30 10 10;WWiii
+aider;31 11 30 10 11;WWiiW
+aider;31 11 30 10 30;WWiii
+aider;31 11 30 10 31;WWiiW
+aider;31 11 30 11;WWiW
+aider;31 11 30 11 10;WWiWW
+aider;31 11 30 11 11;WWiWW
+aider;31 11 30 11 30;WWiWi
+aider;31 11 30 11 31;WWiWW
+aider;31 11 30 30;WWii
+aider;31 11 30 30 10;WWiii
+aider;31 11 30 30 11;WWiiW
+aider;31 11 30 30 30;WWiii
+aider;31 11 30 30 31;WWiiW
+aider;31 11 30 31;WWiW
+aider;31 11 30 31 10;WWiWW
+aider;31 11 30 31 11;WWiWW
+aider;31 11 30 31 30;WWiWi
+aider;31 11 30 31 31;WWiWW
+aider;31 11 31;WWW
+aider;31 11 31 10;WWWW
+aider;31 11 31 10 10;WWWWW
+aider;31 11 31 10 11;WWWWW
+aider;31 11 31 10 30;WWWWi
+aider;31 11 31 10 31;WWWWW
+aider;31 11 31 11;WWWW
+aider;31 11 31 11 10;WWWWW
+aider;31 11 31 11 11;WWWWW
+aider;31 11 31 11 30;WWWWi
+aider;31 11 31 11 31;WWWWW
+aider;31 11 31 30;WWWi
+aider;31 11 31 30 10;WWWii
+aider;31 11 31 30 11;WWWiW
+aider;31 11 31 30 30;WWWii
+aider;31 11 31 30 31;WWWiW
+aider;31 11 31 31;WWWW
+aider;31 11 31 31 10;WWWWW
+aider;31 11 31 31 11;WWWWW
+aider;31 11 31 31 30;WWWWi
+aider;31 11 31 31 31;WWWWW
+aider;31 30;Wi
+aider;31 30 10;Wii
+aider;31 30 10 10;Wiii
+aider;31 30 10 10 10;Wiiii
+aider;31 30 10 10 11;WiiiW
+aider;31 30 10 10 30;Wiiii
+aider;31 30 10 10 31;WiiiW
+aider;31 30 10 11;WiiW
+aider;31 30 10 11 10;WiiWW
+aider;31 30 10 11 11;WiiWW
+aider;31 30 10 11 30;WiiWi
+aider;31 30 10 11 31;WiiWW
+aider;31 30 10 30;Wiii
+aider;31 30 10 30 10;Wiiii
+aider;31 30 10 30 11;WiiiW
+aider;31 30 10 30 30;Wiiii
+aider;31 30 10 30 31;WiiiW
+aider;31 30 10 31;WiiW
+aider;31 30 10 31 10;WiiWW
+aider;31 30 10 31 11;WiiWW
+aider;31 30 10 31 30;WiiWi
+aider;31 30 10 31 31;WiiWW
+aider;31 30 11;WiW
+aider;31 30 11 10;WiWW
+aider;31 30 11 10 10;WiWWW
+aider;31 30 11 10 11;WiWWW
+aider;31 30 11 10 30;WiWWi
+aider;31 30 11 10 31;WiWWW
+aider;31 30 11 11;WiWW
+aider;31 30 11 11 10;WiWWW
+aider;31 30 11 11 11;WiWWW
+aider;31 30 11 11 30;WiWWi
+aider;31 30 11 11 31;WiWWW
+aider;31 30 11 30;WiWi
+aider;31 30 11 30 10;WiWii
+aider;31 30 11 30 11;WiWiW
+aider;31 30 11 30 30;WiWii
+aider;31 30 11 30 31;WiWiW
+aider;31 30 11 31;WiWW
+aider;31 30 11 31 10;WiWWW
+aider;31 30 11 31 11;WiWWW
+aider;31 30 11 31 30;WiWWi
+aider;31 30 11 31 31;WiWWW
+aider;31 30 30;Wii
+aider;31 30 30 10;Wiii
+aider;31 30 30 10 10;Wiiii
+aider;31 30 30 10 11;WiiiW
+aider;31 30 30 10 30;Wiiii
+aider;31 30 30 10 31;WiiiW
+aider;31 30 30 11;WiiW
+aider;31 30 30 11 10;WiiWW
+aider;31 30 30 11 11;WiiWW
+aider;31 30 30 11 30;WiiWi
+aider;31 30 30 11 31;WiiWW
+aider;31 30 30 30;Wiii
+aider;31 30 30 30 10;Wiiii
+aider;31 30 30 30 11;WiiiW
+aider;31 30 30 30 30;Wiiii
+aider;31 30 30 30 31;WiiiW
+aider;31 30 30 31;WiiW
+aider;31 30 30 31 10;WiiWW
+aider;31 30 30 31 11;WiiWW
+aider;31 30 30 31 30;WiiWi
+aider;31 30 30 31 31;WiiWW
+aider;31 30 31;WiW
+aider;31 30 31 10;WiWW
+aider;31 30 31 10 10;WiWWW
+aider;31 30 31 10 11;WiWWW
+aider;31 30 31 10 30;WiWWi
+aider;31 30 31 10 31;WiWWW
+aider;31 30 31 11;WiWW
+aider;31 30 31 11 10;WiWWW
+aider;31 30 31 11 11;WiWWW
+aider;31 30 31 11 30;WiWWi
+aider;31 30 31 11 31;WiWWW
+aider;31 30 31 30;WiWi
+aider;31 30 31 30 10;WiWii
+aider;31 30 31 30 11;WiWiW
+aider;31 30 31 30 30;WiWii
+aider;31 30 31 30 31;WiWiW
+aider;31 30 31 31;WiWW
+aider;31 30 31 31 10;WiWWW
+aider;31 30 31 31 11;WiWWW
+aider;31 30 31 31 30;WiWWi
+aider;31 30 31 31 31;WiWWW
+aider;31 31;WW
+aider;31 31 10;WWW
+aider;31 31 10 10;WWWW
+aider;31 31 10 10 10;WWWWi
+aider;31 31 10 10 11;WWWWW
+aider;31 31 10 10 30;WWWWi
+aider;31 31 10 10 31;WWWWW
+aider;31 31 10 11;WWWW
+aider;31 31 10 11 10;WWWWW
+aider;31 31 10 11 11;WWWWW
+aider;31 31 10 11 30;WWWWi
+aider;31 31 10 11 31;WWWWW
+aider;31 31 10 30;WWWi
+aider;31 31 10 30 10;WWWii
+aider;31 31 10 30 11;WWWiW
+aider;31 31 10 30 30;WWWii
+aider;31 31 10 30 31;WWWiW
+aider;31 31 10 31;WWWW
+aider;31 31 10 31 10;WWWWW
+aider;31 31 10 31 11;WWWWW
+aider;31 31 10 31 30;WWWWi
+aider;31 31 10 31 31;WWWWW
+aider;31 31 11;WWW
+aider;31 31 11 10;WWWW
+aider;31 31 11 10 10;WWWWW
+aider;31 31 11 10 11;WWWWW
+aider;31 31 11 10 30;WWWWi
+aider;31 31 11 10 31;WWWWW
+aider;31 31 11 11;WWWW
+aider;31 31 11 11 10;WWWWW
+aider;31 31 11 11 11;WWWWW
+aider;31 31 11 11 30;WWWWi
+aider;31 31 11 11 31;WWWWW
+aider;31 31 11 30;WWWi
+aider;31 31 11 30 10;WWWii
+aider;31 31 11 30 11;WWWiW
+aider;31 31 11 30 30;WWWii
+aider;31 31 11 30 31;WWWiW
+aider;31 31 11 31;WWWW
+aider;31 31 11 31 10;WWWWW
+aider;31 31 11 31 11;WWWWW
+aider;31 31 11 31 30;WWWWi
+aider;31 31 11 31 31;WWWWW
+aider;31 31 30;WWi
+aider;31 31 30 10;WWii
+aider;31 31 30 10 10;WWiii
+aider;31 31 30 10 11;WWiiW
+aider;31 31 30 10 30;WWiii
+aider;31 31 30 10 31;WWiiW
+aider;31 31 30 11;WWiW
+aider;31 31 30 11 10;WWiWW
+aider;31 31 30 11 11;WWiWW
+aider;31 31 30 11 30;WWiWi
+aider;31 31 30 11 31;WWiWW
+aider;31 31 30 30;WWii
+aider;31 31 30 30 10;WWiii
+aider;31 31 30 30 11;WWiiW
+aider;31 31 30 30 30;WWiii
+aider;31 31 30 30 31;WWiiW
+aider;31 31 30 31;WWiW
+aider;31 31 30 31 10;WWiWW
+aider;31 31 30 31 11;WWiWW
+aider;31 31 30 31 30;WWiWi
+aider;31 31 30 31 31;WWiWW
+aider;31 31 31;WWW
+aider;31 31 31 10;WWWW
+aider;31 31 31 10 10;WWWWW
+aider;31 31 31 10 11;WWWWW
+aider;31 31 31 10 30;WWWWi
+aider;31 31 31 10 31;WWWWW
+aider;31 31 31 11;WWWW
+aider;31 31 31 11 10;WWWWW
+aider;31 31 31 11 11;WWWWW
+aider;31 31 31 11 30;WWWWi
+aider;31 31 31 11 31;WWWWW
+aider;31 31 31 30;WWWi
+aider;31 31 31 30 10;WWWii
+aider;31 31 31 30 11;WWWiW
+aider;31 31 31 30 30;WWWii
+aider;31 31 31 30 31;WWWiW
+aider;31 31 31 31;WWWW
+aider;31 31 31 31 10;WWWWW
+aider;31 31 31 31 11;WWWWW
+aider;31 31 31 31 30;WWWWi
+aider;31 31 31 31 31;WWWWW
+codex;10;i
+codex;10 10;ii
+codex;10 10 10;iii
+codex;10 10 10 10;iiii
+codex;10 10 10 10 10;iiiii
+codex;10 10 10 10 11;iiiii
+codex;10 10 10 10 30;iiiii
+codex;10 10 10 10 31;iiiii
+codex;10 10 10 11;iiii
+codex;10 10 10 11 10;iiiii
+codex;10 10 10 11 11;iiiii
+codex;10 10 10 11 30;iiiii
+codex;10 10 10 11 31;iiiii
+codex;10 10 10 30;iiii
+codex;10 10 10 30 10;iiiii
+codex;10 10 10 30 11;iiiii
+codex;10 10 10 30 30;iiiii
+codex;10 10 10 30 31;iiiii
+codex;10 10 10 31;iiii
+codex;10 10 10 31 10;iiiii
+codex;10 10 10 31 11;iiiii
+codex;10 10 10 31 30;iiiii
+codex;10 10 10 31 31;iiiii
+codex;10 10 11;iii
+codex;10 10 11 10;iiii
+codex;10 10 11 10 10;iiiii
+codex;10 10 11 10 11;iiiii
+codex;10 10 11 10 30;iiiii
+codex;10 10 11 10 31;iiiii
+codex;10 10 11 11;iiii
+codex;10 10 11 11 10;iiiii
+codex;10 10 11 11 11;iiiii
+codex;10 10 11 11 30;iiiii
+codex;10 10 11 11 31;iiiii
+codex;10 10 11 30;iiii
+codex;10 10 11 30 10;iiiii
+codex;10 10 11 30 11;iiiii
+codex;10 10 11 30 30;iiiii
+codex;10 10 11 30 31;iiiii
+codex;10 10 11 31;iiii
+codex;10 10 11 31 10;iiiii
+codex;10 10 11 31 11;iiiii
+codex;10 10 11 31 30;iiiii
+codex;10 10 11 31 31;iiiii
+codex;10 10 30;iii
+codex;10 10 30 10;iiii
+codex;10 10 30 10 10;iiiii
+codex;10 10 30 10 11;iiiii
+codex;10 10 30 10 30;iiiii
+codex;10 10 30 10 31;iiiii
+codex;10 10 30 11;iiii
+codex;10 10 30 11 10;iiiii
+codex;10 10 30 11 11;iiiii
+codex;10 10 30 11 30;iiiii
+codex;10 10 30 11 31;iiiii
+codex;10 10 30 30;iiii
+codex;10 10 30 30 10;iiiii
+codex;10 10 30 30 11;iiiii
+codex;10 10 30 30 30;iiiii
+codex;10 10 30 30 31;iiiii
+codex;10 10 30 31;iiii
+codex;10 10 30 31 10;iiiii
+codex;10 10 30 31 11;iiiii
+codex;10 10 30 31 30;iiiii
+codex;10 10 30 31 31;iiiii
+codex;10 10 31;iii
+codex;10 10 31 10;iiii
+codex;10 10 31 10 10;iiiii
+codex;10 10 31 10 11;iiiii
+codex;10 10 31 10 30;iiiii
+codex;10 10 31 10 31;iiiii
+codex;10 10 31 11;iiii
+codex;10 10 31 11 10;iiiii
+codex;10 10 31 11 11;iiiii
+codex;10 10 31 11 30;iiiii
+codex;10 10 31 11 31;iiiii
+codex;10 10 31 30;iiii
+codex;10 10 31 30 10;iiiii
+codex;10 10 31 30 11;iiiii
+codex;10 10 31 30 30;iiiii
+codex;10 10 31 30 31;iiiii
+codex;10 10 31 31;iiii
+codex;10 10 31 31 10;iiiii
+codex;10 10 31 31 11;iiiii
+codex;10 10 31 31 30;iiiii
+codex;10 10 31 31 31;iiiii
+codex;10 11;ii
+codex;10 11 10;iii
+codex;10 11 10 10;iiii
+codex;10 11 10 10 10;iiiii
+codex;10 11 10 10 11;iiiii
+codex;10 11 10 10 30;iiiii
+codex;10 11 10 10 31;iiiii
+codex;10 11 10 11;iiii
+codex;10 11 10 11 10;iiiii
+codex;10 11 10 11 11;iiiii
+codex;10 11 10 11 30;iiiii
+codex;10 11 10 11 31;iiiii
+codex;10 11 10 30;iiii
+codex;10 11 10 30 10;iiiii
+codex;10 11 10 30 11;iiiii
+codex;10 11 10 30 30;iiiii
+codex;10 11 10 30 31;iiiii
+codex;10 11 10 31;iiii
+codex;10 11 10 31 10;iiiii
+codex;10 11 10 31 11;iiiii
+codex;10 11 10 31 30;iiiii
+codex;10 11 10 31 31;iiiii
+codex;10 11 11;iii
+codex;10 11 11 10;iiii
+codex;10 11 11 10 10;iiiii
+codex;10 11 11 10 11;iiiii
+codex;10 11 11 10 30;iiiii
+codex;10 11 11 10 31;iiiii
+codex;10 11 11 11;iiii
+codex;10 11 11 11 10;iiiii
+codex;10 11 11 11 11;iiiii
+codex;10 11 11 11 30;iiiii
+codex;10 11 11 11 31;iiiii
+codex;10 11 11 30;iiii
+codex;10 11 11 30 10;iiiii
+codex;10 11 11 30 11;iiiii
+codex;10 11 11 30 30;iiiii
+codex;10 11 11 30 31;iiiii
+codex;10 11 11 31;iiii
+codex;10 11 11 31 10;iiiii
+codex;10 11 11 31 11;iiiii
+codex;10 11 11 31 30;iiiii
+codex;10 11 11 31 31;iiiii
+codex;10 11 30;iii
+codex;10 11 30 10;iiii
+codex;10 11 30 10 10;iiiii
+codex;10 11 30 10 11;iiiii
+codex;10 11 30 10 30;iiiii
+codex;10 11 30 10 31;iiiii
+codex;10 11 30 11;iiii
+codex;10 11 30 11 10;iiiii
+codex;10 11 30 11 11;iiiii
+codex;10 11 30 11 30;iiiii
+codex;10 11 30 11 31;iiiii
+codex;10 11 30 30;iiii
+codex;10 11 30 30 10;iiiii
+codex;10 11 30 30 11;iiiii
+codex;10 11 30 30 30;iiiii
+codex;10 11 30 30 31;iiiii
+codex;10 11 30 31;iiii
+codex;10 11 30 31 10;iiiii
+codex;10 11 30 31 11;iiiii
+codex;10 11 30 31 30;iiiii
+codex;10 11 30 31 31;iiiii
+codex;10 11 31;iii
+codex;10 11 31 10;iiii
+codex;10 11 31 10 10;iiiii
+codex;10 11 31 10 11;iiiii
+codex;10 11 31 10 30;iiiii
+codex;10 11 31 10 31;iiiii
+codex;10 11 31 11;iiii
+codex;10 11 31 11 10;iiiii
+codex;10 11 31 11 11;iiiii
+codex;10 11 31 11 30;iiiii
+codex;10 11 31 11 31;iiiii
+codex;10 11 31 30;iiii
+codex;10 11 31 30 10;iiiii
+codex;10 11 31 30 11;iiiii
+codex;10 11 31 30 30;iiiii
+codex;10 11 31 30 31;iiiii
+codex;10 11 31 31;iiii
+codex;10 11 31 31 10;iiiii
+codex;10 11 31 31 11;iiiii
+codex;10 11 31 31 30;iiiii
+codex;10 11 31 31 31;iiiii
+codex;10 30;ii
+codex;10 30 10;iii
+codex;10 30 10 10;iiii
+codex;10 30 10 10 10;iiiii
+codex;10 30 10 10 11;iiiii
+codex;10 30 10 10 30;iiiii
+codex;10 30 10 10 31;iiiii
+codex;10 30 10 11;iiii
+codex;10 30 10 11 10;iiiii
+codex;10 30 10 11 11;iiiii
+codex;10 30 10 11 30;iiiii
+codex;10 30 10 11 31;iiiii
+codex;10 30 10 30;iiii
+codex;10 30 10 30 10;iiiii
+codex;10 30 10 30 11;iiiii
+codex;10 30 10 30 30;iiiii
+codex;10 30 10 30 31;iiiii
+codex;10 30 10 31;iiii
+codex;10 30 10 31 10;iiiii
+codex;10 30 10 31 11;iiiii
+codex;10 30 10 31 30;iiiii
+codex;10 30 10 31 31;iiiii
+codex;10 30 11;iii
+codex;10 30 11 10;iiii
+codex;10 30 11 10 10;iiiii
+codex;10 30 11 10 11;iiiii
+codex;10 30 11 10 30;iiiii
+codex;10 30 11 10 31;iiiii
+codex;10 30 11 11;iiii
+codex;10 30 11 11 10;iiiii
+codex;10 30 11 11 11;iiiii
+codex;10 30 11 11 30;iiiii
+codex;10 30 11 11 31;iiiii
+codex;10 30 11 30;iiii
+codex;10 30 11 30 10;iiiii
+codex;10 30 11 30 11;iiiii
+codex;10 30 11 30 30;iiiii
+codex;10 30 11 30 31;iiiii
+codex;10 30 11 31;iiii
+codex;10 30 11 31 10;iiiii
+codex;10 30 11 31 11;iiiii
+codex;10 30 11 31 30;iiiii
+codex;10 30 11 31 31;iiiii
+codex;10 30 30;iii
+codex;10 30 30 10;iiii
+codex;10 30 30 10 10;iiiii
+codex;10 30 30 10 11;iiiii
+codex;10 30 30 10 30;iiiii
+codex;10 30 30 10 31;iiiii
+codex;10 30 30 11;iiii
+codex;10 30 30 11 10;iiiii
+codex;10 30 30 11 11;iiiii
+codex;10 30 30 11 30;iiiii
+codex;10 30 30 11 31;iiiii
+codex;10 30 30 30;iiii
+codex;10 30 30 30 10;iiiii
+codex;10 30 30 30 11;iiiii
+codex;10 30 30 30 30;iiiii
+codex;10 30 30 30 31;iiiii
+codex;10 30 30 31;iiii
+codex;10 30 30 31 10;iiiii
+codex;10 30 30 31 11;iiiii
+codex;10 30 30 31 30;iiiii
+codex;10 30 30 31 31;iiiii
+codex;10 30 31;iii
+codex;10 30 31 10;iiii
+codex;10 30 31 10 10;iiiii
+codex;10 30 31 10 11;iiiii
+codex;10 30 31 10 30;iiiii
+codex;10 30 31 10 31;iiiii
+codex;10 30 31 11;iiii
+codex;10 30 31 11 10;iiiii
+codex;10 30 31 11 11;iiiii
+codex;10 30 31 11 30;iiiii
+codex;10 30 31 11 31;iiiii
+codex;10 30 31 30;iiii
+codex;10 30 31 30 10;iiiii
+codex;10 30 31 30 11;iiiii
+codex;10 30 31 30 30;iiiii
+codex;10 30 31 30 31;iiiii
+codex;10 30 31 31;iiii
+codex;10 30 31 31 10;iiiii
+codex;10 30 31 31 11;iiiii
+codex;10 30 31 31 30;iiiii
+codex;10 30 31 31 31;iiiii
+codex;10 31;ii
+codex;10 31 10;iii
+codex;10 31 10 10;iiii
+codex;10 31 10 10 10;iiiii
+codex;10 31 10 10 11;iiiii
+codex;10 31 10 10 30;iiiii
+codex;10 31 10 10 31;iiiii
+codex;10 31 10 11;iiii
+codex;10 31 10 11 10;iiiii
+codex;10 31 10 11 11;iiiii
+codex;10 31 10 11 30;iiiii
+codex;10 31 10 11 31;iiiii
+codex;10 31 10 30;iiii
+codex;10 31 10 30 10;iiiii
+codex;10 31 10 30 11;iiiii
+codex;10 31 10 30 30;iiiii
+codex;10 31 10 30 31;iiiii
+codex;10 31 10 31;iiii
+codex;10 31 10 31 10;iiiii
+codex;10 31 10 31 11;iiiii
+codex;10 31 10 31 30;iiiii
+codex;10 31 10 31 31;iiiii
+codex;10 31 11;iii
+codex;10 31 11 10;iiii
+codex;10 31 11 10 10;iiiii
+codex;10 31 11 10 11;iiiii
+codex;10 31 11 10 30;iiiii
+codex;10 31 11 10 31;iiiii
+codex;10 31 11 11;iiii
+codex;10 31 11 11 10;iiiii
+codex;10 31 11 11 11;iiiii
+codex;10 31 11 11 30;iiiii
+codex;10 31 11 11 31;iiiii
+codex;10 31 11 30;iiii
+codex;10 31 11 30 10;iiiii
+codex;10 31 11 30 11;iiiii
+codex;10 31 11 30 30;iiiii
+codex;10 31 11 30 31;iiiii
+codex;10 31 11 31;iiii
+codex;10 31 11 31 10;iiiii
+codex;10 31 11 31 11;iiiii
+codex;10 31 11 31 30;iiiii
+codex;10 31 11 31 31;iiiii
+codex;10 31 30;iii
+codex;10 31 30 10;iiii
+codex;10 31 30 10 10;iiiii
+codex;10 31 30 10 11;iiiii
+codex;10 31 30 10 30;iiiii
+codex;10 31 30 10 31;iiiii
+codex;10 31 30 11;iiii
+codex;10 31 30 11 10;iiiii
+codex;10 31 30 11 11;iiiii
+codex;10 31 30 11 30;iiiii
+codex;10 31 30 11 31;iiiii
+codex;10 31 30 30;iiii
+codex;10 31 30 30 10;iiiii
+codex;10 31 30 30 11;iiiii
+codex;10 31 30 30 30;iiiii
+codex;10 31 30 30 31;iiiii
+codex;10 31 30 31;iiii
+codex;10 31 30 31 10;iiiii
+codex;10 31 30 31 11;iiiii
+codex;10 31 30 31 30;iiiii
+codex;10 31 30 31 31;iiiii
+codex;10 31 31;iii
+codex;10 31 31 10;iiii
+codex;10 31 31 10 10;iiiii
+codex;10 31 31 10 11;iiiii
+codex;10 31 31 10 30;iiiii
+codex;10 31 31 10 31;iiiii
+codex;10 31 31 11;iiii
+codex;10 31 31 11 10;iiiii
+codex;10 31 31 11 11;iiiii
+codex;10 31 31 11 30;iiiii
+codex;10 31 31 11 31;iiiii
+codex;10 31 31 30;iiii
+codex;10 31 31 30 10;iiiii
+codex;10 31 31 30 11;iiiii
+codex;10 31 31 30 30;iiiii
+codex;10 31 31 30 31;iiiii
+codex;10 31 31 31;iiii
+codex;10 31 31 31 10;iiiii
+codex;10 31 31 31 11;iiiii
+codex;10 31 31 31 30;iiiii
+codex;10 31 31 31 31;iiiii
+codex;11;i
+codex;11 10;ii
+codex;11 10 10;iii
+codex;11 10 10 10;iiii
+codex;11 10 10 10 10;iiiii
+codex;11 10 10 10 11;iiiii
+codex;11 10 10 10 30;iiiii
+codex;11 10 10 10 31;iiiii
+codex;11 10 10 11;iiii
+codex;11 10 10 11 10;iiiii
+codex;11 10 10 11 11;iiiii
+codex;11 10 10 11 30;iiiii
+codex;11 10 10 11 31;iiiii
+codex;11 10 10 30;iiii
+codex;11 10 10 30 10;iiiii
+codex;11 10 10 30 11;iiiii
+codex;11 10 10 30 30;iiiii
+codex;11 10 10 30 31;iiiii
+codex;11 10 10 31;iiii
+codex;11 10 10 31 10;iiiii
+codex;11 10 10 31 11;iiiii
+codex;11 10 10 31 30;iiiii
+codex;11 10 10 31 31;iiiii
+codex;11 10 11;iii
+codex;11 10 11 10;iiii
+codex;11 10 11 10 10;iiiii
+codex;11 10 11 10 11;iiiii
+codex;11 10 11 10 30;iiiii
+codex;11 10 11 10 31;iiiii
+codex;11 10 11 11;iiii
+codex;11 10 11 11 10;iiiii
+codex;11 10 11 11 11;iiiii
+codex;11 10 11 11 30;iiiii
+codex;11 10 11 11 31;iiiii
+codex;11 10 11 30;iiii
+codex;11 10 11 30 10;iiiii
+codex;11 10 11 30 11;iiiii
+codex;11 10 11 30 30;iiiii
+codex;11 10 11 30 31;iiiii
+codex;11 10 11 31;iiii
+codex;11 10 11 31 10;iiiii
+codex;11 10 11 31 11;iiiii
+codex;11 10 11 31 30;iiiii
+codex;11 10 11 31 31;iiiii
+codex;11 10 30;iii
+codex;11 10 30 10;iiii
+codex;11 10 30 10 10;iiiii
+codex;11 10 30 10 11;iiiii
+codex;11 10 30 10 30;iiiii
+codex;11 10 30 10 31;iiiii
+codex;11 10 30 11;iiii
+codex;11 10 30 11 10;iiiii
+codex;11 10 30 11 11;iiiii
+codex;11 10 30 11 30;iiiii
+codex;11 10 30 11 31;iiiii
+codex;11 10 30 30;iiii
+codex;11 10 30 30 10;iiiii
+codex;11 10 30 30 11;iiiii
+codex;11 10 30 30 30;iiiii
+codex;11 10 30 30 31;iiiii
+codex;11 10 30 31;iiii
+codex;11 10 30 31 10;iiiii
+codex;11 10 30 31 11;iiiii
+codex;11 10 30 31 30;iiiii
+codex;11 10 30 31 31;iiiii
+codex;11 10 31;iii
+codex;11 10 31 10;iiii
+codex;11 10 31 10 10;iiiii
+codex;11 10 31 10 11;iiiii
+codex;11 10 31 10 30;iiiii
+codex;11 10 31 10 31;iiiii
+codex;11 10 31 11;iiii
+codex;11 10 31 11 10;iiiii
+codex;11 10 31 11 11;iiiii
+codex;11 10 31 11 30;iiiii
+codex;11 10 31 11 31;iiiii
+codex;11 10 31 30;iiii
+codex;11 10 31 30 10;iiiii
+codex;11 10 31 30 11;iiiii
+codex;11 10 31 30 30;iiiii
+codex;11 10 31 30 31;iiiii
+codex;11 10 31 31;iiii
+codex;11 10 31 31 10;iiiii
+codex;11 10 31 31 11;iiiii
+codex;11 10 31 31 30;iiiii
+codex;11 10 31 31 31;iiiii
+codex;11 11;ii
+codex;11 11 10;iii
+codex;11 11 10 10;iiii
+codex;11 11 10 10 10;iiiii
+codex;11 11 10 10 11;iiiii
+codex;11 11 10 10 30;iiiii
+codex;11 11 10 10 31;iiiii
+codex;11 11 10 11;iiii
+codex;11 11 10 11 10;iiiii
+codex;11 11 10 11 11;iiiii
+codex;11 11 10 11 30;iiiii
+codex;11 11 10 11 31;iiiii
+codex;11 11 10 30;iiii
+codex;11 11 10 30 10;iiiii
+codex;11 11 10 30 11;iiiii
+codex;11 11 10 30 30;iiiii
+codex;11 11 10 30 31;iiiii
+codex;11 11 10 31;iiii
+codex;11 11 10 31 10;iiiii
+codex;11 11 10 31 11;iiiii
+codex;11 11 10 31 30;iiiii
+codex;11 11 10 31 31;iiiii
+codex;11 11 11;iii
+codex;11 11 11 10;iiii
+codex;11 11 11 10 10;iiiii
+codex;11 11 11 10 11;iiiii
+codex;11 11 11 10 30;iiiii
+codex;11 11 11 10 31;iiiii
+codex;11 11 11 11;iiii
+codex;11 11 11 11 10;iiiii
+codex;11 11 11 11 11;iiiii
+codex;11 11 11 11 30;iiiii
+codex;11 11 11 11 31;iiiii
+codex;11 11 11 30;iiii
+codex;11 11 11 30 10;iiiii
+codex;11 11 11 30 11;iiiii
+codex;11 11 11 30 30;iiiii
+codex;11 11 11 30 31;iiiii
+codex;11 11 11 31;iiii
+codex;11 11 11 31 10;iiiii
+codex;11 11 11 31 11;iiiii
+codex;11 11 11 31 30;iiiii
+codex;11 11 11 31 31;iiiii
+codex;11 11 30;iii
+codex;11 11 30 10;iiii
+codex;11 11 30 10 10;iiiii
+codex;11 11 30 10 11;iiiii
+codex;11 11 30 10 30;iiiii
+codex;11 11 30 10 31;iiiii
+codex;11 11 30 11;iiii
+codex;11 11 30 11 10;iiiii
+codex;11 11 30 11 11;iiiii
+codex;11 11 30 11 30;iiiii
+codex;11 11 30 11 31;iiiii
+codex;11 11 30 30;iiii
+codex;11 11 30 30 10;iiiii
+codex;11 11 30 30 11;iiiii
+codex;11 11 30 30 30;iiiii
+codex;11 11 30 30 31;iiiii
+codex;11 11 30 31;iiii
+codex;11 11 30 31 10;iiiii
+codex;11 11 30 31 11;iiiii
+codex;11 11 30 31 30;iiiii
+codex;11 11 30 31 31;iiiii
+codex;11 11 31;iii
+codex;11 11 31 10;iiii
+codex;11 11 31 10 10;iiiii
+codex;11 11 31 10 11;iiiii
+codex;11 11 31 10 30;iiiii
+codex;11 11 31 10 31;iiiii
+codex;11 11 31 11;iiii
+codex;11 11 31 11 10;iiiii
+codex;11 11 31 11 11;iiiii
+codex;11 11 31 11 30;iiiii
+codex;11 11 31 11 31;iiiii
+codex;11 11 31 30;iiii
+codex;11 11 31 30 10;iiiii
+codex;11 11 31 30 11;iiiii
+codex;11 11 31 30 30;iiiii
+codex;11 11 31 30 31;iiiii
+codex;11 11 31 31;iiii
+codex;11 11 31 31 10;iiiii
+codex;11 11 31 31 11;iiiii
+codex;11 11 31 31 30;iiiii
+codex;11 11 31 31 31;iiiii
+codex;11 30;ii
+codex;11 30 10;iii
+codex;11 30 10 10;iiii
+codex;11 30 10 10 10;iiiii
+codex;11 30 10 10 11;iiiii
+codex;11 30 10 10 30;iiiii
+codex;11 30 10 10 31;iiiii
+codex;11 30 10 11;iiii
+codex;11 30 10 11 10;iiiii
+codex;11 30 10 11 11;iiiii
+codex;11 30 10 11 30;iiiii
+codex;11 30 10 11 31;iiiii
+codex;11 30 10 30;iiii
+codex;11 30 10 30 10;iiiii
+codex;11 30 10 30 11;iiiii
+codex;11 30 10 30 30;iiiii
+codex;11 30 10 30 31;iiiii
+codex;11 30 10 31;iiii
+codex;11 30 10 31 10;iiiii
+codex;11 30 10 31 11;iiiii
+codex;11 30 10 31 30;iiiii
+codex;11 30 10 31 31;iiiii
+codex;11 30 11;iii
+codex;11 30 11 10;iiii
+codex;11 30 11 10 10;iiiii
+codex;11 30 11 10 11;iiiii
+codex;11 30 11 10 30;iiiii
+codex;11 30 11 10 31;iiiii
+codex;11 30 11 11;iiii
+codex;11 30 11 11 10;iiiii
+codex;11 30 11 11 11;iiiii
+codex;11 30 11 11 30;iiiii
+codex;11 30 11 11 31;iiiii
+codex;11 30 11 30;iiii
+codex;11 30 11 30 10;iiiii
+codex;11 30 11 30 11;iiiii
+codex;11 30 11 30 30;iiiii
+codex;11 30 11 30 31;iiiii
+codex;11 30 11 31;iiii
+codex;11 30 11 31 10;iiiii
+codex;11 30 11 31 11;iiiii
+codex;11 30 11 31 30;iiiii
+codex;11 30 11 31 31;iiiii
+codex;11 30 30;iii
+codex;11 30 30 10;iiii
+codex;11 30 30 10 10;iiiii
+codex;11 30 30 10 11;iiiii
+codex;11 30 30 10 30;iiiii
+codex;11 30 30 10 31;iiiii
+codex;11 30 30 11;iiii
+codex;11 30 30 11 10;iiiii
+codex;11 30 30 11 11;iiiii
+codex;11 30 30 11 30;iiiii
+codex;11 30 30 11 31;iiiii
+codex;11 30 30 30;iiii
+codex;11 30 30 30 10;iiiii
+codex;11 30 30 30 11;iiiii
+codex;11 30 30 30 30;iiiii
+codex;11 30 30 30 31;iiiii
+codex;11 30 30 31;iiii
+codex;11 30 30 31 10;iiiii
+codex;11 30 30 31 11;iiiii
+codex;11 30 30 31 30;iiiii
+codex;11 30 30 31 31;iiiii
+codex;11 30 31;iii
+codex;11 30 31 10;iiii
+codex;11 30 31 10 10;iiiii
+codex;11 30 31 10 11;iiiii
+codex;11 30 31 10 30;iiiii
+codex;11 30 31 10 31;iiiii
+codex;11 30 31 11;iiii
+codex;11 30 31 11 10;iiiii
+codex;11 30 31 11 11;iiiii
+codex;11 30 31 11 30;iiiii
+codex;11 30 31 11 31;iiiii
+codex;11 30 31 30;iiii
+codex;11 30 31 30 10;iiiii
+codex;11 30 31 30 11;iiiii
+codex;11 30 31 30 30;iiiii
+codex;11 30 31 30 31;iiiii
+codex;11 30 31 31;iiii
+codex;11 30 31 31 10;iiiii
+codex;11 30 31 31 11;iiiii
+codex;11 30 31 31 30;iiiii
+codex;11 30 31 31 31;iiiii
+codex;11 31;ii
+codex;11 31 10;iii
+codex;11 31 10 10;iiii
+codex;11 31 10 10 10;iiiii
+codex;11 31 10 10 11;iiiii
+codex;11 31 10 10 30;iiiii
+codex;11 31 10 10 31;iiiii
+codex;11 31 10 11;iiii
+codex;11 31 10 11 10;iiiii
+codex;11 31 10 11 11;iiiii
+codex;11 31 10 11 30;iiiii
+codex;11 31 10 11 31;iiiii
+codex;11 31 10 30;iiii
+codex;11 31 10 30 10;iiiii
+codex;11 31 10 30 11;iiiii
+codex;11 31 10 30 30;iiiii
+codex;11 31 10 30 31;iiiii
+codex;11 31 10 31;iiii
+codex;11 31 10 31 10;iiiii
+codex;11 31 10 31 11;iiiii
+codex;11 31 10 31 30;iiiii
+codex;11 31 10 31 31;iiiii
+codex;11 31 11;iii
+codex;11 31 11 10;iiii
+codex;11 31 11 10 10;iiiii
+codex;11 31 11 10 11;iiiii
+codex;11 31 11 10 30;iiiii
+codex;11 31 11 10 31;iiiii
+codex;11 31 11 11;iiii
+codex;11 31 11 11 10;iiiii
+codex;11 31 11 11 11;iiiii
+codex;11 31 11 11 30;iiiii
+codex;11 31 11 11 31;iiiii
+codex;11 31 11 30;iiii
+codex;11 31 11 30 10;iiiii
+codex;11 31 11 30 11;iiiii
+codex;11 31 11 30 30;iiiii
+codex;11 31 11 30 31;iiiii
+codex;11 31 11 31;iiii
+codex;11 31 11 31 10;iiiii
+codex;11 31 11 31 11;iiiii
+codex;11 31 11 31 30;iiiii
+codex;11 31 11 31 31;iiiii
+codex;11 31 30;iii
+codex;11 31 30 10;iiii
+codex;11 31 30 10 10;iiiii
+codex;11 31 30 10 11;iiiii
+codex;11 31 30 10 30;iiiii
+codex;11 31 30 10 31;iiiii
+codex;11 31 30 11;iiii
+codex;11 31 30 11 10;iiiii
+codex;11 31 30 11 11;iiiii
+codex;11 31 30 11 30;iiiii
+codex;11 31 30 11 31;iiiii
+codex;11 31 30 30;iiii
+codex;11 31 30 30 10;iiiii
+codex;11 31 30 30 11;iiiii
+codex;11 31 30 30 30;iiiii
+codex;11 31 30 30 31;iiiii
+codex;11 31 30 31;iiii
+codex;11 31 30 31 10;iiiii
+codex;11 31 30 31 11;iiiii
+codex;11 31 30 31 30;iiiii
+codex;11 31 30 31 31;iiiii
+codex;11 31 31;iii
+codex;11 31 31 10;iiii
+codex;11 31 31 10 10;iiiii
+codex;11 31 31 10 11;iiiii
+codex;11 31 31 10 30;iiiii
+codex;11 31 31 10 31;iiiii
+codex;11 31 31 11;iiii
+codex;11 31 31 11 10;iiiii
+codex;11 31 31 11 11;iiiii
+codex;11 31 31 11 30;iiiii
+codex;11 31 31 11 31;iiiii
+codex;11 31 31 30;iiii
+codex;11 31 31 30 10;iiiii
+codex;11 31 31 30 11;iiiii
+codex;11 31 31 30 30;iiiii
+codex;11 31 31 30 31;iiiii
+codex;11 31 31 31;iiii
+codex;11 31 31 31 10;iiiii
+codex;11 31 31 31 11;iiiii
+codex;11 31 31 31 30;iiiii
+codex;11 31 31 31 31;iiiii
+codex;30;i
+codex;30 10;ii
+codex;30 10 10;iii
+codex;30 10 10 10;iiii
+codex;30 10 10 10 10;iiiii
+codex;30 10 10 10 11;iiiii
+codex;30 10 10 10 30;iiiii
+codex;30 10 10 10 31;iiiii
+codex;30 10 10 11;iiii
+codex;30 10 10 11 10;iiiii
+codex;30 10 10 11 11;iiiii
+codex;30 10 10 11 30;iiiii
+codex;30 10 10 11 31;iiiii
+codex;30 10 10 30;iiii
+codex;30 10 10 30 10;iiiii
+codex;30 10 10 30 11;iiiii
+codex;30 10 10 30 30;iiiii
+codex;30 10 10 30 31;iiiii
+codex;30 10 10 31;iiii
+codex;30 10 10 31 10;iiiii
+codex;30 10 10 31 11;iiiii
+codex;30 10 10 31 30;iiiii
+codex;30 10 10 31 31;iiiii
+codex;30 10 11;iii
+codex;30 10 11 10;iiii
+codex;30 10 11 10 10;iiiii
+codex;30 10 11 10 11;iiiii
+codex;30 10 11 10 30;iiiii
+codex;30 10 11 10 31;iiiii
+codex;30 10 11 11;iiii
+codex;30 10 11 11 10;iiiii
+codex;30 10 11 11 11;iiiii
+codex;30 10 11 11 30;iiiii
+codex;30 10 11 11 31;iiiii
+codex;30 10 11 30;iiii
+codex;30 10 11 30 10;iiiii
+codex;30 10 11 30 11;iiiii
+codex;30 10 11 30 30;iiiii
+codex;30 10 11 30 31;iiiii
+codex;30 10 11 31;iiii
+codex;30 10 11 31 10;iiiii
+codex;30 10 11 31 11;iiiii
+codex;30 10 11 31 30;iiiii
+codex;30 10 11 31 31;iiiii
+codex;30 10 30;iii
+codex;30 10 30 10;iiii
+codex;30 10 30 10 10;iiiii
+codex;30 10 30 10 11;iiiii
+codex;30 10 30 10 30;iiiii
+codex;30 10 30 10 31;iiiii
+codex;30 10 30 11;iiii
+codex;30 10 30 11 10;iiiii
+codex;30 10 30 11 11;iiiii
+codex;30 10 30 11 30;iiiii
+codex;30 10 30 11 31;iiiii
+codex;30 10 30 30;iiii
+codex;30 10 30 30 10;iiiii
+codex;30 10 30 30 11;iiiii
+codex;30 10 30 30 30;iiiii
+codex;30 10 30 30 31;iiiii
+codex;30 10 30 31;iiii
+codex;30 10 30 31 10;iiiii
+codex;30 10 30 31 11;iiiii
+codex;30 10 30 31 30;iiiii
+codex;30 10 30 31 31;iiiii
+codex;30 10 31;iii
+codex;30 10 31 10;iiii
+codex;30 10 31 10 10;iiiii
+codex;30 10 31 10 11;iiiii
+codex;30 10 31 10 30;iiiii
+codex;30 10 31 10 31;iiiii
+codex;30 10 31 11;iiii
+codex;30 10 31 11 10;iiiii
+codex;30 10 31 11 11;iiiii
+codex;30 10 31 11 30;iiiii
+codex;30 10 31 11 31;iiiii
+codex;30 10 31 30;iiii
+codex;30 10 31 30 10;iiiii
+codex;30 10 31 30 11;iiiii
+codex;30 10 31 30 30;iiiii
+codex;30 10 31 30 31;iiiii
+codex;30 10 31 31;iiii
+codex;30 10 31 31 10;iiiii
+codex;30 10 31 31 11;iiiii
+codex;30 10 31 31 30;iiiii
+codex;30 10 31 31 31;iiiii
+codex;30 11;ii
+codex;30 11 10;iii
+codex;30 11 10 10;iiii
+codex;30 11 10 10 10;iiiii
+codex;30 11 10 10 11;iiiii
+codex;30 11 10 10 30;iiiii
+codex;30 11 10 10 31;iiiii
+codex;30 11 10 11;iiii
+codex;30 11 10 11 10;iiiii
+codex;30 11 10 11 11;iiiii
+codex;30 11 10 11 30;iiiii
+codex;30 11 10 11 31;iiiii
+codex;30 11 10 30;iiii
+codex;30 11 10 30 10;iiiii
+codex;30 11 10 30 11;iiiii
+codex;30 11 10 30 30;iiiii
+codex;30 11 10 30 31;iiiii
+codex;30 11 10 31;iiii
+codex;30 11 10 31 10;iiiii
+codex;30 11 10 31 11;iiiii
+codex;30 11 10 31 30;iiiii
+codex;30 11 10 31 31;iiiii
+codex;30 11 11;iii
+codex;30 11 11 10;iiii
+codex;30 11 11 10 10;iiiii
+codex;30 11 11 10 11;iiiii
+codex;30 11 11 10 30;iiiii
+codex;30 11 11 10 31;iiiii
+codex;30 11 11 11;iiii
+codex;30 11 11 11 10;iiiii
+codex;30 11 11 11 11;iiiii
+codex;30 11 11 11 30;iiiii
+codex;30 11 11 11 31;iiiii
+codex;30 11 11 30;iiii
+codex;30 11 11 30 10;iiiii
+codex;30 11 11 30 11;iiiii
+codex;30 11 11 30 30;iiiii
+codex;30 11 11 30 31;iiiii
+codex;30 11 11 31;iiii
+codex;30 11 11 31 10;iiiii
+codex;30 11 11 31 11;iiiii
+codex;30 11 11 31 30;iiiii
+codex;30 11 11 31 31;iiiii
+codex;30 11 30;iii
+codex;30 11 30 10;iiii
+codex;30 11 30 10 10;iiiii
+codex;30 11 30 10 11;iiiii
+codex;30 11 30 10 30;iiiii
+codex;30 11 30 10 31;iiiii
+codex;30 11 30 11;iiii
+codex;30 11 30 11 10;iiiii
+codex;30 11 30 11 11;iiiii
+codex;30 11 30 11 30;iiiii
+codex;30 11 30 11 31;iiiii
+codex;30 11 30 30;iiii
+codex;30 11 30 30 10;iiiii
+codex;30 11 30 30 11;iiiii
+codex;30 11 30 30 30;iiiii
+codex;30 11 30 30 31;iiiii
+codex;30 11 30 31;iiii
+codex;30 11 30 31 10;iiiii
+codex;30 11 30 31 11;iiiii
+codex;30 11 30 31 30;iiiii
+codex;30 11 30 31 31;iiiii
+codex;30 11 31;iii
+codex;30 11 31 10;iiii
+codex;30 11 31 10 10;iiiii
+codex;30 11 31 10 11;iiiii
+codex;30 11 31 10 30;iiiii
+codex;30 11 31 10 31;iiiii
+codex;30 11 31 11;iiii
+codex;30 11 31 11 10;iiiii
+codex;30 11 31 11 11;iiiii
+codex;30 11 31 11 30;iiiii
+codex;30 11 31 11 31;iiiii
+codex;30 11 31 30;iiii
+codex;30 11 31 30 10;iiiii
+codex;30 11 31 30 11;iiiii
+codex;30 11 31 30 30;iiiii
+codex;30 11 31 30 31;iiiii
+codex;30 11 31 31;iiii
+codex;30 11 31 31 10;iiiii
+codex;30 11 31 31 11;iiiii
+codex;30 11 31 31 30;iiiii
+codex;30 11 31 31 31;iiiii
+codex;30 30;ii
+codex;30 30 10;iii
+codex;30 30 10 10;iiii
+codex;30 30 10 10 10;iiiii
+codex;30 30 10 10 11;iiiii
+codex;30 30 10 10 30;iiiii
+codex;30 30 10 10 31;iiiii
+codex;30 30 10 11;iiii
+codex;30 30 10 11 10;iiiii
+codex;30 30 10 11 11;iiiii
+codex;30 30 10 11 30;iiiii
+codex;30 30 10 11 31;iiiii
+codex;30 30 10 30;iiii
+codex;30 30 10 30 10;iiiii
+codex;30 30 10 30 11;iiiii
+codex;30 30 10 30 30;iiiii
+codex;30 30 10 30 31;iiiii
+codex;30 30 10 31;iiii
+codex;30 30 10 31 10;iiiii
+codex;30 30 10 31 11;iiiii
+codex;30 30 10 31 30;iiiii
+codex;30 30 10 31 31;iiiii
+codex;30 30 11;iii
+codex;30 30 11 10;iiii
+codex;30 30 11 10 10;iiiii
+codex;30 30 11 10 11;iiiii
+codex;30 30 11 10 30;iiiii
+codex;30 30 11 10 31;iiiii
+codex;30 30 11 11;iiii
+codex;30 30 11 11 10;iiiii
+codex;30 30 11 11 11;iiiii
+codex;30 30 11 11 30;iiiii
+codex;30 30 11 11 31;iiiii
+codex;30 30 11 30;iiii
+codex;30 30 11 30 10;iiiii
+codex;30 30 11 30 11;iiiii
+codex;30 30 11 30 30;iiiii
+codex;30 30 11 30 31;iiiii
+codex;30 30 11 31;iiii
+codex;30 30 11 31 10;iiiii
+codex;30 30 11 31 11;iiiii
+codex;30 30 11 31 30;iiiii
+codex;30 30 11 31 31;iiiii
+codex;30 30 30;iii
+codex;30 30 30 10;iiii
+codex;30 30 30 10 10;iiiii
+codex;30 30 30 10 11;iiiii
+codex;30 30 30 10 30;iiiii
+codex;30 30 30 10 31;iiiii
+codex;30 30 30 11;iiii
+codex;30 30 30 11 10;iiiii
+codex;30 30 30 11 11;iiiii
+codex;30 30 30 11 30;iiiii
+codex;30 30 30 11 31;iiiii
+codex;30 30 30 30;iiii
+codex;30 30 30 30 10;iiiii
+codex;30 30 30 30 11;iiiii
+codex;30 30 30 30 30;iiiii
+codex;30 30 30 30 31;iiiii
+codex;30 30 30 31;iiii
+codex;30 30 30 31 10;iiiii
+codex;30 30 30 31 11;iiiii
+codex;30 30 30 31 30;iiiii
+codex;30 30 30 31 31;iiiii
+codex;30 30 31;iii
+codex;30 30 31 10;iiii
+codex;30 30 31 10 10;iiiii
+codex;30 30 31 10 11;iiiii
+codex;30 30 31 10 30;iiiii
+codex;30 30 31 10 31;iiiii
+codex;30 30 31 11;iiii
+codex;30 30 31 11 10;iiiii
+codex;30 30 31 11 11;iiiii
+codex;30 30 31 11 30;iiiii
+codex;30 30 31 11 31;iiiii
+codex;30 30 31 30;iiii
+codex;30 30 31 30 10;iiiii
+codex;30 30 31 30 11;iiiii
+codex;30 30 31 30 30;iiiii
+codex;30 30 31 30 31;iiiii
+codex;30 30 31 31;iiii
+codex;30 30 31 31 10;iiiii
+codex;30 30 31 31 11;iiiii
+codex;30 30 31 31 30;iiiii
+codex;30 30 31 31 31;iiiii
+codex;30 31;ii
+codex;30 31 10;iii
+codex;30 31 10 10;iiii
+codex;30 31 10 10 10;iiiii
+codex;30 31 10 10 11;iiiii
+codex;30 31 10 10 30;iiiii
+codex;30 31 10 10 31;iiiii
+codex;30 31 10 11;iiii
+codex;30 31 10 11 10;iiiii
+codex;30 31 10 11 11;iiiii
+codex;30 31 10 11 30;iiiii
+codex;30 31 10 11 31;iiiii
+codex;30 31 10 30;iiii
+codex;30 31 10 30 10;iiiii
+codex;30 31 10 30 11;iiiii
+codex;30 31 10 30 30;iiiii
+codex;30 31 10 30 31;iiiii
+codex;30 31 10 31;iiii
+codex;30 31 10 31 10;iiiii
+codex;30 31 10 31 11;iiiii
+codex;30 31 10 31 30;iiiii
+codex;30 31 10 31 31;iiiii
+codex;30 31 11;iii
+codex;30 31 11 10;iiii
+codex;30 31 11 10 10;iiiii
+codex;30 31 11 10 11;iiiii
+codex;30 31 11 10 30;iiiii
+codex;30 31 11 10 31;iiiii
+codex;30 31 11 11;iiii
+codex;30 31 11 11 10;iiiii
+codex;30 31 11 11 11;iiiii
+codex;30 31 11 11 30;iiiii
+codex;30 31 11 11 31;iiiii
+codex;30 31 11 30;iiii
+codex;30 31 11 30 10;iiiii
+codex;30 31 11 30 11;iiiii
+codex;30 31 11 30 30;iiiii
+codex;30 31 11 30 31;iiiii
+codex;30 31 11 31;iiii
+codex;30 31 11 31 10;iiiii
+codex;30 31 11 31 11;iiiii
+codex;30 31 11 31 30;iiiii
+codex;30 31 11 31 31;iiiii
+codex;30 31 30;iii
+codex;30 31 30 10;iiii
+codex;30 31 30 10 10;iiiii
+codex;30 31 30 10 11;iiiii
+codex;30 31 30 10 30;iiiii
+codex;30 31 30 10 31;iiiii
+codex;30 31 30 11;iiii
+codex;30 31 30 11 10;iiiii
+codex;30 31 30 11 11;iiiii
+codex;30 31 30 11 30;iiiii
+codex;30 31 30 11 31;iiiii
+codex;30 31 30 30;iiii
+codex;30 31 30 30 10;iiiii
+codex;30 31 30 30 11;iiiii
+codex;30 31 30 30 30;iiiii
+codex;30 31 30 30 31;iiiii
+codex;30 31 30 31;iiii
+codex;30 31 30 31 10;iiiii
+codex;30 31 30 31 11;iiiii
+codex;30 31 30 31 30;iiiii
+codex;30 31 30 31 31;iiiii
+codex;30 31 31;iii
+codex;30 31 31 10;iiii
+codex;30 31 31 10 10;iiiii
+codex;30 31 31 10 11;iiiii
+codex;30 31 31 10 30;iiiii
+codex;30 31 31 10 31;iiiii
+codex;30 31 31 11;iiii
+codex;30 31 31 11 10;iiiii
+codex;30 31 31 11 11;iiiii
+codex;30 31 31 11 30;iiiii
+codex;30 31 31 11 31;iiiii
+codex;30 31 31 30;iiii
+codex;30 31 31 30 10;iiiii
+codex;30 31 31 30 11;iiiii
+codex;30 31 31 30 30;iiiii
+codex;30 31 31 30 31;iiiii
+codex;30 31 31 31;iiii
+codex;30 31 31 31 10;iiiii
+codex;30 31 31 31 11;iiiii
+codex;30 31 31 31 30;iiiii
+codex;30 31 31 31 31;iiiii
+codex;31;i
+codex;31 10;ii
+codex;31 10 10;iii
+codex;31 10 10 10;iiii
+codex;31 10 10 10 10;iiiii
+codex;31 10 10 10 11;iiiii
+codex;31 10 10 10 30;iiiii
+codex;31 10 10 10 31;iiiii
+codex;31 10 10 11;iiii
+codex;31 10 10 11 10;iiiii
+codex;31 10 10 11 11;iiiii
+codex;31 10 10 11 30;iiiii
+codex;31 10 10 11 31;iiiii
+codex;31 10 10 30;iiii
+codex;31 10 10 30 10;iiiii
+codex;31 10 10 30 11;iiiii
+codex;31 10 10 30 30;iiiii
+codex;31 10 10 30 31;iiiii
+codex;31 10 10 31;iiii
+codex;31 10 10 31 10;iiiii
+codex;31 10 10 31 11;iiiii
+codex;31 10 10 31 30;iiiii
+codex;31 10 10 31 31;iiiii
+codex;31 10 11;iii
+codex;31 10 11 10;iiii
+codex;31 10 11 10 10;iiiii
+codex;31 10 11 10 11;iiiii
+codex;31 10 11 10 30;iiiii
+codex;31 10 11 10 31;iiiii
+codex;31 10 11 11;iiii
+codex;31 10 11 11 10;iiiii
+codex;31 10 11 11 11;iiiii
+codex;31 10 11 11 30;iiiii
+codex;31 10 11 11 31;iiiii
+codex;31 10 11 30;iiii
+codex;31 10 11 30 10;iiiii
+codex;31 10 11 30 11;iiiii
+codex;31 10 11 30 30;iiiii
+codex;31 10 11 30 31;iiiii
+codex;31 10 11 31;iiii
+codex;31 10 11 31 10;iiiii
+codex;31 10 11 31 11;iiiii
+codex;31 10 11 31 30;iiiii
+codex;31 10 11 31 31;iiiii
+codex;31 10 30;iii
+codex;31 10 30 10;iiii
+codex;31 10 30 10 10;iiiii
+codex;31 10 30 10 11;iiiii
+codex;31 10 30 10 30;iiiii
+codex;31 10 30 10 31;iiiii
+codex;31 10 30 11;iiii
+codex;31 10 30 11 10;iiiii
+codex;31 10 30 11 11;iiiii
+codex;31 10 30 11 30;iiiii
+codex;31 10 30 11 31;iiiii
+codex;31 10 30 30;iiii
+codex;31 10 30 30 10;iiiii
+codex;31 10 30 30 11;iiiii
+codex;31 10 30 30 30;iiiii
+codex;31 10 30 30 31;iiiii
+codex;31 10 30 31;iiii
+codex;31 10 30 31 10;iiiii
+codex;31 10 30 31 11;iiiii
+codex;31 10 30 31 30;iiiii
+codex;31 10 30 31 31;iiiii
+codex;31 10 31;iii
+codex;31 10 31 10;iiii
+codex;31 10 31 10 10;iiiii
+codex;31 10 31 10 11;iiiii
+codex;31 10 31 10 30;iiiii
+codex;31 10 31 10 31;iiiii
+codex;31 10 31 11;iiii
+codex;31 10 31 11 10;iiiii
+codex;31 10 31 11 11;iiiii
+codex;31 10 31 11 30;iiiii
+codex;31 10 31 11 31;iiiii
+codex;31 10 31 30;iiii
+codex;31 10 31 30 10;iiiii
+codex;31 10 31 30 11;iiiii
+codex;31 10 31 30 30;iiiii
+codex;31 10 31 30 31;iiiii
+codex;31 10 31 31;iiii
+codex;31 10 31 31 10;iiiii
+codex;31 10 31 31 11;iiiii
+codex;31 10 31 31 30;iiiii
+codex;31 10 31 31 31;iiiii
+codex;31 11;ii
+codex;31 11 10;iii
+codex;31 11 10 10;iiii
+codex;31 11 10 10 10;iiiii
+codex;31 11 10 10 11;iiiii
+codex;31 11 10 10 30;iiiii
+codex;31 11 10 10 31;iiiii
+codex;31 11 10 11;iiii
+codex;31 11 10 11 10;iiiii
+codex;31 11 10 11 11;iiiii
+codex;31 11 10 11 30;iiiii
+codex;31 11 10 11 31;iiiii
+codex;31 11 10 30;iiii
+codex;31 11 10 30 10;iiiii
+codex;31 11 10 30 11;iiiii
+codex;31 11 10 30 30;iiiii
+codex;31 11 10 30 31;iiiii
+codex;31 11 10 31;iiii
+codex;31 11 10 31 10;iiiii
+codex;31 11 10 31 11;iiiii
+codex;31 11 10 31 30;iiiii
+codex;31 11 10 31 31;iiiii
+codex;31 11 11;iii
+codex;31 11 11 10;iiii
+codex;31 11 11 10 10;iiiii
+codex;31 11 11 10 11;iiiii
+codex;31 11 11 10 30;iiiii
+codex;31 11 11 10 31;iiiii
+codex;31 11 11 11;iiii
+codex;31 11 11 11 10;iiiii
+codex;31 11 11 11 11;iiiii
+codex;31 11 11 11 30;iiiii
+codex;31 11 11 11 31;iiiii
+codex;31 11 11 30;iiii
+codex;31 11 11 30 10;iiiii
+codex;31 11 11 30 11;iiiii
+codex;31 11 11 30 30;iiiii
+codex;31 11 11 30 31;iiiii
+codex;31 11 11 31;iiii
+codex;31 11 11 31 10;iiiii
+codex;31 11 11 31 11;iiiii
+codex;31 11 11 31 30;iiiii
+codex;31 11 11 31 31;iiiii
+codex;31 11 30;iii
+codex;31 11 30 10;iiii
+codex;31 11 30 10 10;iiiii
+codex;31 11 30 10 11;iiiii
+codex;31 11 30 10 30;iiiii
+codex;31 11 30 10 31;iiiii
+codex;31 11 30 11;iiii
+codex;31 11 30 11 10;iiiii
+codex;31 11 30 11 11;iiiii
+codex;31 11 30 11 30;iiiii
+codex;31 11 30 11 31;iiiii
+codex;31 11 30 30;iiii
+codex;31 11 30 30 10;iiiii
+codex;31 11 30 30 11;iiiii
+codex;31 11 30 30 30;iiiii
+codex;31 11 30 30 31;iiiii
+codex;31 11 30 31;iiii
+codex;31 11 30 31 10;iiiii
+codex;31 11 30 31 11;iiiii
+codex;31 11 30 31 30;iiiii
+codex;31 11 30 31 31;iiiii
+codex;31 11 31;iii
+codex;31 11 31 10;iiii
+codex;31 11 31 10 10;iiiii
+codex;31 11 31 10 11;iiiii
+codex;31 11 31 10 30;iiiii
+codex;31 11 31 10 31;iiiii
+codex;31 11 31 11;iiii
+codex;31 11 31 11 10;iiiii
+codex;31 11 31 11 11;iiiii
+codex;31 11 31 11 30;iiiii
+codex;31 11 31 11 31;iiiii
+codex;31 11 31 30;iiii
+codex;31 11 31 30 10;iiiii
+codex;31 11 31 30 11;iiiii
+codex;31 11 31 30 30;iiiii
+codex;31 11 31 30 31;iiiii
+codex;31 11 31 31;iiii
+codex;31 11 31 31 10;iiiii
+codex;31 11 31 31 11;iiiii
+codex;31 11 31 31 30;iiiii
+codex;31 11 31 31 31;iiiii
+codex;31 30;ii
+codex;31 30 10;iii
+codex;31 30 10 10;iiii
+codex;31 30 10 10 10;iiiii
+codex;31 30 10 10 11;iiiii
+codex;31 30 10 10 30;iiiii
+codex;31 30 10 10 31;iiiii
+codex;31 30 10 11;iiii
+codex;31 30 10 11 10;iiiii
+codex;31 30 10 11 11;iiiii
+codex;31 30 10 11 30;iiiii
+codex;31 30 10 11 31;iiiii
+codex;31 30 10 30;iiii
+codex;31 30 10 30 10;iiiii
+codex;31 30 10 30 11;iiiii
+codex;31 30 10 30 30;iiiii
+codex;31 30 10 30 31;iiiii
+codex;31 30 10 31;iiii
+codex;31 30 10 31 10;iiiii
+codex;31 30 10 31 11;iiiii
+codex;31 30 10 31 30;iiiii
+codex;31 30 10 31 31;iiiii
+codex;31 30 11;iii
+codex;31 30 11 10;iiii
+codex;31 30 11 10 10;iiiii
+codex;31 30 11 10 11;iiiii
+codex;31 30 11 10 30;iiiii
+codex;31 30 11 10 31;iiiii
+codex;31 30 11 11;iiii
+codex;31 30 11 11 10;iiiii
+codex;31 30 11 11 11;iiiii
+codex;31 30 11 11 30;iiiii
+codex;31 30 11 11 31;iiiii
+codex;31 30 11 30;iiii
+codex;31 30 11 30 10;iiiii
+codex;31 30 11 30 11;iiiii
+codex;31 30 11 30 30;iiiii
+codex;31 30 11 30 31;iiiii
+codex;31 30 11 31;iiii
+codex;31 30 11 31 10;iiiii
+codex;31 30 11 31 11;iiiii
+codex;31 30 11 31 30;iiiii
+codex;31 30 11 31 31;iiiii
+codex;31 30 30;iii
+codex;31 30 30 10;iiii
+codex;31 30 30 10 10;iiiii
+codex;31 30 30 10 11;iiiii
+codex;31 30 30 10 30;iiiii
+codex;31 30 30 10 31;iiiii
+codex;31 30 30 11;iiii
+codex;31 30 30 11 10;iiiii
+codex;31 30 30 11 11;iiiii
+codex;31 30 30 11 30;iiiii
+codex;31 30 30 11 31;iiiii
+codex;31 30 30 30;iiii
+codex;31 30 30 30 10;iiiii
+codex;31 30 30 30 11;iiiii
+codex;31 30 30 30 30;iiiii
+codex;31 30 30 30 31;iiiii
+codex;31 30 30 31;iiii
+codex;31 30 30 31 10;iiiii
+codex;31 30 30 31 11;iiiii
+codex;31 30 30 31 30;iiiii
+codex;31 30 30 31 31;iiiii
+codex;31 30 31;iii
+codex;31 30 31 10;iiii
+codex;31 30 31 10 10;iiiii
+codex;31 30 31 10 11;iiiii
+codex;31 30 31 10 30;iiiii
+codex;31 30 31 10 31;iiiii
+codex;31 30 31 11;iiii
+codex;31 30 31 11 10;iiiii
+codex;31 30 31 11 11;iiiii
+codex;31 30 31 11 30;iiiii
+codex;31 30 31 11 31;iiiii
+codex;31 30 31 30;iiii
+codex;31 30 31 30 10;iiiii
+codex;31 30 31 30 11;iiiii
+codex;31 30 31 30 30;iiiii
+codex;31 30 31 30 31;iiiii
+codex;31 30 31 31;iiii
+codex;31 30 31 31 10;iiiii
+codex;31 30 31 31 11;iiiii
+codex;31 30 31 31 30;iiiii
+codex;31 30 31 31 31;iiiii
+codex;31 31;ii
+codex;31 31 10;iii
+codex;31 31 10 10;iiii
+codex;31 31 10 10 10;iiiii
+codex;31 31 10 10 11;iiiii
+codex;31 31 10 10 30;iiiii
+codex;31 31 10 10 31;iiiii
+codex;31 31 10 11;iiii
+codex;31 31 10 11 10;iiiii
+codex;31 31 10 11 11;iiiii
+codex;31 31 10 11 30;iiiii
+codex;31 31 10 11 31;iiiii
+codex;31 31 10 30;iiii
+codex;31 31 10 30 10;iiiii
+codex;31 31 10 30 11;iiiii
+codex;31 31 10 30 30;iiiii
+codex;31 31 10 30 31;iiiii
+codex;31 31 10 31;iiii
+codex;31 31 10 31 10;iiiii
+codex;31 31 10 31 11;iiiii
+codex;31 31 10 31 30;iiiii
+codex;31 31 10 31 31;iiiii
+codex;31 31 11;iii
+codex;31 31 11 10;iiii
+codex;31 31 11 10 10;iiiii
+codex;31 31 11 10 11;iiiii
+codex;31 31 11 10 30;iiiii
+codex;31 31 11 10 31;iiiii
+codex;31 31 11 11;iiii
+codex;31 31 11 11 10;iiiii
+codex;31 31 11 11 11;iiiii
+codex;31 31 11 11 30;iiiii
+codex;31 31 11 11 31;iiiii
+codex;31 31 11 30;iiii
+codex;31 31 11 30 10;iiiii
+codex;31 31 11 30 11;iiiii
+codex;31 31 11 30 30;iiiii
+codex;31 31 11 30 31;iiiii
+codex;31 31 11 31;iiii
+codex;31 31 11 31 10;iiiii
+codex;31 31 11 31 11;iiiii
+codex;31 31 11 31 30;iiiii
+codex;31 31 11 31 31;iiiii
+codex;31 31 30;iii
+codex;31 31 30 10;iiii
+codex;31 31 30 10 10;iiiii
+codex;31 31 30 10 11;iiiii
+codex;31 31 30 10 30;iiiii
+codex;31 31 30 10 31;iiiii
+codex;31 31 30 11;iiii
+codex;31 31 30 11 10;iiiii
+codex;31 31 30 11 11;iiiii
+codex;31 31 30 11 30;iiiii
+codex;31 31 30 11 31;iiiii
+codex;31 31 30 30;iiii
+codex;31 31 30 30 10;iiiii
+codex;31 31 30 30 11;iiiii
+codex;31 31 30 30 30;iiiii
+codex;31 31 30 30 31;iiiii
+codex;31 31 30 31;iiii
+codex;31 31 30 31 10;iiiii
+codex;31 31 30 31 11;iiiii
+codex;31 31 30 31 30;iiiii
+codex;31 31 30 31 31;iiiii
+codex;31 31 31;iii
+codex;31 31 31 10;iiii
+codex;31 31 31 10 10;iiiii
+codex;31 31 31 10 11;iiiii
+codex;31 31 31 10 30;iiiii
+codex;31 31 31 10 31;iiiii
+codex;31 31 31 11;iiii
+codex;31 31 31 11 10;iiiii
+codex;31 31 31 11 11;iiiii
+codex;31 31 31 11 30;iiiii
+codex;31 31 31 11 31;iiiii
+codex;31 31 31 30;iiii
+codex;31 31 31 30 10;iiiii
+codex;31 31 31 30 11;iiiii
+codex;31 31 31 30 30;iiiii
+codex;31 31 31 30 31;iiiii
+codex;31 31 31 31;iiii
+codex;31 31 31 31 10;iiiii
+codex;31 31 31 31 11;iiiii
+codex;31 31 31 31 30;iiiii
+codex;31 31 31 31 31;iiiii

@@ -28,5 +28,6 @@ pub(crate) fn manifest_for(agent: AgentKind) -> Result<Manifest, ClassifyError> 
         AgentKind::Codex => codex::manifest(),
         AgentKind::OpenCode => opencode::manifest(),
         AgentKind::Pi => pi::manifest(),
+        AgentKind::Other => Manifest::new(AgentKind::Other, 15, None, Vec::new(), Vec::new()),
     }
 }

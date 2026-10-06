@@ -26,6 +26,16 @@ A tmux endpoint belongs to a Flight host; neither localhost nor the default tmux
 - `flight-control` (not yet created) routes an operation on a `PaneRef` to the runner for its host.
 - Phasing: local explicit socket (done), SSH, measure, then decide on a `flight-node` daemon and control-mode streaming. No network daemon until then.
 
+## Single-host semantics (frozen at parity with Fleet)
+
+`flight-classify` is the whole observation-to-state path for one host:
+
+    Observation -> classify (rules) -> fuse (hook/event/scrape/title) -> resolve (previous + evidence + time)
+
+`resolve` is a pure function of `ResolveInput { previous, evidence, glyph_seen, idle_secs }`; the caller owns the per-pane `Tracking`. Hook-less panes need it for the glyph debounce and for synthesizing Done when a turn finishes while the user is elsewhere. Parity with Fleet is checked by differential goldens generated from Fleet's own code (`tools/gen_*_golden.mjs`).
+
+Consequence for distribution: `Tracking` is state that must live somewhere. As in Fleet it is in-memory and a cold start forgets a pending Done. `flight-control` must decide whether Tracking lives with the central dashboard (loses Done on restart, simplest) or with a per-host node (survives dashboard restarts, needs a protocol). That decision is deferred; nothing here assumes either.
+
 ## Why not fork tms
 
 tms is one crate with files well over the 200-line threshold, and is repo-centric. Fresh crates fit the workspace rules and keep copied code, and so license obligations, minimal.

@@ -20,6 +20,7 @@ mod fuse;
 mod manifest;
 mod observation;
 mod refine;
+mod resolve;
 mod rule;
 mod rule_id;
 mod screen;
@@ -36,6 +37,9 @@ pub use fuse::{
 pub use manifest::Manifest;
 pub use observation::Observation;
 pub use refine::refine_title_with_screen;
+pub use resolve::{
+    prune_tracking, resolve, Provenance, ResolveInput, ResolvedState, Tracking, DEFAULT_IDLE_SECS,
+};
 pub use rule::Rule;
 pub use rule_id::{RuleId, PROMPT_MARKER_RULE_ID};
 pub use screen::classify_screen;

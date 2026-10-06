@@ -7,4 +7,7 @@ pub enum AgentKind {
     Codex,
     OpenCode,
     Pi,
+    /// Any other agent (aider, gemini, ...). Has no detection manifest: its screen and
+    /// title never classify, matching Fleet's empty manifest for unknown agents.
+    Other,
 }

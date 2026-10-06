@@ -15,3 +15,5 @@ Adopted from mcp-re:
 Build: `cargo build`, `cargo test`, `cargo clippy --all-targets -- -D warnings`. Bazel is planned, not yet set up.
 
 Licensing: any copied/ported upstream code needs its MIT notice in `THIRD_PARTY.md`.
+
+Tmux endpoints are explicit: never assume the default tmux server or localhost. Tests use a private `-L flight-test-<pid>` socket (see `flight-tmux/tests/live.rs`).

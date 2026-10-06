@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use crate::TmuxError;
+use crate::{TmuxEndpoint, TmuxError};
 use std::process::Command;
 
 /// Captured result of one tmux invocation.
@@ -14,13 +14,22 @@ pub trait TmuxRunner {
     fn run(&self, args: &[&str]) -> Result<TmuxOutput, TmuxError>;
 }
 
-/// Runs the real `tmux` binary.
-#[derive(Debug, Default, Clone)]
-pub struct SystemRunner;
+/// Runs the real `tmux` binary against one explicit endpoint.
+#[derive(Debug, Clone)]
+pub struct SystemRunner {
+    endpoint: TmuxEndpoint,
+}
+
+impl SystemRunner {
+    pub fn new(endpoint: TmuxEndpoint) -> Self {
+        Self { endpoint }
+    }
+}
 
 impl TmuxRunner for SystemRunner {
     fn run(&self, args: &[&str]) -> Result<TmuxOutput, TmuxError> {
         let out = Command::new("tmux")
+            .args(self.endpoint.args())
             .args(args)
             .output()
             .map_err(TmuxError::Spawn)?;

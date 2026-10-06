@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: MIT
 
-use crate::{parse_panes_output, PaneInfo, SystemRunner, TmuxError, TmuxRunner, PANE_FORMAT};
+use crate::{
+    parse_panes_output, PaneInfo, SystemRunner, TmuxEndpoint, TmuxError, TmuxRunner, PANE_FORMAT,
+};
 
 /// High-level tmux operations over a [`TmuxRunner`].
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct Tmux<R = SystemRunner> {
     runner: R,
 }
 
 impl Tmux<SystemRunner> {
-    pub fn new() -> Self {
+    pub fn new(endpoint: TmuxEndpoint) -> Self {
         Self {
-            runner: SystemRunner,
+            runner: SystemRunner::new(endpoint),
         }
     }
 }
@@ -65,6 +67,11 @@ impl<R: TmuxRunner> Tmux<R> {
         self.runner
             .run(&["kill-session", "-t", &exact(name)])
             .map(drop)
+    }
+
+    /// Stop the whole server, killing every session on it.
+    pub fn kill_server(&self) -> Result<(), TmuxError> {
+        self.runner.run(&["kill-server"]).map(drop)
     }
 
     /// Create a detached session rooted at `dir`.

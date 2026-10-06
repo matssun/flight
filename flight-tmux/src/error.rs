@@ -9,6 +9,8 @@ pub enum TmuxError {
     Spawn(std::io::Error),
     /// tmux ran and exited non-zero (e.g. no server running).
     Failed { code: Option<i32>, stderr: String },
+    /// A socket name that is empty or contains a path separator.
+    InvalidEndpoint(String),
 }
 
 impl fmt::Display for TmuxError {
@@ -19,6 +21,7 @@ impl fmt::Display for TmuxError {
                 code: Some(c),
                 stderr,
             } => write!(f, "tmux exited {c}: {stderr}"),
+            Self::InvalidEndpoint(n) => write!(f, "invalid tmux socket name: {n:?}"),
             Self::Failed { code: None, stderr } => write!(f, "tmux killed by signal: {stderr}"),
         }
     }

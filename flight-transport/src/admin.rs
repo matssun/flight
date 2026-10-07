@@ -11,6 +11,8 @@
 //! trust                         -> ok, then `peer <id> <role> <enabled|disabled> <name>` lines
 //! revoke <id>                   -> ok
 //! status                        -> ok nodes=<n> backlog=<n>
+//! nodes                         -> ok, then `node <id> <status> panes=<n> <name>` lines
+//! forget <id|name>              -> ok (a disconnected node only; trust is untouched)
 //! ```
 
 use crate::{ServerControl, TransportError};
@@ -113,6 +115,46 @@ fn run(line: &str, control: &ServerControl, advertise: &str) -> Result<String, S
             let id = Fingerprint::parse(id).map_err(|e| e.to_string())?;
             control.revoke(&id).map_err(|e| e.to_string())?;
             Ok(String::new())
+        }
+        Some("nodes") => {
+            let lines: Vec<String> = control
+                .fleet_snapshot()
+                .nodes
+                .iter()
+                .map(|n| {
+                    let status = flight_proto::NodeStatusCode::try_from(n.status)
+                        .map_or_else(|_| "unknown".to_owned(), |s| format!("{s:?}"));
+                    format!(
+                        "node {} {} panes={} {}",
+                        n.node_id,
+                        status,
+                        n.panes.len(),
+                        n.display_name
+                    )
+                })
+                .collect();
+            Ok(lines.join("\n"))
+        }
+        Some("forget") => {
+            let which = words.next().ok_or("forget needs a node id or name")?;
+            let nodes = control.fleet_snapshot().nodes;
+            let by_id: Vec<_> = nodes.iter().filter(|n| n.node_id == which).collect();
+            let by_name: Vec<_> = nodes.iter().filter(|n| n.display_name == which).collect();
+            let node = match (by_id.as_slice(), by_name.as_slice()) {
+                ([n], _) => *n,
+                ([], [n]) => *n,
+                ([], []) => return Err(format!("no node {which:?}")),
+                _ => {
+                    return Err(format!(
+                        "{which:?} matches several nodes; use the node id from `node list`"
+                    ))
+                }
+            };
+            control.forget_node(&node.node_id).map_err(|e| match e {
+                TransportError::Refused(why) => why,
+                other => other.to_string(),
+            })?;
+            Ok(format!("forgot {} ({})", node.node_id, node.display_name))
         }
         Some("status") => Ok(format!(
             "nodes={} backlog={}",

@@ -139,6 +139,19 @@ impl ServerControl {
         save(&s)
     }
 
+    /// Forget a disconnected node: remove its last-known image from the fleet and tell every
+    /// UI. Separate from [`revoke`](Self::revoke): trust is untouched, so a trusted node that
+    /// connects again reappears fresh. Refused while the node has a live connection.
+    pub fn forget_node(&self, node_id: &str) -> Result<(), TransportError> {
+        let mut s = lock(&self.state);
+        let fx = s
+            .core
+            .forget_node(&flight_state::HostId::new(node_id))
+            .map_err(|e| TransportError::Refused(e.to_string()))?;
+        s.dispatch(fx);
+        Ok(())
+    }
+
     /// Revoke an identity: disable its entry and drop its live connections.
     pub fn revoke(&self, id: &Fingerprint) -> Result<(), TransportError> {
         let mut s = lock(&self.state);

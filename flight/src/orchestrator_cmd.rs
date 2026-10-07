@@ -16,7 +16,12 @@ pub const USAGE: &str = "usage: flight orchestrator <command>
   enrollment create [--ttl SECS] [--config-dir DIR]
         print a one-time bundle for `flight node join` / `flight ui join`
   trust list | revoke <id> | status [--config-dir DIR]
-        inspect or revoke the identities this orchestrator trusts";
+        inspect or revoke the identities this orchestrator trusts
+  node list | forget <id|name> [--config-dir DIR]
+        list the nodes the orchestrator knows (online, stale or disconnected); forget removes a
+        disconnected node's last-known panes from the dashboard. Forgetting is not revoking: it
+        never changes who may connect, and a trusted node that connects again reappears. A
+        node that is merely switched off stays known until you forget it.";
 
 pub fn run(args: &[String]) -> Result<(), String> {
     if args.iter().any(|a| a == "--help" || a == "-h") {
@@ -29,6 +34,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
             enrollment_create(&args[2..])
         }
         Some("trust") => trust(&args[1..]),
+        Some("node") => node(&args[1..]),
         _ => Err(USAGE.to_owned()),
     }
 }
@@ -112,6 +118,24 @@ fn trust(args: &[String]) -> Result<(), String> {
         ("list", _) => "trust".to_owned(),
         ("status", _) => "status".to_owned(),
         ("revoke", Some(id)) => format!("revoke {id}"),
+        _ => return Err(USAGE.to_owned()),
+    };
+    let reply = runtime()?
+        .block_on(admin_request(&dir.join("admin.sock"), &request))
+        .map_err(|e| e.to_string())?;
+    if !reply.is_empty() {
+        println!("{reply}");
+    }
+    Ok(())
+}
+
+fn node(args: &[String]) -> Result<(), String> {
+    let (sub, rest) = args.split_first().ok_or_else(|| USAGE.to_owned())?;
+    let parsed = Args::parse(rest, &["--config-dir"], &[])?;
+    let dir = orchestrator_dir(&config_dir(&parsed)?);
+    let request = match (sub.as_str(), parsed.positional.first()) {
+        ("list", _) => "nodes".to_owned(),
+        ("forget", Some(which)) => format!("forget {which}"),
         _ => return Err(USAGE.to_owned()),
     };
     let reply = runtime()?

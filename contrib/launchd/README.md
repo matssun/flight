@@ -8,7 +8,7 @@ Why this matters on macOS (observed, see ADR-002 "LAN experiment"): after a Wi-F
 Rust process started inside a tmux server that predates the bounce could not route to its
 previous LAN peer for as long as it was watched, while the same binary started from a fresh
 login context connected at once (and Python in the same tmux server was unaffected). The
-node therefore has an opt-in `--exit-after-link-down SECS`: after an unbroken window of only
+node therefore has an opt-in `--exit-after-link-down SECS` (not in the standard plist: a node run by launchd recovered from every Wi-Fi bounce without it, 6 of 6): after an unbroken window of only
 immediate "no route" failures it exits with status 75, and the service manager restarts it.
 That restart is safe: a new incarnation sends a full snapshot, tmux and the agents are
 untouched. A restart loop inside tmux or a shell does **not** help (it is in the affected

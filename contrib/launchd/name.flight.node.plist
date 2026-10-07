@@ -18,8 +18,6 @@
     <string>run</string>
     <string>--socket</string>
     <string>flight</string>
-    <string>--exit-after-link-down</string>
-    <string>60</string>
     <string>--config-dir</string>
     <string>@NODE_CONFIG_DIR@</string>
   </array>

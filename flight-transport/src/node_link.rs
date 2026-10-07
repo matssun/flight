@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: MIT
 
 use crate::connector::{connect_with, DEFAULT_DIAL_TIMEOUT};
+use crate::failure_log::FailureLog;
+use crate::link_end::LinkEnd;
 use crate::outbox::Outbox;
 use crate::paths::NODE_CONNECT;
 use crate::shared::{now, OUTBOX_CAPACITY};
+use crate::unreachable_watch::{jittered, UnreachableWatch};
 use crate::TransportError;
 use flight_node::{error_frame, Control, ControlJob, NodeSession, Round};
 use flight_proto::{ErrorKindCode, NodeFrame, OrchestratorFrame};
@@ -23,56 +26,6 @@ const MAX_CONCURRENT_JOBS: usize = 4;
 const JOB_TIMEOUT: Duration = Duration::from_secs(10);
 /// Outbox class of heartbeats: at most one waits to be sent.
 const HEARTBEAT: u8 = 0;
-
-/// Why [`NodeLink::run`] returned.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LinkEnd {
-    /// Stopped on request.
-    Stopped,
-    /// This process could not route to the orchestrator for the whole configured window
-    /// (immediate "no route"/"network unreachable" errors only: an orchestrator that is down,
-    /// slow or refusing never counts). On macOS a long-running process has been seen to stay
-    /// in this state after a network interface bounce while a fresh process connects at once;
-    /// the caller should exit so that a supervisor restarts it.
-    ProcessNetworkUnhealthy,
-}
-
-/// Tracks an unbroken run of local "unreachable" failures. Pure, so it is tested with
-/// synthetic time.
-#[derive(Debug, Clone)]
-pub(crate) struct UnreachableWatch {
-    limit: Duration,
-    since: Option<std::time::Instant>,
-}
-
-impl UnreachableWatch {
-    pub(crate) fn new(limit: Duration) -> Self {
-        Self { limit, since: None }
-    }
-
-    /// How long the current unbroken run of failures has lasted at `now`.
-    pub(crate) fn window(&self, now: std::time::Instant) -> Duration {
-        self.since.map_or(Duration::ZERO, |s| now.duration_since(s))
-    }
-
-    /// Record the outcome of an attempt at `now`; true when the window has been exceeded.
-    pub(crate) fn record(&mut self, unreachable: bool, now: std::time::Instant) -> bool {
-        if !unreachable {
-            self.since = None;
-            return false;
-        }
-        let since = *self.since.get_or_insert(now);
-        now.duration_since(since) >= self.limit
-    }
-}
-
-/// `limit` plus up to a quarter, so a fleet of nodes does not restart in lock step.
-fn jittered(limit: Duration) -> Duration {
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| u64::from(d.subsec_nanos()));
-    limit + limit / 4 * (nanos % 1000) as u32 / 1000
-}
 
 /// Receives one-line notes about the link (connected, why it ended), for the operator.
 pub type LinkLog = Arc<dyn Fn(String) + Send + Sync>;
@@ -193,9 +146,7 @@ impl NodeLink {
         let mut watch = self
             .unreachable_limit
             .map(|l| UnreachableWatch::new(jittered(l)));
-        let mut last_failure = String::new();
-        let (mut attempts, mut failing_since, mut last_report) =
-            (0u64, std::time::Instant::now(), std::time::Instant::now());
+        let mut failures = FailureLog::new(self.repeat_report, std::time::Instant::now());
         loop {
             let started = std::time::Instant::now();
             let outcome = tokio::select! {
@@ -216,31 +167,20 @@ impl NodeLink {
             }
             match outcome {
                 Ok(()) => {
-                    last_failure.clear();
-                    attempts = 0;
+                    failures.reset();
                     self.say(format!(
                         "link ended after {:.0?}: the orchestrator closed the connection",
                         started.elapsed()
                     ));
                 }
                 Err(e) => {
-                    let why = e.to_string();
-                    attempts += 1;
-                    if why != last_failure {
-                        self.say(format!(
-                            "link down after {:.0?}: {why}; retrying",
-                            started.elapsed()
-                        ));
-                        last_failure = why;
-                        attempts = 1;
-                        failing_since = std::time::Instant::now();
-                        last_report = failing_since;
-                    } else if last_report.elapsed() >= self.repeat_report {
-                        self.say(format!(
-                            "link still down: {attempts} attempts over {:.0?}: {last_failure}",
-                            failing_since.elapsed()
-                        ));
-                        last_report = std::time::Instant::now();
+                    let line = failures.failed(
+                        e.to_string(),
+                        started.elapsed(),
+                        std::time::Instant::now(),
+                    );
+                    if let Some(line) = line {
+                        self.say(line);
                     }
                 }
             }
@@ -379,47 +319,5 @@ impl NodeLink {
             };
             let _ = outbox.push_reliable(frame);
         });
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::time::Instant;
-
-    #[test]
-    fn a_window_of_unreachable_failures_trips_the_watch_only_after_the_limit() {
-        let t0 = Instant::now();
-        let mut w = UnreachableWatch::new(Duration::from_secs(60));
-        assert!(!w.record(true, t0));
-        assert!(!w.record(true, t0 + Duration::from_secs(59)));
-        assert!(w.record(true, t0 + Duration::from_secs(60)));
-        assert_eq!(
-            w.window(t0 + Duration::from_secs(61)),
-            Duration::from_secs(61)
-        );
-    }
-
-    #[test]
-    fn any_other_outcome_restarts_the_window() {
-        let t0 = Instant::now();
-        let mut w = UnreachableWatch::new(Duration::from_secs(60));
-        assert!(!w.record(true, t0));
-        // The orchestrator being down, refusing or slow is not the condition: reset.
-        assert!(!w.record(false, t0 + Duration::from_secs(50)));
-        assert!(!w.record(true, t0 + Duration::from_secs(70)));
-        assert!(!w.record(true, t0 + Duration::from_secs(120)));
-        assert!(w.record(true, t0 + Duration::from_secs(130)));
-    }
-
-    #[test]
-    fn jitter_adds_at_most_a_quarter() {
-        for _ in 0..50 {
-            let j = jittered(Duration::from_secs(60));
-            assert!(
-                j >= Duration::from_secs(60) && j <= Duration::from_secs(75),
-                "{j:?}"
-            );
-        }
     }
 }

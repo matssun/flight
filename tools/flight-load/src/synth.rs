@@ -34,6 +34,9 @@ pub struct Args {
     pub interval: Duration,
     pub flips: usize,
     pub secs: u64,
+    /// The orchestrator's config dir: when given, the synthetic node is forgotten when the
+    /// run ends, so test nodes never linger on a dashboard.
+    pub orch_dir: Option<PathBuf>,
 }
 
 impl Args {
@@ -45,6 +48,7 @@ impl Args {
             interval: Duration::from_millis(500),
             flips: 1,
             secs: 30,
+            orch_dir: None,
         };
         while let Some(flag) = it.next() {
             let v = it.next().ok_or(format!("{flag} needs a value"))?;
@@ -56,11 +60,12 @@ impl Args {
                 "--interval-ms" => a.interval = Duration::from_millis(num(&v)?),
                 "--flips" => a.flips = num(&v)? as usize,
                 "--secs" => a.secs = num(&v)?,
+                "--orch-dir" => a.orch_dir = Some(v.into()),
                 other => return Err(format!("unknown flag {other}")),
             }
         }
         if a.node_dir.as_os_str().is_empty() || a.ui_dir.as_os_str().is_empty() {
-            return Err("usage: flight-load synth --node-dir DIR --ui-dir DIR [--panes N] [--interval-ms MS] [--flips K] [--secs S]".into());
+            return Err("usage: flight-load synth --node-dir DIR --ui-dir DIR [--panes N] [--interval-ms MS] [--flips K] [--secs S] [--orch-dir DIR]".into());
         }
         Ok(a)
     }
@@ -106,6 +111,7 @@ pub async fn run(a: Args) -> Result<(), String> {
     let node_role = a.node_dir.join("node");
     let cfg = ConnectionConfig::load(&config_path(&node_role)).map_err(|e| e.to_string())?;
     let identity = Arc::new(Identity::load(&identity_dir(&node_role)).map_err(|e| e.to_string())?);
+    let node_id = identity.fingerprint().as_str().to_owned();
     let session = NodeSession::new(
         NodeCore::new(
             identity.fingerprint().host_id(),
@@ -235,6 +241,9 @@ pub async fn run(a: Args) -> Result<(), String> {
     let _ = stop.send(true);
     let _ = conn.await;
     ui_task.abort();
+    if let Some(dir) = &a.orch_dir {
+        forget_self(dir, &node_id).await;
+    }
     Ok(())
 }
 
@@ -292,4 +301,26 @@ async fn ui_side(ui: ClientConfig, shared: Arc<Mutex<Pending>>) {
         }
         tokio::time::sleep(Duration::from_millis(250)).await;
     }
+}
+
+/// Ask the orchestrator to forget this (now disconnected) synthetic node. It may take a
+/// moment for the orchestrator to notice the disconnect, so retry briefly.
+async fn forget_self(orch_dir: &std::path::Path, node_id: &str) {
+    let socket = orch_dir.join("orchestrator").join("admin.sock");
+    for _ in 0..20 {
+        match flight_transport::admin_request(&socket, &format!("forget {node_id}")).await {
+            Ok(reply) => {
+                println!("{reply}");
+                return;
+            }
+            Err(e) if e.to_string().contains("still connected") => {
+                tokio::time::sleep(Duration::from_millis(250)).await;
+            }
+            Err(e) => {
+                eprintln!("could not forget the synthetic node: {e}");
+                return;
+            }
+        }
+    }
+    eprintln!("the synthetic node was still connected; it was not forgotten");
 }

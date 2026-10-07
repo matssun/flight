@@ -1,0 +1,70 @@
+# SPDX-License-Identifier: MIT
+#
+# Flight continuous integration. Cargo is the build authority today (Bazel is planned, not
+# set up). Every pull request, and every push to main, runs the same four checks:
+#
+#   fmt                      cargo fmt --check
+#   clippy                   cargo clippy --workspace --all-targets -- -D warnings
+#   test (ubuntu-latest)     cargo test --workspace, on Linux
+#   test (macos-latest)      cargo test --workspace, on macOS (Apple silicon)
+#
+# The job ids and names below are what a branch ruleset should require. Both operating
+# systems matter: the node runs on both, and a macOS-only behaviour (tmux locale handling,
+# interface changes) has already been found in the field. The tests need a real `tmux`
+# (they use private sockets, never the default server) and a C compiler (a stand-in agent
+# binary); a test skips itself when its prerequisite is missing, so the install steps are
+# part of the gate, not optional.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fmt:
+    name: fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install tmux
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            sudo apt-get update
+            sudo apt-get install -y tmux
+          else
+            brew install tmux
+          fi
+          tmux -V
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace

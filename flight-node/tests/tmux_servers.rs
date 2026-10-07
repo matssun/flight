@@ -196,6 +196,34 @@ fn adapter_into_core_publishes_state_for_the_observed_panes() {
 }
 
 #[test]
+fn kill_targets_the_published_process_not_just_the_pane_id() {
+    let mut t = TmuxServers::new();
+    // The pane table says %1 is now pid 99; the request was issued against pid 11.
+    let fake = fake(row("%1", "claude", 99), &[], None);
+    let calls = fake.calls.clone();
+    t.add(server(), fake);
+    let stale = t
+        .kill_pane(&server(), &flight_state::PaneId::new("%1"), 11)
+        .unwrap_err();
+    assert_eq!(stale.kind, ErrorKindCode::UnknownPane);
+    assert!(
+        !calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|c| c.starts_with("kill-pane")),
+        "a stale request must not reach kill-pane"
+    );
+    t.kill_pane(&server(), &flight_state::PaneId::new("%1"), 99)
+        .expect("same process");
+    assert!(calls
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|c| c.starts_with("kill-pane")));
+}
+
+#[test]
 fn control_errors_are_typed() {
     let mut t = TmuxServers::new();
     t.add(server(), fake(String::new(), &[], None));

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use crate::outbox::Outbox;
 use crate::paths::{ENROLL, NODE_CONNECT, SERVICE_NAME, UI_CONNECT};
 use crate::shared::{lock, now, SharedState};
 use crate::PeerIdentity;
@@ -11,8 +12,10 @@ use flight_trust::Role;
 use std::convert::Infallible;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::task::{Context, Poll};
-use tokio_stream::wrappers::UnboundedReceiverStream;
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::{Stream, StreamExt};
 use tonic::body::Body;
 use tonic::server::{Grpc, StreamingService, UnaryService};
@@ -46,12 +49,31 @@ fn peer_of<T>(request: &Request<T>) -> Result<PeerIdentity, Status> {
         .ok_or_else(|| Status::unauthenticated("no authenticated peer"))
 }
 
+/// Feed an outbox to a gRPC response stream. One item is in flight at a time, so HTTP/2
+/// flow control reaches the outbox and a slow reader makes it overflow (and resync) rather
+/// than buffer. Ends when the outbox closes or the reader goes away.
+fn pump<T: Send + 'static>(
+    outbox: Arc<Outbox<T>>,
+    resync: impl Fn() + Send + Sync + 'static,
+) -> ReceiverStream<T> {
+    let (tx, rx) = mpsc::channel(1);
+    tokio::spawn(async move {
+        while let Some(item) = outbox.next(&resync).await {
+            if tx.send(item).await.is_err() {
+                outbox.close();
+                break;
+            }
+        }
+    });
+    ReceiverStream::new(rx)
+}
+
 async fn node_connect(
     state: SharedState,
     request: Request<Streaming<NodeFrame>>,
 ) -> Result<Response<BoxStream<OrchestratorFrame>>, Status> {
     let peer = peer_of(&request)?;
-    let (conn, rx) = {
+    let (conn, outbox) = {
         let mut s = lock(&state);
         if !s.trust.is_authorized(&peer.0, Role::Node) {
             return Err(Status::permission_denied("not authorized"));
@@ -69,7 +91,7 @@ async fn node_connect(
         }
         lock(&state).close_node(conn);
     });
-    let out: BoxStream<OrchestratorFrame> = Box::pin(UnboundedReceiverStream::new(rx).map(Ok));
+    let out: BoxStream<OrchestratorFrame> = Box::pin(pump(outbox, || {}).map(Ok));
     Ok(Response::new(out))
 }
 
@@ -78,7 +100,7 @@ async fn ui_connect(
     request: Request<Streaming<UiRequest>>,
 ) -> Result<Response<BoxStream<UiEvent>>, Status> {
     let peer = peer_of(&request)?;
-    let (ui, rx) = {
+    let (ui, outbox) = {
         let mut s = lock(&state);
         if !s.trust.is_authorized(&peer.0, Role::Ui) {
             return Err(Status::permission_denied("not authorized"));
@@ -86,6 +108,7 @@ async fn ui_connect(
         s.open_ui(peer.0)
     };
     let mut inbound = request.into_inner();
+    let resync_state = state.clone();
     tokio::spawn(async move {
         while let Ok(Some(req)) = inbound.message().await {
             let mut s = lock(&state);
@@ -97,7 +120,8 @@ async fn ui_connect(
         }
         lock(&state).close_ui(ui);
     });
-    let out: BoxStream<UiEvent> = Box::pin(UnboundedReceiverStream::new(rx).map(Ok));
+    let out: BoxStream<UiEvent> =
+        Box::pin(pump(outbox, move || lock(&resync_state).resync_ui(ui)).map(Ok));
     Ok(Response::new(out))
 }
 

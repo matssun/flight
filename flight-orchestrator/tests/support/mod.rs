@@ -3,7 +3,6 @@
 #![allow(dead_code)]
 
 use flight_classify::AgentKind;
-use flight_node::{Control, ControlError};
 use flight_node::{NodeCore, NodeSession, PaneObservation, Round, ServerOutcome, Unavailable};
 use flight_orchestrator::{ConnId, Effects, OrchestratorConfig, OrchestratorCore, UiId};
 use flight_proto::{
@@ -58,24 +57,10 @@ pub fn down(now: u64, why: Unavailable) -> Round {
     }
 }
 
-pub struct NoControl;
-
-impl Control for NoControl {
-    fn capture(&self, _: &ServerId, _: &PaneId, _: u32) -> Result<String, ControlError> {
-        Ok(String::new())
-    }
-    fn kill_pane(&self, _: &ServerId, _: &PaneId) -> Result<(), ControlError> {
-        Ok(())
-    }
-    fn create_session(&self, _: &ServerId, _: &str, _: &str, _: &str) -> Result<(), ControlError> {
-        Ok(())
-    }
-}
-
 /// A simulated node: a real `NodeSession` (so frames are exactly what a node sends).
 pub struct SimNode {
     pub id: HostId,
-    pub session: NodeSession<NoControl>,
+    pub session: NodeSession,
     pub conn: Option<ConnId>,
     pub incarnation: u8,
 }
@@ -84,11 +69,7 @@ impl SimNode {
     pub fn new(id: &str, name: &str, incarnation: u8) -> Self {
         Self {
             id: HostId::new(id),
-            session: NodeSession::new(
-                NodeCore::new(HostId::new(id), inc(incarnation)),
-                NoControl,
-                name,
-            ),
+            session: NodeSession::new(NodeCore::new(HostId::new(id), inc(incarnation)), name),
             conn: None,
             incarnation,
         }
@@ -96,11 +77,8 @@ impl SimNode {
 
     pub fn restart(&mut self, name: &str) {
         self.incarnation = self.incarnation.wrapping_add(1).max(1);
-        self.session = NodeSession::new(
-            NodeCore::new(self.id.clone(), inc(self.incarnation)),
-            NoControl,
-            name,
-        );
+        self.session =
+            NodeSession::new(NodeCore::new(self.id.clone(), inc(self.incarnation)), name);
     }
 }
 

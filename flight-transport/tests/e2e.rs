@@ -66,7 +66,7 @@ async fn node_to_orchestrator_to_ui_over_mutual_tls() {
     let mut ui = UiClient::connect(&addr, &ui_id, &orch)
         .await
         .expect("ui connects");
-    ui.send(subscribe());
+    ui.send(subscribe()).expect("send");
     let first = ui_until(&mut ui, "fleet snapshot", |e| {
         matches!(e.body, Some(ui_event_body::Body::Snapshot(_)))
     })
@@ -87,7 +87,7 @@ async fn node_to_orchestrator_to_ui_over_mutual_tls() {
     .await;
 
     // On-demand preview is routed to the node and answered.
-    ui.send(preview(node_fp.as_str(), "%1", 42));
+    ui.send(preview(node_fp.as_str(), "%1", 42)).expect("send");
     let answer = ui_until(&mut ui, "preview response", |e| {
         matches!(e.body, Some(ui_event_body::Body::Response(_)))
     })
@@ -109,7 +109,7 @@ async fn node_to_orchestrator_to_ui_over_mutual_tls() {
     })
     .await;
     assert_eq!(pane_count(&server, &node_fp), 1, "last-known pane is kept");
-    ui.send(preview(node_fp.as_str(), "%1", 43));
+    ui.send(preview(node_fp.as_str(), "%1", 43)).expect("send");
     let refused = ui_until(&mut ui, "unreachable", |e| {
         matches!(e.body, Some(ui_event_body::Body::Response(_)))
     })

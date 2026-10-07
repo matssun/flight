@@ -55,6 +55,12 @@ impl NodeCore {
         self.incarnation
     }
 
+    /// The pid of the process published for `pane`: its incarnation. `None` if the pane is
+    /// not published.
+    pub fn pane_pid(&self, pane: &PaneRef) -> Option<u32> {
+        self.entries.get(pane).map(|e| e.pid)
+    }
+
     /// Whether `pane` is an agent pane this node currently publishes.
     pub fn knows(&self, pane: &PaneRef) -> bool {
         self.entries.contains_key(pane)

@@ -1,14 +1,22 @@
 // SPDX-License-Identifier: MIT
 
+use crate::outbox::{Outbox, PushError};
 use flight_orchestrator::{ConnId, Effects, OrchestratorCore, UiId};
-use flight_proto::{NodeFrame, OrchestratorFrame, UiEvent};
+use flight_proto::{orchestrator_body, ui_event_body, NodeFrame, OrchestratorFrame, UiEvent};
 use flight_state::HostId;
 use flight_trust::{EnrollmentTokens, Fingerprint, Role, TrustStore};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+
+/// Frames or events queued per peer before the replication backlog is discarded and a
+/// snapshot is sent instead (or, for reliable traffic, the peer is dropped).
+pub(crate) const OUTBOX_CAPACITY: usize = 256;
+
+/// Outbox classes for orchestrator -> node frames.
+const HEARTBEAT: u8 = 0;
+const RESYNC: u8 = 1;
 
 pub(crate) fn now() -> u64 {
     SystemTime::now()
@@ -24,9 +32,9 @@ pub(crate) struct Shared {
     pub(crate) trust_path: Option<PathBuf>,
     pub(crate) tokens: EnrollmentTokens,
     pub(crate) orchestrator_id: Fingerprint,
-    node_tx: HashMap<ConnId, UnboundedSender<OrchestratorFrame>>,
+    node_out: HashMap<ConnId, Arc<Outbox<OrchestratorFrame>>>,
     node_peer: HashMap<ConnId, Fingerprint>,
-    ui_tx: HashMap<UiId, UnboundedSender<UiEvent>>,
+    ui_out: HashMap<UiId, Arc<Outbox<UiEvent>>>,
     ui_peer: HashMap<UiId, Fingerprint>,
     next_id: u64,
 }
@@ -52,9 +60,9 @@ impl Shared {
             trust_path,
             tokens: EnrollmentTokens::new(),
             orchestrator_id,
-            node_tx: HashMap::new(),
+            node_out: HashMap::new(),
             node_peer: HashMap::new(),
-            ui_tx: HashMap::new(),
+            ui_out: HashMap::new(),
             ui_peer: HashMap::new(),
             next_id: 0,
         }
@@ -69,60 +77,106 @@ impl Shared {
     pub(crate) fn open_node(
         &mut self,
         peer: Fingerprint,
-    ) -> (ConnId, UnboundedReceiver<OrchestratorFrame>) {
+    ) -> (ConnId, Arc<Outbox<OrchestratorFrame>>) {
         let conn = ConnId(self.id());
-        let (tx, rx) = unbounded_channel();
+        let outbox = Arc::new(Outbox::new(OUTBOX_CAPACITY));
         self.core.node_connected(conn, HostId::new(peer.as_str()));
-        self.node_tx.insert(conn, tx);
+        self.node_out.insert(conn, outbox.clone());
         self.node_peer.insert(conn, peer);
-        (conn, rx)
+        (conn, outbox)
     }
 
     pub(crate) fn node_open(&self, conn: ConnId) -> bool {
-        self.node_tx.contains_key(&conn)
+        self.node_out.contains_key(&conn)
     }
 
     pub(crate) fn close_node(&mut self, conn: ConnId) {
         let fx = self.core.node_disconnected(conn);
-        self.node_tx.remove(&conn);
+        if let Some(out) = self.node_out.remove(&conn) {
+            out.close();
+        }
         self.node_peer.remove(&conn);
         self.dispatch(fx);
     }
 
-    pub(crate) fn open_ui(&mut self, peer: Fingerprint) -> (UiId, UnboundedReceiver<UiEvent>) {
+    pub(crate) fn open_ui(&mut self, peer: Fingerprint) -> (UiId, Arc<Outbox<UiEvent>>) {
         let ui = UiId(self.id());
-        let (tx, rx) = unbounded_channel();
-        self.ui_tx.insert(ui, tx);
+        let outbox = Arc::new(Outbox::new(OUTBOX_CAPACITY));
+        self.ui_out.insert(ui, outbox.clone());
         self.ui_peer.insert(ui, peer);
-        (ui, rx)
+        (ui, outbox)
     }
 
     pub(crate) fn ui_open(&self, ui: UiId) -> bool {
-        self.ui_tx.contains_key(&ui)
+        self.ui_out.contains_key(&ui)
     }
 
     pub(crate) fn close_ui(&mut self, ui: UiId) {
         self.core.ui_disconnected(ui);
-        self.ui_tx.remove(&ui);
+        if let Some(out) = self.ui_out.remove(&ui) {
+            out.close();
+        }
         self.ui_peer.remove(&ui);
     }
 
-    /// Carry out what the orchestrator core asked for. Sends never block (unbounded
-    /// channels); a stuck peer is dropped by the core's heartbeat timeout.
+    /// A UI fell behind and its queued deltas were discarded: give it a fresh snapshot (which
+    /// restarts its delta sequence) and mark it in sync, atomically with respect to new deltas.
+    pub(crate) fn resync_ui(&mut self, ui: UiId) {
+        let Some(out) = self.ui_out.get(&ui).cloned() else {
+            return;
+        };
+        let fx = self.core.subscribe(ui);
+        for (_, event) in fx.to_ui {
+            if out.push_reliable(event).is_err() {
+                self.close_ui(ui);
+                return;
+            }
+        }
+        out.clear_overflow();
+    }
+
+    /// Carry out what the orchestrator core asked for. Nothing blocks and nothing grows
+    /// without bound: replication deltas are disposable (an overflowing peer is resynced),
+    /// heartbeats coalesce, and a peer that will not read reliable traffic is dropped.
     pub(crate) fn dispatch(&mut self, fx: Effects) {
+        let mut slow_nodes = Vec::new();
+        let mut slow_uis = Vec::new();
         for (conn, frame) in fx.to_nodes {
-            if let Some(tx) = self.node_tx.get(&conn) {
-                let _ = tx.send(frame);
+            let Some(out) = self.node_out.get(&conn) else {
+                continue;
+            };
+            let pushed = match &frame.body {
+                Some(orchestrator_body::Body::Heartbeat(_)) => out.push_coalesced(HEARTBEAT, frame),
+                Some(orchestrator_body::Body::Resync(_)) => out.push_coalesced(RESYNC, frame),
+                _ => out.push_reliable(frame),
+            };
+            if pushed == Err(PushError::Full) {
+                slow_nodes.push(conn);
             }
         }
         for (ui, event) in fx.to_ui {
-            if let Some(tx) = self.ui_tx.get(&ui) {
-                let _ = tx.send(event);
+            let Some(out) = self.ui_out.get(&ui) else {
+                continue;
+            };
+            let pushed = match &event.body {
+                Some(ui_event_body::Body::Delta(_)) => out.push_delta(event),
+                _ => out.push_reliable(event),
+            };
+            if pushed == Err(PushError::Full) {
+                slow_uis.push(ui);
             }
         }
         for (conn, _reason) in fx.close {
-            self.node_tx.remove(&conn);
+            if let Some(out) = self.node_out.remove(&conn) {
+                out.close();
+            }
             self.node_peer.remove(&conn);
+        }
+        for conn in slow_nodes {
+            self.close_node(conn);
+        }
+        for ui in slow_uis {
+            self.close_ui(ui);
         }
     }
 
@@ -153,13 +207,20 @@ impl Shared {
         }
     }
 
+    /// The longest outbound queue across all peers. Bounded by [`OUTBOX_CAPACITY`] by design.
+    pub(crate) fn max_backlog(&self) -> usize {
+        let nodes = self.node_out.values().map(|o| o.len());
+        let uis = self.ui_out.values().map(|o| o.len());
+        nodes.chain(uis).max().unwrap_or(0)
+    }
+
     /// End every stream (used at shutdown, so graceful close cannot wait on idle peers).
     pub(crate) fn close_all(&mut self) {
-        let conns: Vec<ConnId> = self.node_tx.keys().copied().collect();
+        let conns: Vec<ConnId> = self.node_out.keys().copied().collect();
         for conn in conns {
             self.close_node(conn);
         }
-        let uis: Vec<UiId> = self.ui_tx.keys().copied().collect();
+        let uis: Vec<UiId> = self.ui_out.keys().copied().collect();
         for ui in uis {
             self.close_ui(ui);
         }

@@ -8,7 +8,9 @@ mod enroll_client;
 mod error;
 mod incoming;
 mod node_link;
+mod observe;
 mod orchestrator_server;
+pub mod outbox;
 mod paths;
 mod peer;
 mod service;
@@ -16,9 +18,13 @@ mod shared;
 mod ui_client;
 
 pub use error::TransportError;
+
+/// Frames queued per peer before replication is resynchronized instead of buffered.
+pub const OUTBOX_CAPACITY: usize = shared::OUTBOX_CAPACITY;
 pub use peer::PeerIdentity;
 
 pub use enroll_client::enroll;
 pub use node_link::{NodeLink, NodeLinkConfig};
+pub use observe::run_observer;
 pub use orchestrator_server::{serve, ServerConfig, ServerHandle};
 pub use ui_client::UiClient;

@@ -21,7 +21,7 @@ const NO_SERVER_MARKERS: [&str; 3] = [
 /// [`crate::NodeCore`] and carries out [`Control`] requests.
 #[derive(Default)]
 pub struct TmuxServers {
-    servers: BTreeMap<ServerId, Tmux<Box<dyn TmuxRunner>>>,
+    servers: BTreeMap<ServerId, Tmux<Box<dyn TmuxRunner + Send + Sync>>>,
 }
 
 impl TmuxServers {
@@ -29,7 +29,7 @@ impl TmuxServers {
         Self::default()
     }
 
-    pub fn add(&mut self, server: ServerId, runner: Box<dyn TmuxRunner>) {
+    pub fn add(&mut self, server: ServerId, runner: Box<dyn TmuxRunner + Send + Sync>) {
         self.servers.insert(server, Tmux::with_runner(runner));
     }
 
@@ -50,7 +50,10 @@ impl TmuxServers {
             .collect()
     }
 
-    fn tmux(&self, server: &ServerId) -> Result<&Tmux<Box<dyn TmuxRunner>>, ControlError> {
+    fn tmux(
+        &self,
+        server: &ServerId,
+    ) -> Result<&Tmux<Box<dyn TmuxRunner + Send + Sync>>, ControlError> {
         self.servers.get(server).ok_or_else(|| {
             ControlError::new(
                 ErrorKindCode::InvalidRequest,
@@ -60,7 +63,7 @@ impl TmuxServers {
     }
 }
 
-fn observe_server(tmux: &Tmux<Box<dyn TmuxRunner>>) -> ServerOutcome {
+fn observe_server(tmux: &Tmux<Box<dyn TmuxRunner + Send + Sync>>) -> ServerOutcome {
     let infos = match tmux.list_panes() {
         Ok(infos) => infos,
         Err(e) => return ServerOutcome::Unavailable(unavailable(&e)),
@@ -132,8 +135,26 @@ impl Control for TmuxServers {
             .map_err(failed)
     }
 
-    fn kill_pane(&self, server: &ServerId, pane: &PaneId) -> Result<(), ControlError> {
-        self.tmux(server)?.kill_pane(pane.as_str()).map_err(failed)
+    fn kill_pane(
+        &self,
+        server: &ServerId,
+        pane: &PaneId,
+        expected_pid: u32,
+    ) -> Result<(), ControlError> {
+        let tmux = self.tmux(server)?;
+        // The request was issued against one process; only kill the pane if it still is it.
+        let current = tmux
+            .list_panes()
+            .map_err(failed)?
+            .into_iter()
+            .find(|p| p.pane_id == pane.as_str());
+        match current {
+            Some(p) if p.pane_pid == expected_pid => tmux.kill_pane(pane.as_str()).map_err(failed),
+            _ => Err(ControlError::new(
+                ErrorKindCode::UnknownPane,
+                format!("pane {pane} is no longer the process this request targeted"),
+            )),
+        }
     }
 
     fn create_session(

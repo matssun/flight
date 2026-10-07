@@ -26,7 +26,7 @@ impl Control for PreviewControl {
     fn capture(&self, _: &ServerId, pane: &PaneId, lines: u32) -> Result<String, ControlError> {
         Ok(format!("preview of {pane} ({lines} lines)"))
     }
-    fn kill_pane(&self, _: &ServerId, _: &PaneId) -> Result<(), ControlError> {
+    fn kill_pane(&self, _: &ServerId, _: &PaneId, _: u32) -> Result<(), ControlError> {
         Ok(())
     }
     fn create_session(&self, _: &ServerId, _: &str, _: &str, _: &str) -> Result<(), ControlError> {
@@ -85,9 +85,29 @@ pub fn node_link(
     name: &str,
     claimed: Option<HostId>,
     incarnation: u8,
-) -> Arc<NodeLink<PreviewControl>> {
+) -> Arc<NodeLink> {
+    node_link_with(
+        identity,
+        addr,
+        orchestrator,
+        name,
+        claimed,
+        incarnation,
+        Arc::new(PreviewControl),
+    )
+}
+
+pub fn node_link_with(
+    identity: &Arc<Identity>,
+    addr: &str,
+    orchestrator: &Fingerprint,
+    name: &str,
+    claimed: Option<HostId>,
+    incarnation: u8,
+    control: Arc<dyn Control>,
+) -> Arc<NodeLink> {
     let host = claimed.unwrap_or_else(|| identity.fingerprint().host_id());
-    let session = NodeSession::new(NodeCore::new(host, inc(incarnation)), PreviewControl, name);
+    let session = NodeSession::new(NodeCore::new(host, inc(incarnation)), name);
     Arc::new(NodeLink::new(
         NodeLinkConfig {
             address: addr.to_owned(),
@@ -99,6 +119,7 @@ pub fn node_link(
             reconnect_max: Duration::from_millis(200),
         },
         session,
+        control,
     ))
 }
 

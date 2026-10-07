@@ -98,6 +98,12 @@ impl ServerHandle {
         lock(&self.state).core.fleet_snapshot()
     }
 
+    /// The longest outbound queue to any peer: a gauge for "is someone falling behind".
+    /// Never exceeds the queue capacity; overflow means resync, not buffering.
+    pub fn max_backlog(&self) -> usize {
+        lock(&self.state).max_backlog()
+    }
+
     pub fn trust(&self) -> TrustStore {
         lock(&self.state).trust.clone()
     }

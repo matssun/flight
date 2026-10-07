@@ -194,10 +194,13 @@ UI side: the UI speaks the same protocol to the orchestrator (`Subscribe`, then 
 6. Real second machine on the LAN.
 7. Measure, then decide on packaging and the next UX changes.
 
-## Known limits after slice 4
+## Backpressure and off-lock control (before slice 5)
 
-- Outbound channels are unbounded; a stuck peer is dropped by the heartbeat timeout rather than back-pressured.
-- `Control` calls (tmux capture, kill) run inline under the session lock; a slow tmux call delays that node's frames.
+Invariant: **the replication backlog is bounded; falling behind causes resynchronization, never unbounded buffering.** Every outbound queue is a bounded `Outbox` with three classes: deltas are disposable (on overflow they are all discarded, further deltas dropped, and a fresh snapshot is queued under the lock that orders snapshots against deltas, which restarts the sequence); reliable items (responses, snapshots, hellos, requests) are bounded and a peer that will not read them is dropped; heartbeats and resync requests coalesce to at most one queued. One item at a time reaches the gRPC stream, so HTTP/2 flow control reaches the outbox. `ServerHandle::max_backlog()` is the gauge.
+
+The session lock protects state transitions, not I/O. `NodeSession` validates a control request under its state (handshake, capability, the pane is published) and returns a `ControlJob` capturing the target; the transport runs it on a blocking thread, at most four at once (excess is refused at once as busy, each has a ten second limit), and queues the response. Replication, heartbeats, revocation and shutdown never wait on tmux. Destructive jobs carry the pid published for the pane: `kill_pane` refuses unless the pane id still belongs to that process, so a reused `%id` is never killed by a request meant for its predecessor.
+
+## Known limits after slice 4
 - Key rotation and certificate renewal are not designed (a new key is a new identity; re-enroll).
 - The CLI (`flight orchestrator enrollment create`, `flight node join`), the tmux observation driver loop, and the UI backend over `UiClient` are slice 5.
 

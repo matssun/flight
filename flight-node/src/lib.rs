@@ -24,7 +24,7 @@ mod round;
 mod tmux_servers;
 mod unavailable;
 
-pub use control::{Control, ControlError};
+pub use control::{error_frame, Control, ControlError, ControlJob};
 pub use incarnation::fresh_incarnation;
 pub use node_core::NodeCore;
 pub use node_session::{NodeSession, SessionOutput, ADVERTISED_CAPABILITIES};

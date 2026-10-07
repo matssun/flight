@@ -24,8 +24,8 @@ impl Control for FakeControl {
     fn capture(&self, _: &ServerId, pane: &PaneId, lines: u32) -> Result<String, ControlError> {
         Ok(format!("{pane} last {lines} lines"))
     }
-    fn kill_pane(&self, _: &ServerId, pane: &PaneId) -> Result<(), ControlError> {
-        self.killed.lock().unwrap().push(pane.to_string());
+    fn kill_pane(&self, _: &ServerId, pane: &PaneId, pid: u32) -> Result<(), ControlError> {
+        self.killed.lock().unwrap().push(format!("{pane}@{pid}"));
         Ok(())
     }
     fn create_session(&self, _: &ServerId, _: &str, _: &str, _: &str) -> Result<(), ControlError> {
@@ -33,8 +33,18 @@ impl Control for FakeControl {
     }
 }
 
-fn session() -> NodeSession<FakeControl> {
-    NodeSession::new(core(), FakeControl::default(), "mini-1")
+thread_local! {
+    /// One fake control per test thread: jobs are executed here, off the session, exactly as
+    /// the transport does.
+    static CONTROL: FakeControl = FakeControl::default();
+}
+
+fn killed() -> Vec<String> {
+    CONTROL.with(|c| c.killed.lock().unwrap().clone())
+}
+
+fn session() -> NodeSession {
+    NodeSession::new(core(), "mini-1")
 }
 
 fn orch(body: orchestrator_body::Body) -> OrchestratorFrame {
@@ -65,7 +75,7 @@ fn body(f: &NodeFrame) -> &node_body::Body {
 }
 
 /// A session with one permit pane, past the handshake.
-fn ready(caps: &[&str]) -> NodeSession<FakeControl> {
+fn ready(caps: &[&str]) -> NodeSession {
     let mut s = session();
     s.observe(vec![round(
         &server(),
@@ -77,9 +87,15 @@ fn ready(caps: &[&str]) -> NodeSession<FakeControl> {
     s
 }
 
+/// The single response a request produced, running its control job (if any) like the
+/// transport does: after the session call has returned.
 fn only_response(out: SessionOutput) -> response_result::Result {
-    assert_eq!(out.frames.len(), 1);
-    match body(&out.frames[0]) {
+    let mut frames = out.frames;
+    for job in out.jobs {
+        frames.push(CONTROL.with(|c| job.execute(c, 555)));
+    }
+    assert_eq!(frames.len(), 1);
+    match body(&frames[0]) {
         node_body::Body::Response(r) => r.result.clone().expect("result"),
         other => panic!("not a response: {other:?}"),
     }
@@ -258,7 +274,7 @@ fn requests_for_unknown_or_foreign_panes_are_refused_before_tmux_is_touched() {
         error_kind(only_response(foreign)),
         ErrorKindCode::InvalidRequest as i32
     );
-    assert!(s.control().killed.lock().unwrap().clone().is_empty());
+    assert!(killed().is_empty());
 }
 
 #[test]
@@ -277,7 +293,7 @@ fn kill_runs_only_when_the_capability_was_accepted() {
         error_kind(only_response(out)),
         ErrorKindCode::Unsupported as i32
     );
-    assert!(denied.control().killed.lock().unwrap().clone().is_empty());
+    assert!(killed().is_empty());
 
     let mut allowed = ready(&["kill"]);
     let out = allowed.on_frame(
@@ -293,7 +309,7 @@ fn kill_runs_only_when_the_capability_was_accepted() {
         only_response(out),
         response_result::Result::Done(_)
     ));
-    assert_eq!(allowed.control().killed.lock().unwrap().clone(), vec!["%1"]);
+    assert_eq!(killed(), vec![format!("%1@{}", 7)]);
 }
 
 #[test]
@@ -350,5 +366,28 @@ fn responses_carry_the_request_id() {
         ),
         1,
     );
-    assert!(matches!(body(&out.frames[0]), node_body::Body::Response(r) if r.request_id == 41));
+    assert_eq!(out.jobs.len(), 1);
+    assert_eq!(out.jobs[0].request_id(), 41);
+    let frame = CONTROL.with(|c| out.jobs[0].clone().execute(c, 1));
+    assert!(matches!(body(&frame), node_body::Body::Response(r) if r.request_id == 41));
+}
+
+#[test]
+fn a_valid_request_only_plans_work_the_session_never_performs_it() {
+    let mut s = ready(&["kill"]);
+    let out = s.on_frame(
+        request(
+            8,
+            ck::Kind::KillPane(ck::KillPane {
+                pane_ref: pane("%1"),
+            }),
+        ),
+        1,
+    );
+    assert!(out.frames.is_empty(), "no answer until the job has run");
+    assert_eq!(out.jobs.len(), 1);
+    assert!(
+        killed().is_empty(),
+        "nothing was killed inside the session call"
+    );
 }

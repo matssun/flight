@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-use flight_proto::{ErrorInfo, ErrorKindCode};
+use flight_proto::{
+    node_body, response_result, ErrorInfo, ErrorKindCode, NodeFrame, Preview, Response,
+};
 use flight_state::{PaneId, ServerId};
 
 /// A control request the node could not carry out, in wire terms.
@@ -26,13 +28,23 @@ impl ControlError {
     }
 }
 
-/// What a node can do on request, against its own tmux servers. The session checks identity,
-/// capability and that the pane is one the node publishes before calling these.
-pub trait Control {
+/// What a node can do on request, against its own tmux servers. These calls perform
+/// external I/O and may be slow: they run on a [`ControlJob`], never under the session lock.
+pub trait Control: Send + Sync {
     /// The last `lines` lines of the pane's visible screen (plain text).
     fn capture(&self, server: &ServerId, pane: &PaneId, lines: u32)
         -> Result<String, ControlError>;
-    fn kill_pane(&self, server: &ServerId, pane: &PaneId) -> Result<(), ControlError>;
+
+    /// Kill the pane, but only if it is still the process the request was issued against
+    /// (`expected_pid`): a reused pane id must never be killed by a request meant for its
+    /// predecessor.
+    fn kill_pane(
+        &self,
+        server: &ServerId,
+        pane: &PaneId,
+        expected_pid: u32,
+    ) -> Result<(), ControlError>;
+
     /// A detached session; `command` empty means the shell.
     fn create_session(
         &self,
@@ -41,4 +53,119 @@ pub trait Control {
         dir: &str,
         command: &str,
     ) -> Result<(), ControlError>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Op {
+    Preview {
+        server: ServerId,
+        pane: PaneId,
+        lines: u32,
+    },
+    Kill {
+        server: ServerId,
+        pane: PaneId,
+        pid: u32,
+    },
+    Create {
+        server: ServerId,
+        name: String,
+        dir: String,
+        command: String,
+    },
+}
+
+/// A validated control request, detached from the session: everything needed to perform it
+/// is captured here, so it can run after the session lock is released.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ControlJob {
+    request_id: u64,
+    op: Op,
+}
+
+impl ControlJob {
+    pub(crate) fn preview(request_id: u64, server: ServerId, pane: PaneId, lines: u32) -> Self {
+        Self {
+            request_id,
+            op: Op::Preview {
+                server,
+                pane,
+                lines,
+            },
+        }
+    }
+
+    pub(crate) fn kill(request_id: u64, server: ServerId, pane: PaneId, pid: u32) -> Self {
+        Self {
+            request_id,
+            op: Op::Kill { server, pane, pid },
+        }
+    }
+
+    pub(crate) fn create(
+        request_id: u64,
+        server: ServerId,
+        name: String,
+        dir: String,
+        command: String,
+    ) -> Self {
+        Self {
+            request_id,
+            op: Op::Create {
+                server,
+                name,
+                dir,
+                command,
+            },
+        }
+    }
+
+    pub fn request_id(&self) -> u64 {
+        self.request_id
+    }
+
+    /// Perform the operation and build the response frame. Blocks on external I/O.
+    pub fn execute(self, control: &dyn Control, now: u64) -> NodeFrame {
+        let result = match &self.op {
+            Op::Preview {
+                server,
+                pane,
+                lines,
+            } => control.capture(server, pane, *lines).map(|text| {
+                response_result::Result::Preview(Preview {
+                    text,
+                    captured_at: now,
+                })
+            }),
+            Op::Kill { server, pane, pid } => control
+                .kill_pane(server, pane, *pid)
+                .map(|()| response_result::Result::Done(response_result::Done {})),
+            Op::Create {
+                server,
+                name,
+                dir,
+                command,
+            } => control
+                .create_session(server, name, dir, command)
+                .map(|()| response_result::Result::Done(response_result::Done {})),
+        };
+        response_frame(self.request_id, result)
+    }
+}
+
+pub(crate) fn response_frame(
+    request_id: u64,
+    result: Result<response_result::Result, ControlError>,
+) -> NodeFrame {
+    NodeFrame {
+        body: Some(node_body::Body::Response(Response {
+            request_id,
+            result: Some(result.unwrap_or_else(|e| response_result::Result::Error(e.info()))),
+        })),
+    }
+}
+
+/// A failure response for a request that never reached a [`Control`] (busy, timed out).
+pub fn error_frame(request_id: u64, kind: ErrorKindCode, message: &str) -> NodeFrame {
+    response_frame(request_id, Err(ControlError::new(kind, message)))
 }

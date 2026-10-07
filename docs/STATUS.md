@@ -66,7 +66,10 @@ Question: how should one node observe 10-500 tmux panes efficiently and correctl
   socket (agreement, focus, server restart with reused pane ids); a fault-injecting soak
   (`FLIGHT_SOAK_SECS=1800 cargo test -p flight-node --test control_skip_soak -- --ignored --nocapture`); and a smoke of
   the real binary (orchestrator + node + 20 agent panes, control client killed: unavailable then restored, 20 panes kept).
-- Not done: the long soak result (see below), a multi-hour soak, 500 real panes, why `ctl/events` worked after
+- Soak (30 min, up to 60 panes): 11119 steps, 292 control-client SIGKILLs, 19 tmux server kills, no disagreement with the
+  reference (32 steps needed more than 400 ms to agree; none needed the 10 s grace). Pane count stayed low because server
+  kills wipe the panes (8 alive at the end), so this soak exercises recovery far more than large-fleet steady state.
+- Not done: a multi-hour soak with a steadier fleet, 500 real panes, why `ctl/events` worked after
   `ctl/all` (irrelevant to the design).
 
 ## Production observer: decided
@@ -82,8 +85,8 @@ Choose on correctness and complexity as well as CPU.
 | control + skip | lowest | excellent | low at 250 panes, 0 stale | none | higher |
 | control + events | invalid | n/a | loses events outside the attached session | none | n/a |
 
-`ctl/skip` is the node's default observer and `seq/all` stays as the fallback and reference. Open before the capture
-observer PR: the soak result.
+`ctl/skip` is the node's default observer and `seq/all` stays as the fallback and reference. The capture observer
+PR is next.
 
 ## Open limitations
 

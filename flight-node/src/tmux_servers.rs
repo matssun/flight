@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::io::ErrorKind;
 
 /// Lines captured per agent pane for classification (Fleet's scrape window).
-const SCRAPE_LINES: u32 = 50;
+pub(crate) const SCRAPE_LINES: u32 = 50;
 
 const NO_SERVER_MARKERS: [&str; 3] = [
     "no server running",
@@ -41,13 +41,20 @@ impl TmuxServers {
     /// stops the others.
     pub fn observe(&self, now: u64) -> Vec<Round> {
         self.servers
-            .iter()
-            .map(|(server, tmux)| Round {
-                server: server.clone(),
-                now,
-                outcome: observe_server(tmux),
-            })
+            .keys()
+            .filter_map(|server| self.observe_one(server, now))
             .collect()
+    }
+
+    /// Observe one server with plain per-command tmux calls: the reference path, and the
+    /// fallback of every other observer.
+    pub fn observe_one(&self, server: &ServerId, now: u64) -> Option<Round> {
+        let tmux = self.servers.get(server)?;
+        Some(Round {
+            server: server.clone(),
+            now,
+            outcome: observe_server(tmux),
+        })
     }
 
     fn tmux(
@@ -77,18 +84,13 @@ fn observe_server(tmux: &Tmux<Box<dyn TmuxRunner + Send + Sync>>) -> ServerOutco
                 .capture_pane(&info.pane_id, true, Some(SCRAPE_LINES))
                 .map(|t| t.lines().map(str::to_owned).collect())
                 .unwrap_or_default();
-            Some(PaneObservation {
-                pane: PaneId::new(info.pane_id),
-                pid: info.pane_pid,
+            let focused = info.focused;
+            Some(PaneObservation::from_info(
+                info,
                 agent,
-                session: info.session_name,
-                window: info.window_name,
-                path: info.current_path,
-                command: info.current_command,
-                title: info.pane_title,
-                focused: info.focused,
                 screen_lines,
-            })
+                focused,
+            ))
         })
         .collect();
     ServerOutcome::Observed(panes)

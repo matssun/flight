@@ -36,6 +36,14 @@ impl Control {
         std::thread::spawn(move || {
             let mut block: Option<Vec<String>> = None;
             for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                // A notification may arrive while a response is still open: it is not part of
+                // the response, and treating it as such would lose the change.
+                if let Some(rest) = line.strip_prefix("%output ") {
+                    if let (Some(id), Ok(mut set)) = (rest.split(' ').next(), seen.lock()) {
+                        set.insert(id.to_owned());
+                    }
+                    continue;
+                }
                 match block.as_mut() {
                     Some(lines) if line.starts_with("%end ") || line.starts_with("%error ") => {
                         let done = std::mem::take(lines);
@@ -46,13 +54,7 @@ impl Control {
                     }
                     Some(lines) => lines.push(line),
                     None if line.starts_with("%begin ") => block = Some(Vec::new()),
-                    None => {
-                        if let Some(rest) = line.strip_prefix("%output ") {
-                            if let (Some(id), Ok(mut set)) = (rest.split(' ').next(), seen.lock()) {
-                                set.insert(id.to_owned());
-                            }
-                        }
-                    }
+                    None => {}
                 }
             }
         });

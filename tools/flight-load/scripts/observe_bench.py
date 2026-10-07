@@ -34,13 +34,22 @@ def server_cpu():
 
 
 def make_panes(agent, workdir, n):
+    """Create N panes (session ob1..obN); return pane ids in session order, or None on failure."""
     sh(f"tmux -L {SOCKET} kill-server 2>/dev/null")
+    time.sleep(6)  # let the previous server's ptys be released (macOS caps them at 511)
     os.makedirs(workdir, exist_ok=True)
     for i in range(1, n + 1):
         write_rev(workdir, i, 0)
         sh(f"tmux -L {SOCKET} new-session -d -s ob{i} -c /tmp 'exec {agent} {workdir}/scr_ob{i}.txt'")
     time.sleep(2)
-    return int(sh(f"tmux -L {SOCKET} list-panes -a | wc -l"))
+    ids = {}
+    for line in sh(f"tmux -L {SOCKET} list-panes -a -F '#{{pane_id}} #{{session_name}}'").splitlines():
+        pane, session = line.split()
+        ids[int(session[2:]) - 1] = pane
+    if len(ids) != n:
+        print(f"could only create {len(ids)} of {n} panes (pty limit?)", flush=True)
+        return None
+    return [ids[i] for i in range(n)]
 
 
 def write_rev(workdir, i, rev):
@@ -75,7 +84,8 @@ class Churn(threading.Thread):
             time.sleep(tick)
 
 
-def run_strategy(args, n, capture, policy):
+def run_strategy(args, ids, capture, policy):
+    n = len(ids)
     churn = Churn(args.workdir, n, args.churn)
     cmd = [args.flight_load, "observe", "--socket", SOCKET, "--capture", capture, "--policy", policy,
            "--interval-ms", str(args.interval), "--secs", str(args.secs), "--settle", "3"]
@@ -99,7 +109,7 @@ def run_strategy(args, n, capture, policy):
     # detection latency: first round whose observed rev >= the written rev
     lat = []
     for i in range(n):
-        key = f"%{i}"
+        key = ids[i]
         for rev, tw in churn.writes[i][1:]:
             for l in lines:
                 if l["revs"].get(key, -1) >= rev and l["t"] / 1000 >= tw:
@@ -108,7 +118,15 @@ def run_strategy(args, n, capture, policy):
     lat.sort()
     lp = lambda q: lat[min(len(lat) - 1, int(q * len(lat)))] if lat else float("nan")
     last = lines[-1]["revs"]
-    stale = sum(1 for i in range(n) if last.get(f"%{i}", -1) != churn.rev[i])
+    stale_idx = [i for i in range(n) if last.get(ids[i], -1) != churn.rev[i]]
+    stale = len(stale_idx)
+    if args.debug_stale:
+        end_t = lines[-1]["t"] / 1000
+        for i in stale_idx[:6]:
+            seen = [l["revs"].get(ids[i], None) for l in lines[-5:]]
+            recent = [(rev, round(end_t - tw, 2)) for rev, tw in churn.writes[i][-2:]]
+            print(f"   stale {ids[i]}: expected rev {churn.rev[i]}, last 5 rounds saw {seen}, "
+                  f"last writes (rev, seconds before last round) {recent}", flush=True)
     return {
         "round_p50": pick(0.5), "round_p95": pick(0.95), "round_max": took[-1],
         "captured_avg": sum(l["captured"] for l in lines) / len(lines),
@@ -128,15 +146,19 @@ def main():
     ap.add_argument("--strategies", default="seq/all,conc:8/all,seq/skip,ctl/all,ctl/events")
     ap.add_argument("--interval", type=int, default=1000)
     ap.add_argument("--secs", type=int, default=30)
+    ap.add_argument("--debug-stale", action="store_true", help="explain panes that end stale")
     args = ap.parse_args()
     print(f"churn={args.churn}%/s interval={args.interval}ms secs={args.secs}")
     print(f"{'panes':>5} {'strategy':<14} {'round p50/p95/max ms':>22} {'caps/rd':>7} "
           f"{'detect p50/p95/max ms':>23} {'stale':>5} {'cpu% client+server':>19}")
     for n in [int(x) for x in args.panes.split(",")]:
-        got = make_panes(args.agent, args.workdir, n)
+        ids = make_panes(args.agent, args.workdir, n)
+        if ids is None:
+            continue
+        got = len(ids)
         for spec in args.strategies.split(","):
             capture, policy = spec.split("/")
-            r = run_strategy(args, got, capture, policy)
+            r = run_strategy(args, ids, capture, policy)
             if r is None:
                 print(f"{got:5d} {spec:<14} FAILED")
                 continue

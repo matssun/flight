@@ -68,6 +68,7 @@ pub struct NodeLink {
     jobs: Arc<Semaphore>,
     out: Out,
     log: Option<LinkLog>,
+    repeat_report: Duration,
 }
 
 impl NodeLink {
@@ -79,7 +80,14 @@ impl NodeLink {
             jobs: Arc::new(Semaphore::new(MAX_CONCURRENT_JOBS)),
             out: Arc::default(),
             log: None,
+            repeat_report: Duration::from_secs(30),
         }
+    }
+
+    /// How often a failure that keeps repeating is reported again (default 30 s).
+    pub fn with_repeat_report(mut self, every: Duration) -> Self {
+        self.repeat_report = every;
+        self
     }
 
     /// Report link transitions to `log`. Repeated identical failures are reported once.
@@ -116,6 +124,8 @@ impl NodeLink {
     pub async fn run(&self, mut stop: watch::Receiver<bool>) {
         let mut delay = self.cfg.reconnect_min;
         let mut last_failure = String::new();
+        let (mut attempts, mut failing_since, mut last_report) =
+            (0u64, std::time::Instant::now(), std::time::Instant::now());
         loop {
             let started = std::time::Instant::now();
             let outcome = tokio::select! {
@@ -125,6 +135,7 @@ impl NodeLink {
             match outcome {
                 Ok(()) => {
                     last_failure.clear();
+                    attempts = 0;
                     self.say(format!(
                         "link ended after {:.0?}: the orchestrator closed the connection",
                         started.elapsed()
@@ -132,12 +143,22 @@ impl NodeLink {
                 }
                 Err(e) => {
                     let why = e.to_string();
+                    attempts += 1;
                     if why != last_failure {
                         self.say(format!(
                             "link down after {:.0?}: {why}; retrying",
                             started.elapsed()
                         ));
                         last_failure = why;
+                        attempts = 1;
+                        failing_since = std::time::Instant::now();
+                        last_report = failing_since;
+                    } else if last_report.elapsed() >= self.repeat_report {
+                        self.say(format!(
+                            "link still down: {attempts} attempts over {:.0?}: {last_failure}",
+                            failing_since.elapsed()
+                        ));
+                        last_report = std::time::Instant::now();
                     }
                 }
             }

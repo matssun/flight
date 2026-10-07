@@ -67,6 +67,47 @@ async fn a_refused_node_reports_why_once_however_often_it_retries() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_failure_that_keeps_repeating_is_reported_again_with_its_attempt_count() {
+    let stranger = Arc::new(Identity::generate().expect("identity"));
+    let (server, orch, addr) = start(TrustStore::empty(), None).await;
+    let lines = Arc::new(Mutex::new(Vec::new()));
+    let sink = lines.clone();
+    let session = NodeSession::new(NodeCore::new(stranger.fingerprint().host_id(), inc(1)), "n");
+    let link = Arc::new(
+        NodeLink::new(
+            NodeLinkConfig {
+                address: addr.clone(),
+                identity: stranger.clone(),
+                orchestrator: orch.clone(),
+                servers: vec!["flight".to_owned()],
+                heartbeat_interval: Duration::from_millis(500),
+                reconnect_min: Duration::from_millis(30),
+                reconnect_max: Duration::from_millis(60),
+            },
+            session,
+            Arc::new(PreviewControl),
+        )
+        .with_log(Arc::new(move |l| sink.lock().unwrap().push(l)))
+        .with_repeat_report(Duration::from_millis(300)),
+    );
+    let (stop, rx) = watch::channel(false);
+    let task = tokio::spawn({
+        let link = link.clone();
+        async move { link.run(rx).await }
+    });
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+    let _ = stop.send(true);
+    let _ = task.await;
+    let got = lines.lock().unwrap().clone();
+    assert!(got.len() >= 3, "first report plus repeats: {got:?}");
+    assert!(
+        got[1].starts_with("link still down: ") && got[1].contains("attempts"),
+        "{got:?}"
+    );
+    server.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_trusted_node_says_it_connected() {
     let node = Arc::new(Identity::generate().expect("identity"));
     let (server, orch, addr) = start(trust_with(&[(&node, "n")], &[]), None).await;

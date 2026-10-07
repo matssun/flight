@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use crate::collect::Collector;
+use crate::collect::Backend;
 use crate::snapshot::{PanePreview, UiSnapshot};
 use flight_state::PaneRef;
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
@@ -29,18 +29,18 @@ pub struct Worker {
 impl Worker {
     /// Collection runs here, off the UI thread, so a slow or dead host can never freeze the
     /// interface: the loop keeps drawing and handling keys while a refresh is in flight.
-    pub fn spawn(mut collector: Collector, interval: Duration) -> Self {
+    pub fn spawn(mut collector: Box<dyn Backend>, interval: Duration) -> Self {
         let (tx, cmd_rx) = channel::<Cmd>();
         let (msg_tx, rx) = channel::<Msg>();
         let handle = thread::spawn(move || {
             let mut target: Option<PaneRef> = None;
-            if !refresh(&mut collector, &target, &msg_tx) {
+            if !refresh(&mut *collector, &target, &msg_tx) {
                 return;
             }
             loop {
                 let alive = match cmd_rx.recv_timeout(interval) {
                     Ok(Cmd::Refresh) | Err(RecvTimeoutError::Timeout) => {
-                        refresh(&mut collector, &target, &msg_tx)
+                        refresh(&mut *collector, &target, &msg_tx)
                     }
                     Ok(Cmd::Select(p)) => {
                         target = p;
@@ -49,7 +49,7 @@ impl Worker {
                             .is_ok()
                     }
                     Ok(Cmd::Switch(p)) => {
-                        let r = collector.switch_to(&p).map_err(|e| e.to_string());
+                        let r = collector.switch_to(&p);
                         msg_tx.send(Msg::Switched(r)).is_ok()
                     }
                     Ok(Cmd::Shutdown) | Err(RecvTimeoutError::Disconnected) => false,
@@ -81,8 +81,8 @@ fn now_secs() -> u64 {
 }
 
 /// Collect and send a snapshot plus the current preview. `false` once the UI is gone.
-fn refresh(c: &mut Collector, target: &Option<PaneRef>, tx: &Sender<Msg>) -> bool {
-    let snapshot = c.collect(now_secs());
+fn refresh(c: &mut dyn Backend, target: &Option<PaneRef>, tx: &Sender<Msg>) -> bool {
+    let snapshot = c.snapshot(now_secs());
     let preview = target.as_ref().map(|t| c.preview(t));
     tx.send(Msg::Snapshot(snapshot)).is_ok() && tx.send(Msg::Preview(preview)).is_ok()
 }

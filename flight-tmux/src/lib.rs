@@ -14,4 +14,4 @@ pub use endpoint::TmuxEndpoint;
 pub use error::TmuxError;
 pub use pane_info::PaneInfo;
 pub use parse::{parse_panes_output, PANE_FORMAT};
-pub use runner::{SystemRunner, TmuxOutput, TmuxRunner};
+pub use runner::{tmux_args, SystemRunner, TmuxOutput, TmuxRunner};

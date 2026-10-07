@@ -2,7 +2,7 @@
 
 use super::keys::action_for;
 use super::worker::{Cmd, Msg, Worker};
-use crate::collect::Collector;
+use crate::collect::Backend;
 use crate::render::render;
 use crate::view::{Effect, ViewModel};
 use crossterm::event::{self, Event, KeyEventKind};
@@ -34,12 +34,12 @@ impl Drop for TerminalGuard {
 }
 
 /// The terminal loop: owns the terminal and the worker; everything else is pure.
-pub fn run(collector: Collector, refresh_every: Duration) -> io::Result<Exit> {
+pub fn run(backend: impl Backend + 'static, refresh_every: Duration) -> io::Result<Exit> {
     enable_raw_mode()?;
     let _guard = TerminalGuard;
     execute!(io::stdout(), EnterAlternateScreen)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
-    let mut worker = Worker::spawn(collector, refresh_every);
+    let mut worker = Worker::spawn(Box::new(backend), refresh_every);
     let exit = event_loop(&mut terminal, &mut worker);
     worker.shutdown();
     exit

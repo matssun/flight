@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use flight_classify::AgentKind;
+use crate::AgentKind;
 
 /// Commands tmux reports for known agents with no manifest of their own.
 const OTHER_AGENTS: [&str; 5] = ["aider", "cursor", "gemini", "amp", "droid"];

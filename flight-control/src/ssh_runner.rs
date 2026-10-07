@@ -35,9 +35,9 @@ impl SshRunner {
 
     /// The full `ssh` argument list (without the program name) for a tmux invocation.
     pub fn ssh_args(&self, tmux_args: &[&str]) -> Vec<String> {
+        // `-u`: a non-login ssh command has no UTF-8 locale; see `flight_tmux::tmux_args`.
         let remote = std::iter::once("tmux".to_owned())
-            .chain(self.endpoint.args())
-            .chain(tmux_args.iter().map(|a| (*a).to_owned()))
+            .chain(flight_tmux::tmux_args(&self.endpoint, tmux_args))
             .map(|a| shell_quote(&a))
             .collect::<Vec<_>>()
             .join(" ");
@@ -94,7 +94,10 @@ mod tests {
                 "mini-2"
             ]
         );
-        assert_eq!(args[6], "'tmux' '-L' 'flight' 'has-session' '-t' '=api'");
+        assert_eq!(
+            args[6],
+            "'tmux' '-u' '-L' 'flight' 'has-session' '-t' '=api'"
+        );
     }
 
     #[test]

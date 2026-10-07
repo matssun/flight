@@ -1,0 +1,345 @@
+// SPDX-License-Identifier: MIT
+//
+// Flight wire protocol v1. THIS FILE IS THE NORMATIVE SCHEMA.
+//
+// The Rust types in src/ are hand-written `prost` messages (so builds need no protoc), and
+// tests/schema.rs proves they agree with this file: message names, field names, numbers,
+// types, oneofs and enum values. Change both together.
+//
+// Liveness vs state: a node's connection status (Online/Stale/Disconnected) is separate from its
+// panes' semantic state, which stays as last reported while the node is away.
+//
+// Rules: never renumber or reuse a number (retire it with `reserved`); only add. Enum zero
+// is always UNSPECIFIED and is never a valid value on the wire. The semantic boundary: the
+// wire carries semantic pane/node state only, never classifier internals.
+
+syntax = "proto3";
+
+package flight.v1;
+
+// ---------------------------------------------------------------------------------------
+// Common
+
+message ProtocolVersion {
+  uint32 major = 1;
+  uint32 minor = 2;
+}
+
+message PaneRefMsg {
+  string host = 1;
+  string server = 2;
+  string pane = 3;
+}
+
+enum AgentKindCode {
+  AGENT_KIND_CODE_UNSPECIFIED = 0;
+  AGENT_KIND_CODE_CLAUDE = 1;
+  AGENT_KIND_CODE_CODEX = 2;
+  AGENT_KIND_CODE_OPEN_CODE = 3;
+  AGENT_KIND_CODE_PI = 4;
+  AGENT_KIND_CODE_OTHER = 5;
+}
+
+enum StateCode {
+  STATE_CODE_UNSPECIFIED = 0;
+  STATE_CODE_PERMIT = 1;
+  STATE_CODE_QUESTION = 2;
+  STATE_CODE_DONE = 3;
+  STATE_CODE_BUSY = 4;
+  STATE_CODE_IDLE = 5;
+  STATE_CODE_SHELL = 6;
+  STATE_CODE_DOWN = 7;
+}
+
+enum SourceCode {
+  SOURCE_CODE_UNSPECIFIED = 0;
+  SOURCE_CODE_HOOK = 1;
+  SOURCE_CODE_EVENT = 2;
+  SOURCE_CODE_SCRAPE = 3;
+  SOURCE_CODE_TITLE = 4;
+  SOURCE_CODE_TIMEOUT = 5;
+  SOURCE_CODE_SYNTHESIZED_DONE = 6;
+  SOURCE_CODE_DEFAULT = 7;
+  SOURCE_CODE_GLYPH = 8;
+}
+
+enum ErrorKindCode {
+  ERROR_KIND_CODE_UNSPECIFIED = 0;
+  ERROR_KIND_CODE_TMUX_UNAVAILABLE = 1;
+  ERROR_KIND_CODE_TMUX_SERVER_UNAVAILABLE = 2;
+  ERROR_KIND_CODE_REMOTE_COMMAND_FAILED = 3;
+  ERROR_KIND_CODE_UNSUPPORTED = 4;
+  ERROR_KIND_CODE_NOT_AUTHORIZED = 5;
+  ERROR_KIND_CODE_PROTOCOL_MISMATCH = 6;
+  ERROR_KIND_CODE_UNKNOWN_PANE = 7;
+  ERROR_KIND_CODE_INVALID_REQUEST = 8;
+  ERROR_KIND_CODE_NODE_UNREACHABLE = 9;
+}
+
+enum NodeStatusCode {
+  NODE_STATUS_CODE_UNSPECIFIED = 0;
+  NODE_STATUS_CODE_ONLINE = 1;
+  NODE_STATUS_CODE_DISCONNECTED = 2;
+  NODE_STATUS_CODE_STALE = 3;
+}
+
+enum RoleCode {
+  ROLE_CODE_UNSPECIFIED = 0;
+  ROLE_CODE_NODE = 1;
+  ROLE_CODE_UI = 2;
+}
+
+enum AvailabilityCode {
+  AVAILABILITY_CODE_UNSPECIFIED = 0;
+  AVAILABILITY_CODE_AVAILABLE = 1;
+  AVAILABILITY_CODE_TMUX_UNAVAILABLE = 2;
+  AVAILABILITY_CODE_NO_SERVER = 3;
+  AVAILABILITY_CODE_FAILED = 4;
+}
+
+// One agent pane's resolved, externally visible state. No terminal contents. Fields that
+// change on every poll (observation time, terminal title) are deliberately absent.
+message PaneState {
+  reserved 7, 13;
+  PaneRefMsg pane_ref = 1;
+  AgentKindCode agent_kind = 2;
+  StateCode state = 3;
+  SourceCode source = 4;
+  // The winning rule id, when a rule decided it.
+  string rule_id = 5;
+  // A short human reason, e.g. "finished while away".
+  string why = 6;
+  // Seconds since the epoch at which `state` last changed.
+  uint64 changed_at = 8;
+  string session = 9;
+  string window = 10;
+  string path = 11;
+  string command = 12;
+}
+
+message ServerStatus {
+  string server = 1;
+  AvailabilityCode availability = 2;
+  string detail = 3;
+}
+
+message ErrorInfo {
+  ErrorKindCode kind = 1;
+  string message = 2;
+}
+
+message Heartbeat {
+  uint64 seq = 1;
+}
+
+// ---------------------------------------------------------------------------------------
+// Node <-> orchestrator: one long-lived bidirectional stream, dialled by the node.
+//
+// Replication: Snapshot(incarnation = N), then Delta(N, 1), Delta(N, 2), ... A gap, a
+// duplicate, a foreign incarnation or a reconnect means "request a fresh snapshot"; there
+// is no repair. A snapshot alone is always sufficient; a delta is never required.
+// `incarnation` is 16 random bytes, fresh per producer process, never persisted.
+
+message NodeHello {
+  ProtocolVersion version = 1;
+  // Key fingerprint; stable. The display name is mutable presentation.
+  string node_id = 2;
+  string display_name = 3;
+  repeated string capabilities = 4;
+  repeated string servers = 5;
+}
+
+message OrchestratorHello {
+  ProtocolVersion version = 1;
+  repeated string accepted_capabilities = 2;
+  uint32 heartbeat_interval_secs = 3;
+}
+
+message Snapshot {
+  bytes incarnation = 1;
+  repeated PaneState panes = 2;
+  repeated ServerStatus servers = 3;
+}
+
+message Delta {
+  bytes incarnation = 1;
+  uint64 sequence = 2;
+  oneof change {
+    PaneState pane_upsert = 3;
+    PaneRefMsg pane_removed = 4;
+    ServerStatus server_status = 5;
+  }
+}
+
+message Command {
+  message GetPreview {
+    PaneRefMsg pane_ref = 1;
+    uint32 lines = 2;
+  }
+  message SwitchPane {
+    PaneRefMsg pane_ref = 1;
+  }
+  message SendInput {
+    PaneRefMsg pane_ref = 1;
+    string text = 2;
+    bool enter = 3;
+  }
+  message KillPane {
+    PaneRefMsg pane_ref = 1;
+  }
+  message CreateSession {
+    string host = 1;
+    string server = 2;
+    string name = 3;
+    string dir = 4;
+    // Empty means the shell.
+    string command = 5;
+  }
+  oneof kind {
+    GetPreview get_preview = 1;
+    SwitchPane switch_pane = 2;
+    SendInput send_input = 3;
+    KillPane kill_pane = 4;
+    CreateSession create_session = 5;
+  }
+}
+
+message Request {
+  uint64 request_id = 1;
+  Command command = 2;
+}
+
+message Preview {
+  string text = 1;
+  // Seconds since the epoch.
+  uint64 captured_at = 2;
+}
+
+message Response {
+  // The request succeeded and has no payload.
+  message Done {}
+  uint64 request_id = 1;
+  oneof result {
+    Done done = 2;
+    Preview preview = 3;
+    ErrorInfo error = 4;
+  }
+}
+
+message NodeFrame {
+  oneof body {
+    NodeHello hello = 1;
+    Heartbeat heartbeat = 2;
+    Snapshot snapshot = 3;
+    Delta delta = 4;
+    Response response = 5;
+  }
+}
+
+message ResyncRequest {
+  string reason = 1;
+}
+
+message Goodbye {
+  ErrorKindCode reason = 1;
+  string message = 2;
+}
+
+message OrchestratorFrame {
+  oneof body {
+    OrchestratorHello hello = 1;
+    Heartbeat heartbeat = 2;
+    ResyncRequest resync = 3;
+    Request request = 4;
+    Goodbye goodbye = 5;
+  }
+}
+
+// ---------------------------------------------------------------------------------------
+// UI <-> orchestrator: a separate interface. A UI consumes state and issues operator
+// commands; it can never publish node state.
+
+message NodeView {
+  string node_id = 1;
+  string display_name = 2;
+  NodeStatusCode status = 3;
+  repeated ServerStatus servers = 4;
+  repeated PaneState panes = 5;
+}
+
+message FleetSnapshot {
+  bytes incarnation = 1;
+  repeated NodeView nodes = 2;
+}
+
+message NodeStatusChanged {
+  string node_id = 1;
+  NodeStatusCode status = 2;
+}
+
+message NodeServerStatus {
+  string node_id = 1;
+  ServerStatus status = 2;
+}
+
+message NodeRemoved {
+  string node_id = 1;
+}
+
+message FleetDelta {
+  bytes incarnation = 1;
+  uint64 sequence = 2;
+  oneof change {
+    // Replaces the whole node entry, including its panes.
+    NodeView node_upsert = 3;
+    NodeStatusChanged node_status = 4;
+    PaneState pane_upsert = 5;
+    PaneRefMsg pane_removed = 6;
+    NodeServerStatus server_status = 7;
+    NodeRemoved node_removed = 8;
+  }
+}
+
+// Start receiving the fleet: a FleetSnapshot, then FleetDeltas.
+message Subscribe {}
+
+message UiRequest {
+  oneof body {
+    Subscribe subscribe = 1;
+    Request command = 2;
+  }
+}
+
+message UiEvent {
+  oneof body {
+    FleetSnapshot snapshot = 1;
+    FleetDelta delta = 2;
+    Response response = 3;
+  }
+}
+
+// ---------------------------------------------------------------------------------------
+// Enrollment and the gRPC service (HTTP/2 over mutual TLS 1.3, identities pinned by
+// fingerprint). `Enroll` is the only call an authenticated but not yet authorized identity
+// may make; the two streams require an enabled entry in the orchestrator's trust store.
+
+// Join the fleet. The identity enrolled is the client certificate the request arrived
+// under; the token only authorizes the join. Failures are indistinguishable to the peer.
+message EnrollRequest {
+  string token = 1;
+  string display_name = 2;
+  RoleCode role = 3;
+}
+
+message EnrollResponse {
+  string node_id = 1;
+  string orchestrator_id = 2;
+}
+
+service Flight {
+  // A node's one long-lived stream, dialled by the node.
+  rpc NodeConnect(stream NodeFrame) returns (stream OrchestratorFrame);
+  // A UI's stream.
+  rpc UiConnect(stream UiRequest) returns (stream UiEvent);
+  rpc Enroll(EnrollRequest) returns (EnrollResponse);
+}

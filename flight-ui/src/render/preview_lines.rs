@@ -22,7 +22,10 @@ pub fn preview_lines(vm: &ViewModel, height: usize) -> (String, Vec<Line<'static
             let (icon, label, _) = state_look(p.state);
             format!(
                 "{} / {} · {:?} · {icon} {label} ({})",
-                p.pane_ref.host, p.session, p.agent, p.why
+                super::list_lines::host_label(vm, p).unwrap_or(""),
+                p.session,
+                p.agent,
+                p.why
             )
         }
         None => "Preview".to_owned(),

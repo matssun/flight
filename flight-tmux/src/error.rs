@@ -11,6 +11,9 @@ pub enum TmuxError {
     Failed { code: Option<i32>, stderr: String },
     /// A socket name that is empty or contains a path separator.
     InvalidEndpoint(String),
+    /// tmux answered, but nothing in the answer matched the expected format (for example a
+    /// field separator that was rewritten). Reported instead of silently showing no panes.
+    Unparseable(String),
 }
 
 impl fmt::Display for TmuxError {
@@ -22,6 +25,10 @@ impl fmt::Display for TmuxError {
                 stderr,
             } => write!(f, "tmux exited {c}: {stderr}"),
             Self::InvalidEndpoint(n) => write!(f, "invalid tmux socket name: {n:?}"),
+            Self::Unparseable(sample) => write!(
+                f,
+                "tmux output was not in the expected format (first line: {sample:?}); is its locale UTF-8?"
+            ),
             Self::Failed { code: None, stderr } => write!(f, "tmux killed by signal: {stderr}"),
         }
     }

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Flight node as a per-user LaunchAgent. Template: replace every @...@ (see README.md).
+  launchd runs the binary directly (no shell wrapper) so the node gets a clean
+  service-manager process context, and restarts it whenever it exits, including after
+  `--exit-after-link-down` ends it with status 75.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>name.flight.node</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>@FLIGHT_BIN@</string>
+    <string>node</string>
+    <string>run</string>
+    <string>--socket</string>
+    <string>flight</string>
+    <string>--config-dir</string>
+    <string>@NODE_CONFIG_DIR@</string>
+  </array>
+
+  <!-- tmux is not on launchd's minimal PATH. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>/</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!-- Restart on every exit. -->
+  <key>KeepAlive</key>
+  <true/>
+
+  <!-- At most one start every 10 s. -->
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <key>StandardOutPath</key>
+  <string>@LOG_DIR@/node.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>@LOG_DIR@/node.err.log</string>
+</dict>
+</plist>

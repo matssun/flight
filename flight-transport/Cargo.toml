@@ -1,0 +1,29 @@
+[package]
+name = "flight-transport"
+description = "Flight: tonic gRPC over mutual TLS (orchestrator server, node link, UI client, enrollment)"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+flight-node = { path = "../flight-node" }
+flight-orchestrator = { path = "../flight-orchestrator" }
+flight-proto = { path = "../flight-proto" }
+flight-state = { path = "../flight-state" }
+flight-trust = { path = "../flight-trust" }
+http = "1"
+http-body = "1"
+hyper-util = { version = "0.1", features = ["tokio"] }
+prost = "0.14"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "io-util", "signal"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+tokio-stream = "0.1"
+tonic = "0.14"
+tonic-prost = "0.14"
+tower = { version = "0.5", features = ["util"] }
+
+[dev-dependencies]
+flight-classify = { path = "../flight-classify" }

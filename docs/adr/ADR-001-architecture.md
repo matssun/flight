@@ -48,7 +48,7 @@ v0 limits, deliberately: agents are recognized from `pane_current_command` only 
 
 `resolve` is a pure function of `ResolveInput { previous, evidence, glyph_seen, idle_secs }`; the caller owns the per-pane `Tracking`. Hook-less panes need it for the glyph debounce and for synthesizing Done when a turn finishes while the user is elsewhere. Parity with Fleet is checked by differential goldens generated from Fleet's own code (`tools/gen_*_golden.mjs`).
 
-Consequence for distribution: `Tracking` is state that must live somewhere. As in Fleet it is in-memory and a cold start forgets a pending Done. `flight-control` must decide whether Tracking lives with the central dashboard (loses Done on restart, simplest) or with a per-host node (survives dashboard restarts, needs a protocol). That decision is deferred; nothing here assumes either.
+Consequence for distribution: `Tracking` is in-memory and a cold start forgets a pending Done. Decision (ADR-002): it lives in `flight-node`, beside observation, so UI and orchestrator restarts lose nothing.
 
 ## Why not fork tms
 

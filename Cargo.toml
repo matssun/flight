@@ -9,11 +9,18 @@ resolver = "2"
 members = [
     "flight-tmux",     # tmux IPC: list-panes, capture-pane, switch/attach/kill
     "flight-classify", # Pure classifier: Observation -> Classification (ordered rule manifests, with provenance)
+    "flight-proto",    # Wire protocol: node/orchestrator/UI messages, versioning, validation (no I/O)
+    "flight-node",     # Node: observation adapter, NodeCore (state, Tracking, snapshot/delta), node session
+    "flight-orchestrator", # Orchestrator core: node registry, replication, liveness, routing, fleet image (no I/O)
+    "flight-trust",    # Identity, fingerprints, trust.toml, enrollment tokens, pinned-fingerprint TLS verifiers
+    "flight-transport", # tonic gRPC over mutual TLS: orchestrator server, node link, UI client, enrollment client
+    "flight-client",   # The dashboard backend that reads an orchestrator (UiClient -> FleetImage -> UiSnapshot)
     "flight-state",    # Agent state engine: hook + event + scrape fusion, 7-state model
     "flight-control",  # Host registry: routes PaneRef to a runner per host (local, SSH), typed host errors
     "flight-sessions", # Session sources (tmux, zoxide, config, tmuxinator), dedup, naming, connect
     "flight-ui",       # Dashboard: snapshot, pure view model, ratatui rendering, terminal loop
     "flight",          # The binary
+    "tools/flight-load", # Measurement tool for the control plane (test tooling, not shipped)
 ]
 
 [workspace.package]

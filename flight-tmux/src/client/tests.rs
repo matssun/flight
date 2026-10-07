@@ -79,3 +79,27 @@ fn session_targets_use_exact_match() {
 fn has_session_false_on_failure() {
     assert!(!Tmux::with_runner(&Fake::failing()).has_session("x"));
 }
+
+#[test]
+fn output_that_matches_nothing_is_an_error_not_an_empty_server() {
+    // What tmux prints when it rewrites the tab separators because the locale is not UTF-8.
+    let f = Fake::ok("%0_alpha_claude\n%1_beta_claude\n");
+    let err = Tmux::with_runner(&f).list_panes().unwrap_err();
+    assert!(
+        matches!(&err, TmuxError::Unparseable(line) if line.starts_with("%0_alpha")),
+        "{err:?}"
+    );
+    assert!(err.to_string().contains("UTF-8"));
+}
+
+#[test]
+fn a_server_with_no_panes_at_all_is_still_just_empty() {
+    assert!(Tmux::with_runner(&Fake::ok(""))
+        .list_panes()
+        .unwrap()
+        .is_empty());
+    assert!(Tmux::with_runner(&Fake::ok("\n"))
+        .list_panes()
+        .unwrap()
+        .is_empty());
+}

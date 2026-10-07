@@ -6,6 +6,10 @@ use flight_control::HostError;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HostHealth {
     Online,
+    /// Connected, but the orchestrator has not heard from the node lately: panes are last-known.
+    Stale,
+    /// The orchestrator has lost the node: panes are last-known.
+    Disconnected,
     /// tmux is there but no Flight server is running on the endpoint.
     NoServer,
     Unreachable(String),

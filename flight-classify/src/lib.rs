@@ -11,6 +11,7 @@
 //! The `fuse` module weighs scrape, title, hook and event evidence into one final state
 //! (Fleet's engine.ts), keeping provenance.
 
+mod agent_detect;
 mod agent_kind;
 mod ansi;
 mod builtin;
@@ -27,6 +28,7 @@ mod rule_id;
 mod screen;
 mod title;
 
+pub use agent_detect::detect_agent;
 pub use agent_kind::AgentKind;
 pub use classification::Classification;
 pub use error::ClassifyError;
@@ -40,7 +42,8 @@ pub use manifest::Manifest;
 pub use observation::Observation;
 pub use refine::refine_title_with_screen;
 pub use resolve::{
-    prune_tracking, resolve, Provenance, ResolveInput, ResolvedState, Tracking, DEFAULT_IDLE_SECS,
+    prune_tracking, resolve, why, Provenance, ResolveInput, ResolvedState, Tracking,
+    DEFAULT_IDLE_SECS,
 };
 pub use rule::Rule;
 pub use rule_id::{RuleId, PROMPT_MARKER_RULE_ID};

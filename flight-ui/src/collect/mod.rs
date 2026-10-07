@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-mod agent_detect;
+mod backend;
 mod collector;
 mod resolve_pane;
-mod why;
 
-pub use agent_detect::detect_agent;
+pub use backend::Backend;
 pub use collector::Collector;

@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-use super::agent_detect::detect_agent;
 use super::resolve_pane::resolve_pane;
-use super::why::why;
 use crate::snapshot::{HostHealth, HostView, PanePreview, PaneView, UiSnapshot};
-use flight_classify::{prune_tracking, ResolvedState};
+use flight_classify::{detect_agent, prune_tracking, why, ResolvedState};
 use flight_control::{HostError, HostPane, HostRegistry, PanesOutcome};
 use flight_state::{HostId, PaneRef, ServerId};
 use std::collections::{HashMap, HashSet};
@@ -72,6 +70,7 @@ impl Collector {
                     ))
                 });
                 HostView {
+                    label: o.host.to_string(),
                     host: o.host,
                     server: o.server,
                     health: HostHealth::Online,
@@ -79,6 +78,7 @@ impl Collector {
                 }
             }
             Err(e) => HostView {
+                label: o.host.to_string(),
                 host: o.host,
                 server: o.server,
                 health: HostHealth::from_error(&e),
@@ -128,5 +128,19 @@ impl Collector {
                 .cloned(),
         );
         prune_tracking(&mut self.resolved, &live);
+    }
+}
+
+impl super::Backend for Collector {
+    fn snapshot(&mut self, now: u64) -> UiSnapshot {
+        self.collect(now)
+    }
+
+    fn preview(&mut self, pane: &PaneRef) -> PanePreview {
+        Collector::preview(self, pane)
+    }
+
+    fn switch_to(&mut self, pane: &PaneRef) -> Result<(), String> {
+        Collector::switch_to(self, pane).map_err(|e| e.to_string())
     }
 }

@@ -31,7 +31,14 @@ impl<R: TmuxRunner> Tmux<R> {
     /// Every pane on the server. `Err(Failed)` usually means no server is running.
     pub fn list_panes(&self) -> Result<Vec<PaneInfo>, TmuxError> {
         let out = self.runner.run(&["list-panes", "-a", "-F", PANE_FORMAT])?;
-        Ok(parse_panes_output(&out.stdout))
+        let panes = parse_panes_output(&out.stdout);
+        if panes.is_empty() {
+            // Panes were listed but none could be read: say so rather than report "no panes".
+            if let Some(line) = out.stdout.lines().find(|l| !l.trim().is_empty()) {
+                return Err(TmuxError::Unparseable(line.chars().take(80).collect()));
+            }
+        }
+        Ok(panes)
     }
 
     /// Visible text of a pane. `ansi` keeps escape sequences (`-e`); `lines` limits to the

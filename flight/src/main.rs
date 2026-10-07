@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 mod args;
+mod clock;
 mod config;
 mod join_cmd;
 mod node_cmd;

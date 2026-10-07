@@ -67,7 +67,7 @@ fn run_node(args: &[String]) -> Result<(), String> {
     })?;
     let identity = Arc::new(Identity::load(&identity_dir(&dir)).map_err(|e| e.to_string())?);
     let interval = match args.value("--interval") {
-        Some(s) => Duration::from_secs(s.parse().map_err(|_| format!("bad --interval {s:?}"))?),
+        Some(s) => parse_interval(s)?,
         None => Duration::from_secs(2),
     };
 
@@ -116,7 +116,9 @@ fn run_node(args: &[String]) -> Result<(), String> {
         session,
         servers.clone(),
     )
-    .with_log(Arc::new(|line| println!("{line}")));
+    .with_log(Arc::new(|line| {
+        println!("{} {line}", crate::clock::utc_clock());
+    }));
     let link = Arc::new(match exit_after {
         Some(limit) => link.with_unreachable_limit(limit),
         None => link,
@@ -161,4 +163,29 @@ fn run_node(args: &[String]) -> Result<(), String> {
         }
         Ok(())
     })
+}
+
+/// A poll interval in (possibly fractional) seconds, at least 50 ms and at most an hour.
+fn parse_interval(s: &str) -> Result<Duration, String> {
+    let bad = || format!("bad --interval {s:?}: seconds between 0.05 and 3600, e.g. 2 or 0.5");
+    let secs: f64 = s.parse().map_err(|_| bad())?;
+    if !(0.05..=3600.0).contains(&secs) {
+        return Err(bad());
+    }
+    Duration::try_from_secs_f64(secs).map_err(|_| bad())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_interval;
+    use std::time::Duration;
+
+    #[test]
+    fn intervals_may_be_fractional_but_must_be_sane() {
+        assert_eq!(parse_interval("2"), Ok(Duration::from_secs(2)));
+        assert_eq!(parse_interval("0.25"), Ok(Duration::from_millis(250)));
+        for bad in ["0", "0.01", "-1", "nan", "inf", "7200", "abc", ""] {
+            assert!(parse_interval(bad).is_err(), "{bad:?}");
+        }
+    }
 }

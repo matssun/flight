@@ -105,3 +105,45 @@ fn reconnecting_restores_online_and_a_snapshot_replaces_the_last_known_image() {
     assert_eq!(pane_ids(&v), vec!["%1", "%2"]);
     assert_eq!(w.uis[&UiId(1)].views(), w.views());
 }
+
+#[test]
+fn liveness_changes_come_with_ages_for_the_operator_log() {
+    let mut w = world_with_panes();
+    w.notes.clear();
+    w.mute(0);
+    w.advance(16);
+    assert!(
+        w.notes
+            .iter()
+            .any(|n| n.starts_with("mini-1: Stale, no frame for 16s (stale after 15s")),
+        "{:?}",
+        w.notes
+    );
+    w.unmute(0);
+    w.advance(1);
+    assert!(
+        w.notes
+            .iter()
+            .any(|n| n.starts_with("mini-1: Online again after 17s of silence")),
+        "{:?}",
+        w.notes
+    );
+    w.mute(1);
+    for _ in 0..8 {
+        w.advance(5);
+    }
+    assert!(
+        w.notes
+            .iter()
+            .any(|n| n.starts_with("mini-2: heartbeat timeout")),
+        "{:?}",
+        w.notes
+    );
+    assert!(
+        w.notes
+            .iter()
+            .any(|n| n.starts_with("mini-2: connection ended, last frame ")),
+        "{:?}",
+        w.notes
+    );
+}

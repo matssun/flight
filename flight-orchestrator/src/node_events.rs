@@ -15,6 +15,7 @@ fn to_node(body: orchestrator_body::Body) -> OrchestratorFrame {
 
 impl OrchestratorCore {
     pub fn on_node_frame(&mut self, conn: ConnId, frame: NodeFrame, now: u64) -> Effects {
+        self.clock = self.clock.max(now);
         let mut fx = Effects::default();
         if let Err(reject) = frame.validate() {
             self.violation(conn, format!("invalid frame: {reject}"), &mut fx);

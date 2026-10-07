@@ -97,6 +97,8 @@ pub struct World {
     /// Muted nodes are silent: no heartbeats, no echoes.
     pub muted: std::collections::BTreeSet<usize>,
     pub responses: Vec<(UiId, UiEvent)>,
+    /// Operator notes the orchestrator emitted, in order.
+    pub notes: Vec<String>,
 }
 
 impl World {
@@ -113,6 +115,7 @@ impl World {
             closed: Vec::new(),
             muted: Default::default(),
             responses: Vec::new(),
+            notes: Vec::new(),
         }
     }
 
@@ -206,6 +209,7 @@ impl World {
     }
 
     pub fn deliver(&mut self, fx: Effects) {
+        self.notes.extend(fx.notes.iter().cloned());
         for (conn, why) in fx.close {
             for n in &mut self.nodes {
                 if n.conn == Some(conn) {

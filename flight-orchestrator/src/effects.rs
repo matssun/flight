@@ -10,6 +10,9 @@ pub struct Effects {
     pub to_ui: Vec<(UiId, UiEvent)>,
     /// Connections to drop, with the reason (for logs).
     pub close: Vec<(ConnId, String)>,
+    /// One-line operator notes about liveness (why and when a node changed state, with ages),
+    /// for the log. They never require action.
+    pub notes: Vec<String>,
 }
 
 impl Effects {

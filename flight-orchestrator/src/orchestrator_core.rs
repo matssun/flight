@@ -21,6 +21,8 @@ pub struct OrchestratorCore {
     pub(crate) conns: HashMap<ConnId, ConnState>,
     pub(crate) hub: FleetHub,
     pub(crate) pending: Pending,
+    /// The latest time any event carried: ages in operator notes are measured against it.
+    pub(crate) clock: u64,
 }
 
 impl OrchestratorCore {
@@ -32,6 +34,7 @@ impl OrchestratorCore {
             conns: HashMap::new(),
             hub: FleetHub::new(incarnation),
             pending: Pending::default(),
+            clock: 0,
         }
     }
 

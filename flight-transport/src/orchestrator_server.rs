@@ -139,6 +139,11 @@ impl ServerControl {
         save(&s)
     }
 
+    /// Report liveness changes and connection closes (with ages and reasons) to `log`.
+    pub fn set_log(&self, log: crate::LinkLog) {
+        lock(&self.state).set_log(log);
+    }
+
     /// Forget a disconnected node: remove its last-known image from the fleet and tell every
     /// UI. Separate from [`revoke`](Self::revoke): trust is untouched, so a trusted node that
     /// connects again reappears fresh. Refused while the node has a live connection.

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use crate::node_link::LinkLog;
 use crate::outbox::{Outbox, PushError};
 use flight_orchestrator::{ConnId, Effects, OrchestratorCore, UiId};
 use flight_proto::{orchestrator_body, ui_event_body, NodeFrame, OrchestratorFrame, UiEvent};
@@ -37,6 +38,7 @@ pub(crate) struct Shared {
     ui_out: HashMap<UiId, Arc<Outbox<UiEvent>>>,
     ui_peer: HashMap<UiId, Fingerprint>,
     next_id: u64,
+    log: Option<LinkLog>,
 }
 
 pub(crate) type SharedState = Arc<Mutex<Shared>>;
@@ -65,6 +67,17 @@ impl Shared {
             ui_out: HashMap::new(),
             ui_peer: HashMap::new(),
             next_id: 0,
+            log: None,
+        }
+    }
+
+    pub(crate) fn set_log(&mut self, log: LinkLog) {
+        self.log = Some(log);
+    }
+
+    fn say(&self, line: String) {
+        if let Some(log) = &self.log {
+            log(line);
         }
     }
 
@@ -139,6 +152,9 @@ impl Shared {
     /// without bound: replication deltas are disposable (an overflowing peer is resynced),
     /// heartbeats coalesce, and a peer that will not read reliable traffic is dropped.
     pub(crate) fn dispatch(&mut self, fx: Effects) {
+        for note in fx.notes {
+            self.say(note);
+        }
         let mut slow_nodes = Vec::new();
         let mut slow_uis = Vec::new();
         for (conn, frame) in fx.to_nodes {
@@ -166,7 +182,8 @@ impl Shared {
                 slow_uis.push(ui);
             }
         }
-        for (conn, _reason) in fx.close {
+        for (conn, reason) in fx.close {
+            self.say(format!("closing node connection: {reason}"));
             if let Some(out) = self.node_out.remove(&conn) {
                 out.close();
             }

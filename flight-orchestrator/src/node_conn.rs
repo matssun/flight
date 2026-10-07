@@ -27,9 +27,14 @@ impl OrchestratorCore {
         let Some(entry) = self.nodes.get_mut(node) else {
             return;
         };
+        let silent = now.saturating_sub(entry.last_seen);
         entry.last_seen = now;
         if entry.liveness == Liveness::Stale {
             entry.liveness = Liveness::Connected;
+            fx.notes.push(format!(
+                "{}: Online again after {silent}s of silence",
+                entry.display_name
+            ));
             self.publish(fx, vec![status_change(node, Liveness::Connected)]);
         }
     }
@@ -50,6 +55,11 @@ impl OrchestratorCore {
         if entry.conn != Some(conn) {
             return;
         }
+        let age = self.clock.saturating_sub(entry.last_seen);
+        fx.notes.push(format!(
+            "{}: connection ended, last frame {age}s ago",
+            entry.display_name
+        ));
         entry.conn = None;
         entry.cursor.reset();
         entry.resync_requested = false;

@@ -372,10 +372,17 @@ checksum = "aedcfb3409746eddb02b9e19ebda1c3394f759a152e48ee875a0844d1b955484"
 name = "flight"
 version = "0.0.1"
 dependencies = [
+ "flight-client",
  "flight-control",
+ "flight-node",
+ "flight-orchestrator",
+ "flight-proto",
  "flight-state",
  "flight-tmux",
+ "flight-transport",
+ "flight-trust",
  "flight-ui",
+ "tokio",
 ]
 
 [[package]]
@@ -384,6 +391,23 @@ version = "0.0.1"
 dependencies = [
  "flight-state",
  "regex",
+]
+
+[[package]]
+name = "flight-client"
+version = "0.0.1"
+dependencies = [
+ "flight-classify",
+ "flight-control",
+ "flight-node",
+ "flight-orchestrator",
+ "flight-proto",
+ "flight-state",
+ "flight-tmux",
+ "flight-transport",
+ "flight-trust",
+ "flight-ui",
+ "tokio",
 ]
 
 [[package]]
@@ -1418,6 +1442,7 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2",
  "tokio-macros",
  "windows-sys 0.61.2",

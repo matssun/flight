@@ -28,12 +28,27 @@ pub struct ServerConfig {
     pub tick_interval: Duration,
 }
 
-/// A running orchestrator: the gRPC server, its ticker, and the operator controls.
-pub struct ServerHandle {
+/// Operator controls for a running orchestrator. Cheap to clone; the admin socket and the
+/// embedding process each hold one.
+#[derive(Clone)]
+pub struct ServerControl {
     state: SharedState,
     local_addr: SocketAddr,
+}
+
+/// A running orchestrator: the gRPC server and its ticker.
+pub struct ServerHandle {
+    control: ServerControl,
     stop: watch::Sender<bool>,
     tasks: Vec<JoinHandle<()>>,
+}
+
+impl std::ops::Deref for ServerHandle {
+    type Target = ServerControl;
+
+    fn deref(&self) -> &ServerControl {
+        &self.control
+    }
 }
 
 pub async fn serve(config: ServerConfig) -> Result<ServerHandle, TransportError> {
@@ -73,14 +88,18 @@ pub async fn serve(config: ServerConfig) -> Result<ServerHandle, TransportError>
         }
     });
     Ok(ServerHandle {
-        state,
-        local_addr,
+        control: ServerControl { state, local_addr },
         stop,
         tasks: vec![server_task, ticker],
     })
 }
 
-impl ServerHandle {
+impl ServerControl {
+    /// Another handle to the same running orchestrator.
+    pub fn clone_control(&self) -> ServerControl {
+        self.clone()
+    }
+
     pub fn local_addr(&self) -> SocketAddr {
         self.local_addr
     }
@@ -128,12 +147,14 @@ impl ServerHandle {
         s.enforce_trust();
         Ok(())
     }
+}
 
+impl ServerHandle {
     /// Stop serving. Open streams are ended first; a server that still has not finished
     /// after a short grace period is aborted.
     pub async fn shutdown(self) {
         let _ = self.stop.send(true);
-        lock(&self.state).close_all();
+        lock(&self.control.state).close_all();
         for mut task in self.tasks {
             if tokio::time::timeout(Duration::from_secs(1), &mut task)
                 .await

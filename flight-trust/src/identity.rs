@@ -67,9 +67,21 @@ impl Identity {
         })
     }
 
+    /// Whether `dir` already holds an identity.
+    pub fn exists(dir: &Path) -> bool {
+        dir.join(KEY_FILE).exists() && dir.join(CERT_FILE).exists()
+    }
+
+    /// Remove the identity files from `dir` (and `dir` itself if that leaves it empty).
+    pub fn remove(dir: &Path) {
+        let _ = fs::remove_file(dir.join(KEY_FILE));
+        let _ = fs::remove_file(dir.join(CERT_FILE));
+        let _ = fs::remove_dir(dir);
+    }
+
     /// The identity in `dir`, generated and saved first if there is none yet.
     pub fn load_or_create(dir: &Path) -> Result<Self, TrustError> {
-        if dir.join(KEY_FILE).exists() && dir.join(CERT_FILE).exists() {
+        if Self::exists(dir) {
             return Self::load(dir);
         }
         let identity = Self::generate()?;

@@ -6,11 +6,10 @@ use flight_classify::AgentKind;
 use flight_node::{NodeCore, NodeSession, PaneObservation, Round, ServerOutcome, Unavailable};
 use flight_orchestrator::{ConnId, Effects, OrchestratorConfig, OrchestratorCore, UiId};
 use flight_proto::{
-    fleet_change::Change, node_body, orchestrator_body, ui_event_body, FleetSnapshot, Heartbeat,
-    Incarnation, NodeFrame, NodeView, OrchestratorFrame, PaneState, ReplicationCursor,
-    ServerStatus, Step, UiEvent,
+    node_body, orchestrator_body, ui_event_body, FleetImage, FleetSnapshot, Heartbeat, Incarnation,
+    NodeFrame, NodeView, OrchestratorFrame, Step, UiEvent,
 };
-use flight_state::{HostId, PaneId, PaneRef, ServerId};
+use flight_state::{HostId, PaneId, ServerId};
 use std::collections::BTreeMap;
 
 pub const PERMIT_SCREEN: &str =
@@ -82,120 +81,11 @@ impl SimNode {
     }
 }
 
-/// The UI-side oracle: applies a FleetSnapshot and FleetDeltas exactly as a UI would.
-#[derive(Default)]
-pub struct FleetMirror {
-    cursor: ReplicationCursor,
-    nodes: BTreeMap<String, MirrorNode>,
-}
-
-#[derive(Default, Clone)]
-struct MirrorNode {
-    name: String,
-    status: i32,
-    servers: BTreeMap<String, ServerStatus>,
-    panes: BTreeMap<PaneRef, PaneState>,
-}
-
-fn key(p: &PaneState) -> PaneRef {
-    PaneRef::try_from(p.pane_ref.as_ref().expect("pane_ref")).expect("ref")
-}
-
-impl FleetMirror {
-    pub fn in_sync(&self) -> bool {
-        self.cursor.in_sync()
-    }
-
-    pub fn apply(&mut self, event: &UiEvent) -> Step {
-        match event.body.as_ref().expect("body") {
-            ui_event_body::Body::Snapshot(s) => {
-                self.cursor.on_snapshot(s.incarnation().expect("inc"));
-                self.nodes = s
-                    .nodes
-                    .iter()
-                    .map(|n| (n.node_id.clone(), load(n)))
-                    .collect();
-                Step::Apply
-            }
-            ui_event_body::Body::Delta(d) => {
-                let step = self
-                    .cursor
-                    .on_delta(d.incarnation().expect("inc"), d.sequence);
-                if step == Step::Apply {
-                    self.change(d.change.as_ref().expect("change"));
-                }
-                step
-            }
-            ui_event_body::Body::Response(_) => Step::Apply,
-        }
-    }
-
-    fn change(&mut self, change: &Change) {
-        match change {
-            Change::NodeUpsert(v) => {
-                self.nodes.insert(v.node_id.clone(), load(v));
-            }
-            Change::NodeStatus(s) => {
-                if let Some(n) = self.nodes.get_mut(&s.node_id) {
-                    n.status = s.status;
-                }
-            }
-            Change::PaneUpsert(p) => {
-                let host = p.pane_ref.as_ref().expect("ref").host.clone();
-                if let Some(n) = self.nodes.get_mut(&host) {
-                    n.panes.insert(key(p), p.clone());
-                }
-            }
-            Change::PaneRemoved(r) => {
-                if let Some(n) = self.nodes.get_mut(&r.host) {
-                    n.panes.remove(&PaneRef::try_from(r).expect("ref"));
-                }
-            }
-            Change::ServerStatus(s) => {
-                let status = s.status.clone().expect("status");
-                if let Some(n) = self.nodes.get_mut(&s.node_id) {
-                    n.servers.insert(status.server.clone(), status);
-                }
-            }
-            Change::NodeRemoved(n) => {
-                self.nodes.remove(&n.node_id);
-            }
-        }
-    }
-
-    /// The mirror as the same shape the orchestrator publishes.
-    pub fn views(&self) -> Vec<NodeView> {
-        self.nodes
-            .iter()
-            .map(|(id, n)| NodeView {
-                node_id: id.clone(),
-                display_name: n.name.clone(),
-                status: n.status,
-                servers: n.servers.values().cloned().collect(),
-                panes: n.panes.values().cloned().collect(),
-            })
-            .collect()
-    }
-}
-
-fn load(v: &NodeView) -> MirrorNode {
-    MirrorNode {
-        name: v.display_name.clone(),
-        status: v.status,
-        servers: v
-            .servers
-            .iter()
-            .map(|s| (s.server.clone(), s.clone()))
-            .collect(),
-        panes: v.panes.iter().map(|p| (key(p), p.clone())).collect(),
-    }
-}
-
 /// Orchestrator + simulated nodes + UI mirrors, wired by delivering Effects.
 pub struct World {
     pub orch: OrchestratorCore,
     pub nodes: Vec<SimNode>,
-    pub uis: BTreeMap<UiId, FleetMirror>,
+    pub uis: BTreeMap<UiId, FleetImage>,
     pub now: u64,
     next_conn: u64,
     orch_incarnation: u8,
@@ -244,7 +134,7 @@ impl World {
         // UIs lose their stream with the orchestrator; they resubscribe by themselves.
         let ids: Vec<UiId> = self.uis.keys().copied().collect();
         for ui in ids {
-            self.uis.insert(ui, FleetMirror::default());
+            self.uis.insert(ui, FleetImage::default());
             let fx = self.orch.subscribe(ui);
             self.deliver(fx);
         }

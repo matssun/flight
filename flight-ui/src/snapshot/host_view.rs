@@ -7,6 +7,8 @@ use flight_state::{HostId, ServerId};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HostView {
     pub host: HostId,
+    /// What to show for the host: its display name. Identity stays `host`.
+    pub label: String,
     pub server: ServerId,
     pub health: HostHealth,
     pub panes: Vec<PaneView>,

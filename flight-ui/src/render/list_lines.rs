@@ -29,7 +29,7 @@ pub fn list_lines(vm: &ViewModel) -> ListLines {
     }
     for p in attention {
         let marker = marker(vm, p, Section::Attention);
-        push_pane(&mut out, p, marker, true);
+        push_pane(&mut out, p, marker, host_label(vm, p));
     }
     out.lines.push(Line::raw(""));
     heading(&mut out, "HOSTS");
@@ -38,14 +38,14 @@ pub fn list_lines(vm: &ViewModel) -> ListLines {
         out.lines.push(Line::from(vec![
             Span::styled(format!("{icon} "), Style::default().fg(colour)),
             Span::styled(
-                h.host.to_string(),
+                h.label.clone(),
                 Style::default().add_modifier(Modifier::BOLD),
             ),
             Span::styled(format!("  {text}"), Style::default().fg(colour)),
         ]));
         for p in &h.panes {
             let marker = marker(vm, p, Section::Tree);
-            push_pane(&mut out, p, marker, false);
+            push_pane(&mut out, p, marker, None);
         }
     }
     out
@@ -69,19 +69,30 @@ fn marker(vm: &ViewModel, p: &PaneView, section: Section) -> &'static str {
     }
 }
 
-fn push_pane(out: &mut ListLines, p: &PaneView, marker: &'static str, with_host: bool) {
+/// The display label of the host a pane lives on.
+pub(super) fn host_label<'a>(vm: &'a ViewModel, p: &'a PaneView) -> Option<&'a str> {
+    Some(
+        vm.snapshot()
+            .hosts
+            .iter()
+            .find(|h| h.host == p.pane_ref.host)
+            .map_or(p.pane_ref.host.as_str(), |h| h.label.as_str()),
+    )
+}
+
+fn push_pane(out: &mut ListLines, p: &PaneView, marker: &'static str, host: Option<&str>) {
     let (icon, label, colour) = state_look(p.state);
     if marker == "> " {
         out.selected_row = Some(out.lines.len());
     }
-    let mut spans = vec![Span::raw(if with_host {
+    let mut spans = vec![Span::raw(if host.is_some() {
         marker.to_owned()
     } else {
         format!("  {marker}")
     })];
-    if with_host {
+    if let Some(label) = host {
         spans.push(Span::styled(
-            format!("{:<9}", p.pane_ref.host.to_string()),
+            format!("{label:<9.9}"),
             Style::default().add_modifier(Modifier::DIM),
         ));
     }

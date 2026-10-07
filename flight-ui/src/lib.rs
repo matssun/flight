@@ -13,7 +13,7 @@ mod snapshot;
 mod view;
 
 pub use app::{run, Exit};
-pub use collect::Collector;
+pub use collect::{Backend, Collector};
 pub use render::{render, render_to_string};
 pub use snapshot::{HostHealth, HostView, PanePreview, PaneView, UiSnapshot};
 pub use view::{attention_panes, section_panes, tree_panes, Action, Effect, Section, ViewModel};

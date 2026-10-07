@@ -190,7 +190,13 @@ UI side: the UI speaks the same protocol to the orchestrator (`Subscribe`, then 
    - `flight-trust`: `Identity` (rcgen self-signed key + cert, `key.pem` mode 0600), `Fingerprint` (`sha256:` of the SPKI = `HostId`), `TrustStore` (`trust.toml`, atomic save, roles `node`/`ui`), `EnrollmentTokens` (256-bit, single-use, hashed, in memory), `EnrollmentBundle` (copy/paste form), and the rustls verifiers: the client pins exactly one server fingerprint; the server requires a client certificate and proves possession of its key but leaves authorization to the application, so an unenrolled node can still reach `Enroll`.
    - `flight-transport`: a hand-bound tonic service (`flight.v1.Flight`: `NodeConnect`, `UiConnect`, `Enroll`; no codegen, paths checked against the `.proto`) over TLS 1.3 accepted by our own listener, so the peer's fingerprint travels with every request. `serve()` runs the `OrchestratorCore` behind one lock (never held across an await), re-checks trust every tick so revocation drops live connections, and ends streams at shutdown. `NodeLink` redials with backoff and holds the `NodeSession`; `UiClient` and `enroll()` are the other two clients.
    - Verified on localhost with real sockets: hello, snapshot, deltas, preview, disconnect, reconnect and resync; unknown, disabled, removed, wrong-role and forged-hello identities refused; enrollment once, expired, replayed and against a wrong pinned fingerprint (the token is not spent).
-5. Move `flight-ui` onto the `Fleet` trait with the `Orchestrated` backend; keep the SSH backend working.
+5. Operate it (done):
+   - CLI roles: `flight orchestrator run | enrollment create | trust list/revoke/status`, `flight node join | run`, `flight ui join | run`. The bare `flight` is still the direct local/SSH dashboard. Each role has its own directory and identity under the config dir (`orchestrator/`, `node/`, `ui/`; `identity/`, `trust.toml`, `connection.toml`, `admin.sock`). Enrollment tokens live in the orchestrator's memory, so `enrollment create` is a request to the running process over an owner-only Unix socket in its private directory.
+   - `join` is all-or-nothing: bundle expiry is checked first, the orchestrator is authenticated by the pinned fingerprint before the token is sent, the reply must name this identity and that orchestrator, and the orchestrator must really accept the stream; only then are identity and settings written (atomically, and a newly made identity is removed if the write fails). A failed join leaves no files and, for a wrong pin, does not spend the token.
+   - The node is the observation service: `TmuxServers` polled on a blocking thread feeds `NodeCore` (classify, fuse, resolve, Tracking) and streams snapshot and deltas through `NodeLink`; preview and kill are control jobs.
+   - The dashboard reads through a `Backend` trait with two implementations: the direct `Collector` and `flight-client`'s `OrchestratedBackend` (`UiClient` -> `FleetImage` -> `UiSnapshot`). It is configured with an endpoint and a pinned identity only. Hosts carry a display label; identity stays the node id. Liveness shows as `stale`/`disconnected (last known)`, and a dead orchestrator link is an explicit row above last-known nodes.
+   - Differential test: the same scripted tmux server feeds the direct collector and node -> orchestrator -> UI over real mTLS; their dashboard data must agree at every step (detection, state change, Done, pane replaced, tmux gone), as must previews. A real-process test enrolls a node and a UI by bundle and shows agents through the orchestrator.
+   - Not yet: switching to a remote pane through the orchestrator (the dashboard says so), hooks and process discovery on the node.
 6. Real second machine on the LAN.
 7. Measure, then decide on packaging and the next UX changes.
 
@@ -202,7 +208,7 @@ The session lock protects state transitions, not I/O. `NodeSession` validates a 
 
 ## Known limits after slice 4
 - Key rotation and certificate renewal are not designed (a new key is a new identity; re-enroll).
-- The CLI (`flight orchestrator enrollment create`, `flight node join`), the tmux observation driver loop, and the UI backend over `UiClient` are slice 5.
+- The next milestone is the real LAN experiment: orchestrator + node on one Mac, a node on another, the dashboard on a laptop, with measurements (state-change and preview latency, idle CPU and traffic, reconnection, network loss, restarts of each role, 10/50/100 simulated panes) before any optimization.
 
 ## Open questions
 

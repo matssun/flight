@@ -31,6 +31,13 @@ pub const USAGE: &str =
   --refresh SECS       refresh interval; default 2
   --once               print one frame as text and exit";
 
+/// The distributed commands, shown with --help.
+pub const ROLES: &str = "distributed mode (an orchestrator, nodes that observe tmux, a dashboard):
+  flight orchestrator ...   run or administer the orchestrator
+  flight node ...           join an orchestrator, observe local tmux and report
+  flight ui ...             join an orchestrator and show the dashboard
+  (each prints its own usage)";
+
 impl Config {
     pub fn parse<I: IntoIterator<Item = String>>(args: I) -> Result<Self, String> {
         let mut c = Self {

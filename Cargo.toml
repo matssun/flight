@@ -14,6 +14,7 @@ members = [
     "flight-orchestrator", # Orchestrator core: node registry, replication, liveness, routing, fleet image (no I/O)
     "flight-trust",    # Identity, fingerprints, trust.toml, enrollment tokens, pinned-fingerprint TLS verifiers
     "flight-transport", # tonic gRPC over mutual TLS: orchestrator server, node link, UI client, enrollment client
+    "flight-client",   # The dashboard backend that reads an orchestrator (UiClient -> FleetImage -> UiSnapshot)
     "flight-state",    # Agent state engine: hook + event + scrape fusion, 7-state model
     "flight-control",  # Host registry: routes PaneRef to a runner per host (local, SSH), typed host errors
     "flight-sessions", # Session sources (tmux, zoxide, config, tmuxinator), dedup, naming, connect

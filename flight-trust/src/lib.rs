@@ -10,6 +10,7 @@
 
 mod bundle;
 mod cert;
+mod connection_config;
 mod enrollment;
 mod error;
 mod fingerprint;
@@ -19,6 +20,7 @@ mod trust_store;
 
 pub use bundle::EnrollmentBundle;
 pub use cert::fingerprint_of_cert;
+pub use connection_config::ConnectionConfig;
 pub use enrollment::{EnrollError, EnrollmentTokens, IssuedToken, DEFAULT_TTL_SECS};
 pub use error::TrustError;
 pub use fingerprint::Fingerprint;

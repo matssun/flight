@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: MIT
 
+mod args;
 mod config;
+mod join_cmd;
+mod node_cmd;
+mod orchestrator_cmd;
+mod roles;
+mod ui_cmd;
 
-use config::{Config, USAGE};
+use config::{Config, ROLES, USAGE};
 use flight_control::{HostRegistry, Transport};
 use flight_state::{HostId, ServerId};
 use flight_tmux::TmuxEndpoint;
@@ -22,8 +28,14 @@ fn main() -> ExitCode {
 
 fn real_main() -> Result<(), String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    match args.first().map(String::as_str) {
+        Some("orchestrator") => return orchestrator_cmd::run(&args[1..]),
+        Some("node") => return node_cmd::run(&args[1..]),
+        Some("ui") => return ui_cmd::run_ui(&args[1..]),
+        _ => {}
+    }
     if args.iter().any(|a| a == "--help" || a == "-h") {
-        println!("{USAGE}");
+        println!("{USAGE}\n\n{ROLES}");
         return Ok(());
     }
     let config = Config::parse(args).map_err(|e| format!("{e}\n\n{USAGE}"))?;

@@ -22,6 +22,7 @@ mod delta;
 mod enroll;
 mod error_info;
 mod fleet;
+mod fleet_image;
 mod heartbeat;
 mod hello;
 mod incarnation;
@@ -50,6 +51,7 @@ pub use fleet::{
     fleet_change, FleetDelta, FleetSnapshot, NodeRemoved, NodeServerStatus, NodeStatusChanged,
     NodeView,
 };
+pub use fleet_image::{FleetImage, FleetNode};
 pub use heartbeat::Heartbeat;
 pub use hello::{NodeHello, OrchestratorHello};
 pub use incarnation::Incarnation;

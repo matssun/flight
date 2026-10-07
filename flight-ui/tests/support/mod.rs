@@ -29,6 +29,7 @@ pub fn pane(host: &str, session: &str, id: &str, state: AgentState) -> PaneView 
 pub fn online(host: &str, panes: Vec<PaneView>) -> HostView {
     HostView {
         host: HostId::new(host),
+        label: host.to_owned(),
         server: ServerId::new("flight"),
         health: HostHealth::Online,
         panes,
@@ -38,6 +39,7 @@ pub fn online(host: &str, panes: Vec<PaneView>) -> HostView {
 pub fn down(host: &str, health: HostHealth) -> HostView {
     HostView {
         host: HostId::new(host),
+        label: host.to_owned(),
         server: ServerId::new("flight"),
         health,
         panes: Vec::new(),

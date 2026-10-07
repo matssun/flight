@@ -15,7 +15,6 @@ mod control;
 #[cfg(test)]
 mod live_tests;
 mod observer;
-mod protocol;
 mod subprocess;
 mod transport;
 

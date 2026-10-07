@@ -427,6 +427,7 @@ dependencies = [
  "flight-node",
  "flight-proto",
  "flight-state",
+ "flight-tmux",
  "flight-transport",
  "flight-trust",
  "prost",

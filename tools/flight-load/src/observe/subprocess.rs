@@ -35,15 +35,10 @@ impl Subprocess {
 
 impl Transport for Subprocess {
     fn list(&mut self) -> Result<Vec<PaneRow>, String> {
-        Ok(parse_list(&self.run(&[
-            "list-panes",
-            "-a",
-            "-F",
-            LIST_FORMAT,
-        ])?))
+        parse_list(&self.run(&["list-panes", "-a", "-F", LIST_FORMAT])?)
     }
 
-    fn capture(&mut self, ids: &[String]) -> Result<Vec<String>, String> {
+    fn capture(&mut self, ids: &[String]) -> Result<Vec<Option<String>>, String> {
         let next = AtomicUsize::new(0);
         let screens: Mutex<Vec<Option<String>>> = Mutex::new(vec![None; ids.len()]);
         std::thread::scope(|scope| {
@@ -51,16 +46,15 @@ impl Transport for Subprocess {
                 scope.spawn(|| loop {
                     let i = next.fetch_add(1, Ordering::Relaxed);
                     let Some(id) = ids.get(i) else { break };
-                    let text = self.run(&capture_args(id)).unwrap_or_default();
+                    let text = self.run(&capture_args(id)).ok();
                     if let Ok(mut slots) = screens.lock() {
                         if let Some(slot) = slots.get_mut(i) {
-                            *slot = Some(text);
+                            *slot = text;
                         }
                     }
                 });
             }
         });
-        let slots = screens.into_inner().map_err(|e| e.to_string())?;
-        Ok(slots.into_iter().map(Option::unwrap_or_default).collect())
+        screens.into_inner().map_err(|e| e.to_string())
     }
 }

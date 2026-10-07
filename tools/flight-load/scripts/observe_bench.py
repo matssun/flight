@@ -11,7 +11,7 @@ CPU is the sum of: the bench process and every subprocess it waited for (tmux cl
 measured with RUSAGE_CHILDREN, plus the tmux server process.
 
     observe_bench.py --agent PATH_TO_STAND_IN --flight-load PATH --panes 100,250 \
-        --churn 5 --strategies seq/all,conc:8/all,seq/skip,ctl/all,ctl/events
+        --churn 5 --strategies seq/all,conc:8/all,seq/skip,ctl/all,ctl/skip
 """
 import argparse, json, os, random, resource, subprocess, sys, threading, time
 
@@ -143,7 +143,7 @@ def main():
     ap.add_argument("--workdir", default="/tmp/obsbench")
     ap.add_argument("--panes", default="100")
     ap.add_argument("--churn", type=float, default=5.0, help="percent of panes changing per second")
-    ap.add_argument("--strategies", default="seq/all,conc:8/all,seq/skip,ctl/all,ctl/events")
+    ap.add_argument("--strategies", default="seq/all,conc:8/all,seq/skip,ctl/all,ctl/skip")
     ap.add_argument("--interval", type=int, default=1000)
     ap.add_argument("--secs", type=int, default=30)
     ap.add_argument("--debug-stale", action="store_true", help="explain panes that end stale")

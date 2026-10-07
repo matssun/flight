@@ -20,8 +20,6 @@ pub enum Policy {
     All,
     /// Only panes whose `window_activity` is not older than the second of their last capture.
     SkipUnchanged,
-    /// Only panes that produced `%output` since their last capture (control mode only).
-    Events,
 }
 
 #[derive(Debug)]
@@ -57,10 +55,7 @@ impl Args {
             }
         }
         if a.socket.is_empty() {
-            return Err("usage: flight-load observe --socket NAME [--capture seq|conc:K|ctl] [--policy all|skip|events] [--interval-ms MS] [--secs S] [--settle ROUNDS]".into());
-        }
-        if a.policy == Policy::Events && a.capture != Capture::Control {
-            return Err("--policy events needs --capture ctl".into());
+            return Err("usage: flight-load observe --socket NAME [--capture seq|conc:K|ctl] [--policy all|skip] [--interval-ms MS] [--secs S] [--settle ROUNDS]".into());
         }
         Ok(a)
     }
@@ -85,7 +80,6 @@ fn parse_policy(v: &str) -> Result<Policy, String> {
     match v {
         "all" => Ok(Policy::All),
         "skip" => Ok(Policy::SkipUnchanged),
-        "events" => Ok(Policy::Events),
-        _ => Err(format!("bad --policy {v:?}: all, skip or events")),
+        _ => Err(format!("bad --policy {v:?}: all or skip")),
     }
 }

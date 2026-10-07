@@ -4,18 +4,22 @@
 //!
 //! A strategy is a capture transport (sequential subprocesses, bounded-concurrent
 //! subprocesses, one control-mode connection) plus a policy (capture everything, skip panes
-//! whose `window_activity` has not moved, or capture only panes that produced `%output`).
+//! whose `window_activity` has not moved). Event-driven capture (`%output`) was tried and
+//! rejected: a control client only receives it for panes of its own session.
 //! Each round prints one JSON line: when it ended, how long it took, how many captures it
 //! made, and the `rev N` marker each pane showed, so a driver can compare detection latency
 //! and correctness against what it wrote.
 
 mod args;
 mod control;
+#[cfg(test)]
+mod live_tests;
 mod observer;
+mod protocol;
 mod subprocess;
 mod transport;
 
-use args::{Args, Capture, Policy};
+use args::{Args, Capture};
 use control::Control;
 use observer::Observer;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -27,24 +31,8 @@ pub fn main(args: impl Iterator<Item = String>) -> Result<(), String> {
     match args.capture {
         Capture::Sequential => drive(&args, Subprocess::new(&args.socket, 1)),
         Capture::Concurrent(n) => drive(&args, Subprocess::new(&args.socket, n)),
-        Capture::Control => {
-            let session = first_session(&args.socket)?;
-            let control = Control::start(&args.socket, &session, args.policy == Policy::Events)?;
-            drive(&args, control)
-        }
+        Capture::Control => drive(&args, Control::start(&args.socket)?),
     }
-}
-
-fn first_session(socket: &str) -> Result<String, String> {
-    let out = std::process::Command::new("tmux")
-        .args(["-u", "-L", socket, "list-sessions", "-F", "#{session_name}"])
-        .output()
-        .map_err(|e| e.to_string())?;
-    String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .next()
-        .map(str::to_owned)
-        .ok_or_else(|| "no tmux session to attach to".to_owned())
 }
 
 /// The newest `rev N` marker in a screen (the workload writes one), or -1.
@@ -64,29 +52,42 @@ fn drive<T: Transport>(args: &Args, transport: T) -> Result<(), String> {
     let mut settle = args.settle_rounds;
     loop {
         let started = Instant::now();
-        let round = observer.round()?;
-        let took = started.elapsed();
-        let now_ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_or(0, |d| d.as_millis());
-        let revs: Vec<String> = round
-            .screens
-            .iter()
-            .map(|(id, s)| format!("\"{id}\":{}", rev_of(s)))
-            .collect();
-        println!(
-            "{{\"t\":{now_ms},\"ms\":{:.2},\"captured\":{},\"panes\":{},\"revs\":{{{}}}}}",
-            took.as_secs_f64() * 1e3,
-            round.captured,
-            round.screens.len(),
-            revs.join(",")
-        );
+        let last = step(&mut observer, started);
+        if let Err(e) = &last {
+            // The observer already dropped what it believed; rebuild the transport and start
+            // from a full refresh next round.
+            eprintln!("observe: round failed: {e}");
+            if let Err(e) = observer.recover() {
+                eprintln!("observe: recover failed: {e}");
+            }
+        }
         if Instant::now() >= end {
             if settle == 0 {
-                return Ok(());
+                return last;
             }
             settle -= 1;
         }
         std::thread::sleep(args.interval.saturating_sub(started.elapsed()));
     }
+}
+
+fn step<T: Transport>(observer: &mut Observer<T>, started: Instant) -> Result<(), String> {
+    let round = observer.round()?;
+    let took = started.elapsed();
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis());
+    let revs: Vec<String> = round
+        .screens
+        .iter()
+        .map(|(id, s)| format!("\"{id}\":{}", rev_of(s)))
+        .collect();
+    println!(
+        "{{\"t\":{now_ms},\"ms\":{:.2},\"captured\":{},\"panes\":{},\"revs\":{{{}}}}}",
+        took.as_secs_f64() * 1e3,
+        round.captured,
+        round.screens.len(),
+        revs.join(",")
+    );
+    Ok(())
 }

@@ -3,6 +3,7 @@
 use crate::Unavailable;
 use flight_classify::AgentKind;
 use flight_state::{PaneId, ServerId};
+use flight_tmux::PaneInfo;
 
 /// One agent pane as an observer saw it, with the captured screen the classifier needs.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,6 +20,28 @@ pub struct PaneObservation {
     pub title: String,
     pub focused: bool,
     pub screen_lines: Vec<String>,
+}
+
+impl PaneObservation {
+    pub(crate) fn from_info(
+        info: PaneInfo,
+        agent: AgentKind,
+        screen_lines: Vec<String>,
+        focused: bool,
+    ) -> Self {
+        Self {
+            pane: PaneId::new(info.pane_id),
+            pid: info.pane_pid,
+            agent,
+            session: info.session_name,
+            window: info.window_name,
+            path: info.current_path,
+            command: info.current_command,
+            title: info.pane_title,
+            focused,
+            screen_lines,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

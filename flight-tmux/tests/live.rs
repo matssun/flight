@@ -100,3 +100,53 @@ fn pane_list_parses_with_no_locale_in_the_environment() {
     assert_eq!(panes.len(), 1, "{panes:?}");
     assert_eq!(panes[0].session_name, "api");
 }
+
+#[test]
+fn a_control_connection_lists_captures_and_reports_errors_per_command() {
+    let Some(s) = Server::start() else { return };
+    s.tmux.new_session("api", "/tmp").unwrap();
+    let mut conn =
+        flight_tmux::ControlConnection::open(&TmuxEndpoint::Path(s.socket.clone())).unwrap();
+    assert_eq!(conn.session(), "api");
+
+    let replies = conn
+        .run(&[
+            format!("list-panes -a -F '{}'", flight_tmux::PANE_FORMAT),
+            "capture-pane -p -t %999".to_owned(),
+            "list-clients -F '#{client_pid}\t#{client_session}'".to_owned(),
+        ])
+        .unwrap();
+    assert_eq!(replies.len(), 3);
+    let panes = flight_tmux::parse_panes_output(&replies[0].lines.join("\n"));
+    assert_eq!(panes.len(), 1);
+    assert!(panes[0].window_activity > 0, "{panes:?}");
+    // A command tmux rejects is a reply with ok == false, not a broken connection.
+    assert!(!replies[1].ok);
+    // Our own client is identifiable, so a caller can discount it from "attached".
+    let own = format!("{}\tapi", conn.client_pid());
+    assert!(replies[2].lines.contains(&own), "{:?}", replies[2].lines);
+    assert_eq!(panes[0].session_attached, 1);
+    assert!(conn.run(&["list-sessions".to_owned()]).unwrap()[0].ok);
+}
+
+#[test]
+fn a_control_connection_errors_when_the_server_goes_away() {
+    let Some(s) = Server::start() else { return };
+    s.tmux.new_session("api", "/tmp").unwrap();
+    let mut conn =
+        flight_tmux::ControlConnection::open(&TmuxEndpoint::Path(s.socket.clone())).unwrap();
+    s.tmux.kill_server().unwrap();
+    assert!(conn.run(&["list-sessions".to_owned()]).is_err());
+}
+
+#[test]
+fn opening_a_control_connection_to_no_server_is_a_plain_tmux_failure() {
+    let Some(s) = Server::start() else { return };
+    let err = flight_tmux::ControlConnection::open(&TmuxEndpoint::Path(s.socket.clone()))
+        .err()
+        .expect("no server");
+    assert!(
+        matches!(err, flight_tmux::TmuxError::Failed { .. }),
+        "{err}"
+    );
+}

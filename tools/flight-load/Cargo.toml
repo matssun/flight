@@ -12,6 +12,7 @@ publish = false
 flight-client = { path = "../../flight-client" }
 flight-proto = { path = "../../flight-proto" }
 flight-state = { path = "../../flight-state" }
+flight-tmux = { path = "../../flight-tmux" }
 flight-transport = { path = "../../flight-transport" }
 prost = "0.14"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "process"] }

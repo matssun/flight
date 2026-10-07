@@ -41,7 +41,7 @@ impl Script {
         t.panes = panes
             .iter()
             .map(|(id, cmd, pid)| {
-                format!("{id}\twork\tw\t@1\t0\t/tmp\t{pid}\t0\t0\t0\t{cmd}\ttitle\n")
+                format!("{id}\twork\tw\t@1\t0\t/tmp\t{pid}\t0\t0\t0\t{cmd}\t1700\ttitle\n")
             })
             .collect();
         t.screens = screens

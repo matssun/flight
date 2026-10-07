@@ -227,7 +227,7 @@ Setup: two Apple-silicon Macs on one LAN (release builds). Mac A ran the orchest
 
 Every flip was seen, no resyncs, `backlog=0` throughout. The 500-pane p99 is the initial snapshot burst. The orchestrator is not the scaling limit.
 
-**Real tmux on the node** (100 panes on one node, default 2 s poll): the node used 0.8% of a core and 7.5 MB, its tmux server another 1.5-1.75%: polling costs roughly 0.008% of a core per pane for the node, plus the tmux server's share. Idle with 3 panes: node 0.1% CPU, 7 MB; orchestrator 0.01%, 5.8 MB; about 20 B/s out and 9 B/s in per node (heartbeats only). With panes changing: about 170 B/s per node, about 320 B/s into the UI, about 200-235 B per state change on the UI stream. The TUI itself: about 0.9% CPU, 8 MB.
+**Real tmux on the node** (100 panes on one node, default 2 s poll; *CPU figures here and in the polling sweep below omit the short-lived `tmux` processes the node spawns and are superseded by "Observation strategy" below*): the node used 0.8% of a core and 7.5 MB, its tmux server another 1.5-1.75%: polling costs roughly 0.008% of a core per pane for the node, plus the tmux server's share. Idle with 3 panes: node 0.1% CPU, 7 MB; orchestrator 0.01%, 5.8 MB; about 20 B/s out and 9 B/s in per node (heartbeats only). With panes changing: about 170 B/s per node, about 320 B/s into the UI, about 200-235 B per state change on the UI stream. The TUI itself: about 0.9% CPU, 8 MB.
 
 **Failure and recovery** (timeline from `flight-load watch`):
 
@@ -295,3 +295,26 @@ Open from the experiment: a repeatable physical-interruption test and the node r
 ## Open questions
 
 1. Hook ingestion path on the node (slice 2+).
+
+## Observation strategy (supersedes the CPU figures and the 1 s default above)
+
+The polling figures above counted the long-lived node and tmux-server processes but not the `tmux capture-pane` processes the node spawns each round. Counted properly, the sequential observer costs about 29% of a core at 100 panes and a 1 s interval (about 57% + 13% at 250 panes), not 3%. The 2 s to 1 s default change was decided on the incomplete figure.
+
+Measured on this Mac with real tmux panes (250 panes, 20 s runs, no pane stale at the end in any run listed; CPU = client + tmux server, % of a core; full tables in `docs/STATUS.md`):
+
+| Strategy | Round at 250 panes | CPU, 5% churn, 1 s | CPU, 50% churn, 1 s |
+|---|---|---|---|
+| sequential, one process per capture | 680 ms | 57 + 13 | 58 + 15 |
+| 8 captures at once | 137 ms | 81 + 11 | 80 + 14 |
+| control mode, capture all | 21 ms | 1.1 + 2.9 | 1.3 + 6.9 |
+| control mode, skip unchanged | 2 ms | 0.3 + 0.6 | 0.7 + 4.8 |
+
+Decisions:
+
+- **Control mode with skipping is the node's default observer** (`flight node run --observer ctl-skip`), with the sequential observer kept as the reference path (`--observer seq`), the fallback, and the oracle the tests compare against. `flight-node` consumes a `PaneObserver`; control-mode parsing lives in `flight-tmux` and never reaches `NodeCore`.
+- **The default interval is 500 ms**: at 250 panes the control-mode observer costs 2.2% of a core at 5% churn and 8.1% at 50%, and the detection latency p50/p95 drops from about 525/975 ms to 280/500 ms.
+- **Skipping is conservative.** A screen is reused only when the pane is known, has the same pid, command and title, tmux reports window activity strictly before the second of the last capture, and the capture is younger than 30 s. Unknown or equal activity, a clock that went backwards, or anything else uncertain is captured.
+- **Resynchronisation dominates optimisation.** Any control-connection error (closed, `%exit`, a reply that does not match its command, no reply in 10 s, an unparseable pane list, a missing own client) drops the connection and every cached screen. That round is answered by the sequential path, the connection is re-established (backing off 5 s after a failed attempt), and the first round after that captures everything. Both transitions are logged as operator notes.
+- **Event-driven capture was tried and rejected.** tmux sends `%output` to a control client only for panes of the session it is attached to, so it cannot be a fleet-wide change signal; an early result that seemed to show otherwise was an invalid measurement (it appeared only when a previous run had been made on the same server).
+- **The control client is one attached client of one session.** tmux counts it in `#{session_attached}`; the observer finds its own client by pid and discounts it, so it never makes a pane look focused. A person attached to the same session still counts.
+- Real panes are capped by the host's pty limit (macOS `kern.tty.ptmx_max` is 511), which is a host limit, not a Flight one; synthetic node state scales past 1000.

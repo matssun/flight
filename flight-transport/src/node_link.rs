@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use crate::connector::connect;
+use crate::connector::{connect_with, DEFAULT_DIAL_TIMEOUT};
 use crate::outbox::Outbox;
 use crate::paths::NODE_CONNECT;
 use crate::shared::{now, OUTBOX_CAPACITY};
@@ -23,6 +23,56 @@ const MAX_CONCURRENT_JOBS: usize = 4;
 const JOB_TIMEOUT: Duration = Duration::from_secs(10);
 /// Outbox class of heartbeats: at most one waits to be sent.
 const HEARTBEAT: u8 = 0;
+
+/// Why [`NodeLink::run`] returned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkEnd {
+    /// Stopped on request.
+    Stopped,
+    /// This process could not route to the orchestrator for the whole configured window
+    /// (immediate "no route"/"network unreachable" errors only: an orchestrator that is down,
+    /// slow or refusing never counts). On macOS a long-running process has been seen to stay
+    /// in this state after a network interface bounce while a fresh process connects at once;
+    /// the caller should exit so that a supervisor restarts it.
+    ProcessNetworkUnhealthy,
+}
+
+/// Tracks an unbroken run of local "unreachable" failures. Pure, so it is tested with
+/// synthetic time.
+#[derive(Debug, Clone)]
+pub(crate) struct UnreachableWatch {
+    limit: Duration,
+    since: Option<std::time::Instant>,
+}
+
+impl UnreachableWatch {
+    pub(crate) fn new(limit: Duration) -> Self {
+        Self { limit, since: None }
+    }
+
+    /// How long the current unbroken run of failures has lasted at `now`.
+    pub(crate) fn window(&self, now: std::time::Instant) -> Duration {
+        self.since.map_or(Duration::ZERO, |s| now.duration_since(s))
+    }
+
+    /// Record the outcome of an attempt at `now`; true when the window has been exceeded.
+    pub(crate) fn record(&mut self, unreachable: bool, now: std::time::Instant) -> bool {
+        if !unreachable {
+            self.since = None;
+            return false;
+        }
+        let since = *self.since.get_or_insert(now);
+        now.duration_since(since) >= self.limit
+    }
+}
+
+/// `limit` plus up to a quarter, so a fleet of nodes does not restart in lock step.
+fn jittered(limit: Duration) -> Duration {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| u64::from(d.subsec_nanos()));
+    limit + limit / 4 * (nanos % 1000) as u32 / 1000
+}
 
 /// Receives one-line notes about the link (connected, why it ended), for the operator.
 pub type LinkLog = Arc<dyn Fn(String) + Send + Sync>;
@@ -69,6 +119,8 @@ pub struct NodeLink {
     out: Out,
     log: Option<LinkLog>,
     repeat_report: Duration,
+    dial_timeout: Duration,
+    unreachable_limit: Option<Duration>,
 }
 
 impl NodeLink {
@@ -81,7 +133,22 @@ impl NodeLink {
             out: Arc::default(),
             log: None,
             repeat_report: Duration::from_secs(30),
+            dial_timeout: DEFAULT_DIAL_TIMEOUT,
+            unreachable_limit: None,
         }
+    }
+
+    /// Bound on each dialling step (TCP connect, TLS handshake); default 5 s.
+    pub fn with_dial_timeout(mut self, timeout: Duration) -> Self {
+        self.dial_timeout = timeout;
+        self
+    }
+
+    /// Make [`run`](Self::run) return [`LinkEnd::ProcessNetworkUnhealthy`] after this long
+    /// of nothing but immediate "no route" failures (jittered by up to 25%). Off by default.
+    pub fn with_unreachable_limit(mut self, limit: Duration) -> Self {
+        self.unreachable_limit = Some(limit);
+        self
     }
 
     /// How often a failure that keeps repeating is reported again (default 30 s).
@@ -121,17 +188,32 @@ impl NodeLink {
     }
 
     /// Keep connected until `stop` flips, re-dialling with exponential backoff.
-    pub async fn run(&self, mut stop: watch::Receiver<bool>) {
+    pub async fn run(&self, mut stop: watch::Receiver<bool>) -> LinkEnd {
         let mut delay = self.cfg.reconnect_min;
+        let mut watch = self
+            .unreachable_limit
+            .map(|l| UnreachableWatch::new(jittered(l)));
         let mut last_failure = String::new();
         let (mut attempts, mut failing_since, mut last_report) =
             (0u64, std::time::Instant::now(), std::time::Instant::now());
         loop {
             let started = std::time::Instant::now();
             let outcome = tokio::select! {
-                _ = stop.changed() => return,
+                _ = stop.changed() => return LinkEnd::Stopped,
                 outcome = self.run_once() => outcome,
             };
+            let unreachable = matches!(&outcome, Err(e) if e.is_unreachable());
+            if let Some(w) = watch.as_mut() {
+                let now = std::time::Instant::now();
+                if w.record(unreachable, now) {
+                    self.say(format!(
+                        "this process has had no route to {} for {:.0?}; the network is probably fine but this process cannot use it, so it is exiting to be restarted",
+                        self.cfg.address,
+                        w.window(now)
+                    ));
+                    return LinkEnd::ProcessNetworkUnhealthy;
+                }
+            }
             match outcome {
                 Ok(()) => {
                     last_failure.clear();
@@ -166,7 +248,7 @@ impl NodeLink {
                 delay = self.cfg.reconnect_min;
             }
             tokio::select! {
-                _ = stop.changed() => return,
+                _ = stop.changed() => return LinkEnd::Stopped,
                 _ = tokio::time::sleep(delay) => {}
             }
             delay = (delay * 2).min(self.cfg.reconnect_max);
@@ -175,10 +257,11 @@ impl NodeLink {
 
     /// One connection: dial, handshake, serve until the stream ends.
     pub async fn run_once(&self) -> Result<(), TransportError> {
-        let channel = connect(
+        let channel = connect_with(
             &self.cfg.address,
             &self.cfg.identity,
             &self.cfg.orchestrator,
+            self.dial_timeout,
         )
         .await?;
         let mut grpc = Grpc::new(channel);
@@ -225,13 +308,18 @@ impl NodeLink {
         outbox: &Arc<Outbox<NodeFrame>>,
     ) -> Result<(), TransportError> {
         let codec = ProstCodec::<NodeFrame, OrchestratorFrame>::default();
-        let response = grpc
-            .streaming(
+        let response = tokio::time::timeout(
+            self.dial_timeout * 2,
+            grpc.streaming(
                 Request::new(outbound),
                 PathAndQuery::from_static(NODE_CONNECT),
                 codec,
-            )
-            .await?;
+            ),
+        )
+        .await
+        .map_err(|_| {
+            TransportError::Connect("the orchestrator did not accept the stream".into())
+        })??;
         let mut inbound = response.into_inner();
         self.say(format!("connected to {}", self.cfg.address));
         let mut beat = tokio::time::interval(self.cfg.heartbeat_interval);
@@ -291,5 +379,47 @@ impl NodeLink {
             };
             let _ = outbox.push_reliable(frame);
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Instant;
+
+    #[test]
+    fn a_window_of_unreachable_failures_trips_the_watch_only_after_the_limit() {
+        let t0 = Instant::now();
+        let mut w = UnreachableWatch::new(Duration::from_secs(60));
+        assert!(!w.record(true, t0));
+        assert!(!w.record(true, t0 + Duration::from_secs(59)));
+        assert!(w.record(true, t0 + Duration::from_secs(60)));
+        assert_eq!(
+            w.window(t0 + Duration::from_secs(61)),
+            Duration::from_secs(61)
+        );
+    }
+
+    #[test]
+    fn any_other_outcome_restarts_the_window() {
+        let t0 = Instant::now();
+        let mut w = UnreachableWatch::new(Duration::from_secs(60));
+        assert!(!w.record(true, t0));
+        // The orchestrator being down, refusing or slow is not the condition: reset.
+        assert!(!w.record(false, t0 + Duration::from_secs(50)));
+        assert!(!w.record(true, t0 + Duration::from_secs(70)));
+        assert!(!w.record(true, t0 + Duration::from_secs(120)));
+        assert!(w.record(true, t0 + Duration::from_secs(130)));
+    }
+
+    #[test]
+    fn jitter_adds_at_most_a_quarter() {
+        for _ in 0..50 {
+            let j = jittered(Duration::from_secs(60));
+            assert!(
+                j >= Duration::from_secs(60) && j <= Duration::from_secs(75),
+                "{j:?}"
+            );
+        }
     }
 }

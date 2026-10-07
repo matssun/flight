@@ -10,6 +10,9 @@ pub enum TransportError {
     /// Connecting or the TLS handshake failed (including a server whose fingerprint is not
     /// the pinned one).
     Connect(String),
+    /// The operating system answered "no route to host / network unreachable" before sending
+    /// anything. Distinct from a peer that is down (refused, timed out): see `NodeLink`.
+    Unreachable(String),
     /// The peer refused the request (not authorized, bad token, ...).
     Refused(String),
     Protocol(String),
@@ -21,9 +24,18 @@ impl fmt::Display for TransportError {
             Self::Io(e) => write!(f, "i/o error: {e}"),
             Self::Trust(e) => write!(f, "{e}"),
             Self::Connect(m) => write!(f, "cannot connect: {m}"),
+            Self::Unreachable(m) => write!(f, "cannot connect (no route): {m}"),
             Self::Refused(m) => write!(f, "refused: {m}"),
             Self::Protocol(m) => write!(f, "protocol error: {m}"),
         }
+    }
+}
+
+impl TransportError {
+    /// Whether this machine itself could not route to the peer (as opposed to the peer
+    /// being down or refusing).
+    pub fn is_unreachable(&self) -> bool {
+        matches!(self, Self::Unreachable(_))
     }
 }
 

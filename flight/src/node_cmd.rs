@@ -7,7 +7,9 @@ use flight_node::{fresh_incarnation, NodeCore, NodeSession, TmuxServers};
 use flight_proto::RoleCode;
 use flight_state::ServerId;
 use flight_tmux::{SystemRunner, TmuxEndpoint};
-use flight_transport::{config_path, identity_dir, run_observer, NodeLink, NodeLinkConfig};
+use flight_transport::{
+    config_path, identity_dir, run_observer, LinkEnd, NodeLink, NodeLinkConfig,
+};
 use flight_trust::{ConnectionConfig, Identity};
 use std::sync::Arc;
 use std::time::Duration;
@@ -17,8 +19,17 @@ pub const USAGE: &str = "usage: flight node <command>
   join <bundle> [--name NAME] [--bundle-file PATH] [--config-dir DIR]
         enroll this machine with an orchestrator (the bundle comes from
         `flight orchestrator enrollment create`)
-  run [--socket NAME]... [--interval SECS] [--config-dir DIR]
-        observe local tmux (tmux -L NAME; default 'flight') and report to the orchestrator";
+  run [--socket NAME]... [--interval SECS] [--exit-after-link-down SECS] [--config-dir DIR]
+        observe local tmux (tmux -L NAME; default 'flight') and report to the orchestrator.
+        --exit-after-link-down: exit with status 75 after this long of nothing but immediate
+        \"no route to host\" failures (never because the orchestrator is merely down), so that a
+        supervisor (launchd, systemd, a shell loop) restarts the node. Restarting is safe: tmux
+        and the agents are untouched and the node resynchronises with a full snapshot. Needed on
+        macOS, where a long-running process can stay unable to reach a peer after a Wi-Fi bounce.";
+
+/// Exit status of a node that gave up because its own process cannot use the network
+/// (EX_TEMPFAIL): "restart me".
+pub const EXIT_PROCESS_NETWORK_UNHEALTHY: i32 = 75;
 
 pub fn run(args: &[String]) -> Result<(), String> {
     if args.iter().any(|a| a == "--help" || a == "-h") {
@@ -40,7 +51,16 @@ pub fn run(args: &[String]) -> Result<(), String> {
 }
 
 fn run_node(args: &[String]) -> Result<(), String> {
-    let args = Args::parse(args, &["--socket", "--interval", "--config-dir"], &[])?;
+    let args = Args::parse(
+        args,
+        &[
+            "--socket",
+            "--interval",
+            "--exit-after-link-down",
+            "--config-dir",
+        ],
+        &[],
+    )?;
     let dir = node_dir(&config_dir(&args)?);
     let config = ConnectionConfig::load(&config_path(&dir)).map_err(|e| {
         format!("this machine has not joined an orchestrator yet ({e}); run `flight node join`")
@@ -49,6 +69,17 @@ fn run_node(args: &[String]) -> Result<(), String> {
     let interval = match args.value("--interval") {
         Some(s) => Duration::from_secs(s.parse().map_err(|_| format!("bad --interval {s:?}"))?),
         None => Duration::from_secs(2),
+    };
+
+    let exit_after = match args.value("--exit-after-link-down") {
+        Some(s) => match s
+            .parse::<u64>()
+            .map_err(|_| format!("bad --exit-after-link-down {s:?}"))?
+        {
+            0 => None,
+            secs => Some(Duration::from_secs(secs)),
+        },
+        None => None,
     };
 
     let mut sockets = args.values("--socket");
@@ -72,22 +103,24 @@ fn run_node(args: &[String]) -> Result<(), String> {
         ),
         config.display_name.clone(),
     );
-    let link = Arc::new(
-        NodeLink::new(
-            NodeLinkConfig {
-                address: config.address.clone(),
-                orchestrator: config.orchestrator().map_err(|e| e.to_string())?,
-                identity: identity.clone(),
-                servers: sockets.iter().map(|s| (*s).to_owned()).collect(),
-                heartbeat_interval: Duration::from_secs(5),
-                reconnect_min: Duration::from_millis(500),
-                reconnect_max: Duration::from_secs(10),
-            },
-            session,
-            servers.clone(),
-        )
-        .with_log(Arc::new(|line| println!("{line}"))),
-    );
+    let link = NodeLink::new(
+        NodeLinkConfig {
+            address: config.address.clone(),
+            orchestrator: config.orchestrator().map_err(|e| e.to_string())?,
+            identity: identity.clone(),
+            servers: sockets.iter().map(|s| (*s).to_owned()).collect(),
+            heartbeat_interval: Duration::from_secs(5),
+            reconnect_min: Duration::from_millis(500),
+            reconnect_max: Duration::from_secs(10),
+        },
+        session,
+        servers.clone(),
+    )
+    .with_log(Arc::new(|line| println!("{line}")));
+    let link = Arc::new(match exit_after {
+        Some(limit) => link.with_unreachable_limit(limit),
+        None => link,
+    });
 
     let rt = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     rt.block_on(async {
@@ -106,10 +139,26 @@ fn run_node(args: &[String]) -> Result<(), String> {
             async move { link.run(stop_rx).await }
         });
         let observer = tokio::spawn(run_observer(link, servers, interval, stop_rx));
-        tokio::signal::ctrl_c().await.map_err(|e| e.to_string())?;
+        let mut connection = connection;
+        let ended = tokio::select! {
+            signal = tokio::signal::ctrl_c() => {
+                signal.map_err(|e| e.to_string())?;
+                None
+            }
+            ended = &mut connection => Some(ended),
+        };
         let _ = stop.send(true);
-        let _ = connection.await;
+        let unhealthy = match ended {
+            Some(result) => matches!(result, Ok(LinkEnd::ProcessNetworkUnhealthy)),
+            None => {
+                let _ = connection.await;
+                false
+            }
+        };
         let _ = observer.await;
+        if unhealthy {
+            std::process::exit(EXIT_PROCESS_NETWORK_UNHEALTHY);
+        }
         Ok(())
     })
 }

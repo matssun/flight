@@ -162,7 +162,7 @@ async fn slow_rig(
     Arc<flight_transport::NodeLink>,
     flight_trust::Fingerprint,
     watch::Sender<bool>,
-    tokio::task::JoinHandle<()>,
+    tokio::task::JoinHandle<flight_transport::LinkEnd>,
 ) {
     let node = Arc::new(Identity::generate().expect("node"));
     let ui_id = Identity::generate().expect("ui");

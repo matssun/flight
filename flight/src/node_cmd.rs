@@ -21,6 +21,8 @@ pub const USAGE: &str = "usage: flight node <command>
         `flight orchestrator enrollment create`)
   run [--socket NAME]... [--interval SECS] [--exit-after-link-down SECS] [--config-dir DIR]
         observe local tmux (tmux -L NAME; default 'flight') and report to the orchestrator.
+        --interval: seconds between polls (fractions allowed; default 1). A round that takes
+        longer than the interval is followed by at least as much idle time, and is reported.
         --exit-after-link-down: exit with status 75 after this long of nothing but immediate
         \"no route to host\" failures (never because the orchestrator is merely down), so that a
         supervisor (launchd, systemd, a shell loop) restarts the node. Restarting is safe: tmux
@@ -68,7 +70,7 @@ fn run_node(args: &[String]) -> Result<(), String> {
     let identity = Arc::new(Identity::load(&identity_dir(&dir)).map_err(|e| e.to_string())?);
     let interval = match args.value("--interval") {
         Some(s) => parse_interval(s)?,
-        None => Duration::from_secs(2),
+        None => Duration::from_secs(1),
     };
 
     let exit_after = match args.value("--exit-after-link-down") {

@@ -116,6 +116,11 @@ impl NodeLink {
         self
     }
 
+    /// Add a line to the operator log (when a log hook is set).
+    pub fn note(&self, line: String) {
+        self.say(line);
+    }
+
     fn say(&self, line: String) {
         if let Some(log) = &self.log {
             log(line);

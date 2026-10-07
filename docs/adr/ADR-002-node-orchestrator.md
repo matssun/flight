@@ -241,6 +241,27 @@ Every flip was seen, no resyncs, `backlog=0` throughout. The 500-pane p99 is the
 | tmux server killed on a node | its panes left the UI within 1.4 s; back within 1.35 s of restart |
 | node revoked while connected | `Disconnected` in 11 ms; stays refused (`refused: not authorized`) |
 
+**Polling sweep (real tmux, this Mac; node CPU % / tmux-server CPU % of one core, orchestrator under 0.05% throughout).** Panes are real tmux panes running a stand-in agent; the node polls with `list-panes` plus one `capture-pane` per agent pane. Measured with the original schedule (sleep the full interval after each round):
+
+| panes | 0.25 s | 0.5 s | 1 s | 2 s | 5 s |
+|---|---|---|---|---|---|
+| 10 | 1.4 / 0.7 | 0.7 / 0.4 | 0.4 / 0.2 | 0.2 / 0.1 | 0.1 / 0.03 |
+| 50 | 3.5 / 3.0 | 2.2 / 1.9 | 1.3 / 1.1 | 0.8 / 0.6 | 0.3 / 0.2 |
+| 100 | 5.2 / 6.2 | 3.5 / 4.4 | 2.4 / 3.0 | 1.3 / 1.5 | 0.6 / 0.7 |
+| 250 | 6.5 / 15 | 5.3 / 12 | 3.9 / 9.1 | 2.7 / 6.2 | 1.3 / 3.0 |
+| 480 | 6.6 / 28 | 6.2 / 26 | 5.1 / 21 | 3.7 / 16 | 1.8 / 7.9 |
+
+State-change latency at 100 panes (p50 / p90 / max, ms; trigger to visible): 0.25 s: 746/772/783, 0.5 s: 933/1125/1131, 1 s: 1429/2047/3374, 2 s: 2153/2540/2565, 5 s: 4116/4946/5010.
+
+What this shows:
+- **The cost is in tmux, not in Flight or the orchestrator.** The tmux server uses as much CPU as the node at 100 panes and about four times as much at 480 (one `capture-pane` subprocess per pane per round). The orchestrator is irrelevant.
+- **A polling round takes about 3.5-4.2 ms per pane, sequentially**: 59 ms at 10 panes, 173 ms at 50, 358 ms at 100, 880 ms at 250, about 2 s at 480. Detection latency is therefore poll interval + round time, and above roughly 100 panes the interval cannot help: 480 panes at a 1 s interval still show a median of about 3.9 s.
+- The first schedule slept the whole interval after each round, so the real period was interval + round (a "1 s" poll at 100 panes behaved like 1.4 s).
+
+Decisions taken on this evidence: rounds now start about one interval apart, with at least as much idle time as the previous round's duration (period = max(interval, 2 x round)), so tmux is never driven back to back; a round slower than the interval is reported in the node log; the default interval is 1 s (was 2 s): with up to 50 panes it costs about 2% of a core in total and cuts the typical latency from about 1.2 s to about 0.6 s. Re-measured with the new schedule: 100 panes at 1 s: latency 874/1251/1321 ms at 3.0% + 3.5% CPU (was 1429/2047/3374 ms), 100 panes at 2 s: 1638/2391/2831 ms (was 2153/2540/2565); 480 panes at 1 s: 3876/5116/5814 ms at 4.2% + 16% CPU.
+
+Not done, with the measured justification for the next step when pane counts grow: capture panes concurrently (a few at a time) or through one persistent tmux control-mode connection instead of a subprocess per pane, and skip panes that provably did not change. Not needed below about 100 panes.
+
 Findings and decisions:
 - The 20 s (not 30 s) disconnect on a frozen node is the server's HTTP/2 keepalive (10 s interval, 10 s timeout) detecting the dead peer before the heartbeat rule; both stay.
 - A revoked or unreachable node used to retry silently. `NodeLink` now takes a log hook and `flight node run` prints `connected to ...`, `link ended after ...` and `link down after ...: <why>; retrying` (identical failures once).

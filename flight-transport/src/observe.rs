@@ -2,8 +2,8 @@
 
 use crate::shared::now;
 use crate::NodeLink;
-use flight_node::TmuxServers;
-use std::sync::Arc;
+use flight_node::PaneObserver;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::watch;
 
@@ -17,24 +17,35 @@ pub(crate) fn next_delay(interval: Duration, took: Duration) -> Duration {
     interval.saturating_sub(took).max(took)
 }
 
-/// Poll the node's tmux servers on a blocking thread (never on the runtime, never under the
-/// session lock) and feed what was seen to the link, until `stop` flips. The next round starts
+/// Poll the node's tmux servers through `observer` on a blocking thread (never on the runtime,
+/// never under the session lock) and feed what was seen to the link, until `stop` flips.
+/// Things the observer wants the operator to know (a strategy degrading to its fallback or
+/// recovering) are passed to the link's log. The next round starts
 /// about `interval` after the previous one started (never closer than the previous round's duration); a round that takes longer than the interval is
 /// reported to the operator, because it, not the interval, then sets how stale the picture is.
 pub async fn run_observer(
     link: Arc<NodeLink>,
-    servers: Arc<TmuxServers>,
+    observer: Box<dyn PaneObserver>,
     interval: Duration,
     mut stop: watch::Receiver<bool>,
 ) {
+    let observer = Arc::new(Mutex::new(observer));
     let mut last_slow_note: Option<Instant> = None;
     loop {
-        let polled = servers.clone();
+        let polled = observer.clone();
         let started = Instant::now();
-        let rounds = tokio::task::spawn_blocking(move || polled.observe(now())).await;
+        let observed = tokio::task::spawn_blocking(move || {
+            // A panic in an earlier round must not end observation for good.
+            let mut observer = polled.lock().unwrap_or_else(|e| e.into_inner());
+            (observer.observe(now()), observer.take_notes())
+        })
+        .await;
         let took = started.elapsed();
-        if let Ok(rounds) = rounds {
+        if let Ok((rounds, notes)) = observed {
             link.observe(rounds);
+            for note in notes {
+                link.note(note);
+            }
         }
         let due = last_slow_note.is_none_or(|t| t.elapsed() >= SLOW_ROUND_REMINDER);
         if took > interval && due {

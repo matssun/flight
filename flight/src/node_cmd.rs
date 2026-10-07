@@ -3,10 +3,13 @@
 use crate::args::{config_dir, Args};
 use crate::join_cmd::join_command;
 use crate::roles::node_dir;
-use flight_node::{fresh_incarnation, NodeCore, NodeSession, TmuxServers};
+use flight_node::{
+    fresh_incarnation, ControlLink, ControlSkipObserver, NodeCore, NodeSession, PaneObserver,
+    SequentialObserver, TmuxServers,
+};
 use flight_proto::RoleCode;
 use flight_state::ServerId;
-use flight_tmux::{SystemRunner, TmuxEndpoint};
+use flight_tmux::{ControlConnection, SystemRunner, TmuxEndpoint};
 use flight_transport::{
     config_path, identity_dir, run_observer, LinkEnd, NodeLink, NodeLinkConfig,
 };
@@ -19,10 +22,16 @@ pub const USAGE: &str = "usage: flight node <command>
   join <bundle> [--name NAME] [--bundle-file PATH] [--config-dir DIR]
         enroll this machine with an orchestrator (the bundle comes from
         `flight orchestrator enrollment create`)
-  run [--socket NAME]... [--interval SECS] [--exit-after-link-down SECS] [--config-dir DIR]
+  run [--socket NAME]... [--interval SECS] [--observer ctl-skip|seq] [--exit-after-link-down SECS]
+      [--config-dir DIR]
         observe local tmux (tmux -L NAME; default 'flight') and report to the orchestrator.
-        --interval: seconds between polls (fractions allowed; default 1). A round that takes
+        --interval: seconds between polls (fractions allowed; default 0.5). A round that takes
         longer than the interval is followed by at least as much idle time, and is reported.
+        --observer: how tmux is observed. ctl-skip (default) keeps one tmux control connection
+        per server and captures only panes that cannot be proven unchanged; if the connection
+        breaks it drops everything it believed, answers from the sequential path and starts
+        again with a full refresh. seq is the plain reference path (a tmux process per
+        command; roughly 10 times the CPU at 100 panes) for comparison and debugging.
         --exit-after-link-down: exit with status 75 after this long of nothing but immediate
         \"no route to host\" failures (never because the orchestrator is merely down), so that a
         supervisor (launchd, systemd, a shell loop) restarts the node. Restarting is safe: tmux
@@ -58,6 +67,7 @@ fn run_node(args: &[String]) -> Result<(), String> {
         &[
             "--socket",
             "--interval",
+            "--observer",
             "--exit-after-link-down",
             "--config-dir",
         ],
@@ -70,8 +80,9 @@ fn run_node(args: &[String]) -> Result<(), String> {
     let identity = Arc::new(Identity::load(&identity_dir(&dir)).map_err(|e| e.to_string())?);
     let interval = match args.value("--interval") {
         Some(s) => parse_interval(s)?,
-        None => Duration::from_secs(1),
+        None => DEFAULT_INTERVAL,
     };
+    let observer_kind = parse_observer(args.value("--observer").unwrap_or("ctl-skip"))?;
 
     let exit_after = match args.value("--exit-after-link-down") {
         Some(s) => match s
@@ -97,6 +108,19 @@ fn run_node(args: &[String]) -> Result<(), String> {
         );
     }
     let servers = Arc::new(servers);
+    let observer: Box<dyn PaneObserver> = match observer_kind {
+        ObserverKind::Sequential => Box::new(SequentialObserver::new(servers.clone())),
+        ObserverKind::ControlSkip => {
+            let mut observer = ControlSkipObserver::new(servers.clone());
+            for socket in &sockets {
+                let endpoint = TmuxEndpoint::named(socket).map_err(|e| e.to_string())?;
+                observer.watch(ServerId::new(*socket), move || {
+                    Ok(Box::new(ControlConnection::open(&endpoint)?) as Box<dyn ControlLink>)
+                });
+            }
+            Box::new(observer)
+        }
+    };
 
     let session = NodeSession::new(
         NodeCore::new(
@@ -142,7 +166,7 @@ fn run_node(args: &[String]) -> Result<(), String> {
             let (link, stop_rx) = (link.clone(), stop_rx.clone());
             async move { link.run(stop_rx).await }
         });
-        let observer = tokio::spawn(run_observer(link, servers, interval, stop_rx));
+        let observer = tokio::spawn(run_observer(link, observer, interval, stop_rx));
         let mut connection = connection;
         let ended = tokio::select! {
             signal = tokio::signal::ctrl_c() => {
@@ -167,6 +191,24 @@ fn run_node(args: &[String]) -> Result<(), String> {
     })
 }
 
+/// Half a second: with the control-mode observer this costs a few percent of a core at 250
+/// agent panes and halves the time a state change takes to show (see docs/STATUS.md).
+const DEFAULT_INTERVAL: Duration = Duration::from_millis(500);
+
+#[derive(Debug, PartialEq, Eq)]
+enum ObserverKind {
+    ControlSkip,
+    Sequential,
+}
+
+fn parse_observer(s: &str) -> Result<ObserverKind, String> {
+    match s {
+        "ctl-skip" => Ok(ObserverKind::ControlSkip),
+        "seq" => Ok(ObserverKind::Sequential),
+        _ => Err(format!("bad --observer {s:?}: ctl-skip or seq")),
+    }
+}
+
 /// A poll interval in (possibly fractional) seconds, at least 50 ms and at most an hour.
 fn parse_interval(s: &str) -> Result<Duration, String> {
     let bad = || format!("bad --interval {s:?}: seconds between 0.05 and 3600, e.g. 2 or 0.5");
@@ -179,8 +221,15 @@ fn parse_interval(s: &str) -> Result<Duration, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_interval;
+    use super::{parse_interval, parse_observer, ObserverKind};
     use std::time::Duration;
+
+    #[test]
+    fn the_observer_is_chosen_by_name() {
+        assert_eq!(parse_observer("ctl-skip"), Ok(ObserverKind::ControlSkip));
+        assert_eq!(parse_observer("seq"), Ok(ObserverKind::Sequential));
+        assert!(parse_observer("events").is_err());
+    }
 
     #[test]
     fn intervals_may_be_fractional_but_must_be_sane() {

@@ -9,10 +9,11 @@ use flight_proto::{
 };
 use flight_state::PaneRef;
 
-/// What this node can do. `send_input` and `switch` are not offered: the node has no client
-/// to switch and no input path yet.
-pub const ADVERTISED_CAPABILITIES: [&str; 3] = [
+/// What this node can do. `send_input` is not offered: there is no input path yet. A node
+/// never switches a client (it has none): it reveals a pane in its own tmux hierarchy.
+pub const ADVERTISED_CAPABILITIES: [&str; 4] = [
     capability::PREVIEW,
+    capability::GUARDED_REVEAL,
     capability::KILL,
     capability::CREATE_SESSION,
 ];
@@ -207,10 +208,21 @@ impl NodeSession {
                     c.command.clone(),
                 ))
             }
-            Some(Kind::SwitchPane(_)) => Err(ControlError::new(
-                ErrorKindCode::Unsupported,
-                "switching is not available on a node",
-            )),
+            Some(Kind::RevealPane(c)) => {
+                need(capability::GUARDED_REVEAL)?;
+                let (pane, published) = self.own_pane(c.pane_ref.as_ref())?;
+                // The caller was looking at one process; the node publishes another.
+                if published != c.expected_pid {
+                    return Err(ControlError::new(
+                        ErrorKindCode::PaneChanged,
+                        format!(
+                            "pane {} is no longer the process you were looking at",
+                            pane.pane
+                        ),
+                    ));
+                }
+                Ok(ControlJob::reveal(id, pane.server, pane.pane, published))
+            }
             Some(Kind::SendInput(_)) => Err(ControlError::new(
                 ErrorKindCode::Unsupported,
                 "input is not available yet",

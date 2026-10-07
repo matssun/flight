@@ -45,6 +45,21 @@ pub trait Control: Send + Sync {
         expected_pid: u32,
     ) -> Result<(), ControlError>;
 
+    /// Make the pane the active pane of its window and its window the current one of its
+    /// session, but only if it still is the process the request was about. Never touches a
+    /// tmux client. A control that cannot do this refuses; there is no unguarded fallback.
+    fn reveal_pane(
+        &self,
+        _server: &ServerId,
+        _pane: &PaneId,
+        _expected_pid: u32,
+    ) -> Result<(), ControlError> {
+        Err(ControlError::new(
+            ErrorKindCode::Unsupported,
+            "revealing a pane is not available on this control",
+        ))
+    }
+
     /// A detached session; `command` empty means the shell.
     fn create_session(
         &self,
@@ -63,6 +78,11 @@ enum Op {
         lines: u32,
     },
     Kill {
+        server: ServerId,
+        pane: PaneId,
+        pid: u32,
+    },
+    Reveal {
         server: ServerId,
         pane: PaneId,
         pid: u32,
@@ -99,6 +119,13 @@ impl ControlJob {
         Self {
             request_id,
             op: Op::Kill { server, pane, pid },
+        }
+    }
+
+    pub(crate) fn reveal(request_id: u64, server: ServerId, pane: PaneId, pid: u32) -> Self {
+        Self {
+            request_id,
+            op: Op::Reveal { server, pane, pid },
         }
     }
 
@@ -139,6 +166,9 @@ impl ControlJob {
             }),
             Op::Kill { server, pane, pid } => control
                 .kill_pane(server, pane, *pid)
+                .map(|()| response_result::Result::Done(response_result::Done {})),
+            Op::Reveal { server, pane, pid } => control
+                .reveal_pane(server, pane, *pid)
                 .map(|()| response_result::Result::Done(response_result::Done {})),
             Op::Create {
                 server,

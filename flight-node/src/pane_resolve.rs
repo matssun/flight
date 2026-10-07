@@ -71,5 +71,6 @@ pub(crate) fn pane_state(
         window: obs.window.clone(),
         path: obs.path.clone(),
         command: obs.command.clone(),
+        pid: obs.pid,
     }
 }

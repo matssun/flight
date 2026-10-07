@@ -29,6 +29,7 @@ wire_enum! {
         UnknownPane = 7,
         InvalidRequest = 8,
         NodeUnreachable = 9,
+        PaneChanged = 10,
     }
 }
 

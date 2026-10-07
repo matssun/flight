@@ -181,6 +181,72 @@ fn commands_report_their_target_host() {
     assert_eq!(Command { kind: None }.target_host(), None);
 }
 
+fn reveal(pid: u32) -> Command {
+    Command {
+        kind: Some(command_kind::Kind::RevealPane(command_kind::RevealPane {
+            pane_ref: pane_state("%1", StateCode::Busy).pane_ref,
+            expected_pid: pid,
+        })),
+    }
+}
+
+#[test]
+fn a_reveal_must_name_the_pane_process_it_is_about() {
+    assert!(reveal(4242).validate().is_ok());
+    assert_eq!(
+        reveal(0).validate(),
+        Err(Reject::OutOfRange("reveal_pane.expected_pid"))
+    );
+    assert_eq!(reveal(1).target_host(), Some("node-ab12"));
+}
+
+#[test]
+fn the_retired_unguarded_switch_is_not_a_command_any_more() {
+    // What a peer that still sent tag 2 (`SwitchPane { pane_ref }`) puts on the wire: a command
+    // whose oneof has no variant here. It decodes to no kind and is refused, never reinterpreted
+    // as a reveal.
+    let pane = encode(
+        &pane_state("%1", StateCode::Busy)
+            .pane_ref
+            .unwrap_or_default(),
+    );
+    // SwitchPane { pane_ref = field 1 }, carried as Command's field 2.
+    let mut switch = vec![0x0a, u8::try_from(pane.len()).unwrap_or(0)];
+    switch.extend(&pane);
+    let mut bytes = vec![0x12, u8::try_from(switch.len()).unwrap_or(0)];
+    bytes.extend(&switch);
+    let decoded: Result<Command, _> = decode(&bytes);
+    assert_eq!(decoded, Err(Reject::Missing("command.kind")));
+}
+
+#[test]
+fn a_pane_state_without_a_pid_decodes_with_pid_zero() {
+    // Frozen older shape: no field 14.
+    #[derive(Clone, PartialEq, prost::Message)]
+    struct OlderPaneState {
+        #[prost(message, optional, tag = "1")]
+        pane_ref: Option<PaneRefMsg>,
+        #[prost(enumeration = "AgentKindCode", tag = "2")]
+        agent_kind: i32,
+        #[prost(enumeration = "StateCode", tag = "3")]
+        state: i32,
+        #[prost(enumeration = "SourceCode", tag = "4")]
+        source: i32,
+        #[prost(string, tag = "9")]
+        session: String,
+    }
+    let base = pane_state("%1", StateCode::Permit);
+    let older = OlderPaneState {
+        pane_ref: base.pane_ref.clone(),
+        agent_kind: base.agent_kind,
+        state: base.state,
+        source: base.source,
+        session: base.session.clone(),
+    };
+    let decoded: PaneState = decode(&encode(&older)).expect("older message decodes");
+    assert_eq!(decoded.pid, 0);
+}
+
 #[test]
 fn oversized_frames_are_refused_before_parsing() {
     let big = vec![0u8; MAX_FRAME_BYTES + 1];

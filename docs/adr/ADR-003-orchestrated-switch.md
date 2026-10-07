@@ -2,7 +2,7 @@
 
 # ADR-003: Switching to a pane through the orchestrator
 
-Status: Proposed (design note; nothing implemented yet)
+Status: Accepted. Slice 2 (protocol and node-side reveal) implemented; slices 3 to 5 not yet.
 
 ## Problem
 
@@ -15,7 +15,7 @@ Enter on a pane in the orchestrated dashboard says "not available yet" (ADR-001 
 1. **Reveal** (server state, owned by the node): make the target the active pane of its window and its window the current window of its session. `select-window -t @W` then `select-pane -t %P` on the node's own tmux server. A node is a service with no tmux client and no way to know which client is the user's, so it never touches clients.
 2. **Present** (client state, owned by the machine the UI runs on): point a tmux client at that session. Only the UI's machine can do this.
 
-The orchestrator only routes the reveal (the existing control path: capability check, immediate typed failures for unknown, disconnected or incapable nodes). Presenting never crosses the orchestrator.
+The wire command is `RevealPane`, named for what it does (an earlier draft called it `SwitchPane`, which would have suggested a client switch). The orchestrator only routes the reveal (the existing control path: capability check, immediate typed failures for unknown, disconnected or incapable nodes). The dashboard's Enter composes reveal and present as two explicit stages, so a failure says which one failed ("revealed; cannot attach: no ssh destination for this node"). Presenting never crosses the orchestrator.
 
 ### The plan: a pure function of three facts
 
@@ -32,7 +32,13 @@ The orchestrator only routes the reveal (the existing control path: capability c
 
 ### Which client is "the UI's client"
 
-No "pick any attached client". The UI asks tmux which client it is: `display-message -p -t $TMUX_PANE '#{client_name}'` run against the server named by `$TMUX`, and confirms that exactly one attached client of that pane's session matches. Zero or several matches (for example two terminals attached to the same session) is `Refuse("cannot tell which tmux client shows this dashboard")`. Whether this resolves correctly for a `display-popup` is checked against real tmux in slice 2 before anything else is built on it; if popups do not resolve, popups are `Refuse` with a message, not a guess.
+No "pick any attached client", and not "ask tmux which client I am". Measured against real tmux with pty-attached clients (`display-popup` on an attached client):
+
+- Inside a popup, `$TMUX` is set and `$TMUX_PANE` is empty. In an ordinary pane both are set.
+- With **one** client on the session, `display-message -p '#{client_name}'` from the popup names it correctly.
+- With **two** clients on the same session, a popup opened on the idle client was told it was the *other* client (tmux answers with the most recently active one). Trusting `display-message` here would switch the wrong terminal.
+
+So the rule is: find the UI's **session** (ordinary pane: `display-message -p -t $TMUX_PANE '#{session_name}'`, which does not depend on any client; popup: the session id in `$TMUX`), list that session's attached clients, and proceed only if there is **exactly one**; that client is the target of `switch-client -c`. Zero or several is `Refuse("cannot tell which tmux client shows this dashboard; attach manually")`, even though it occasionally makes a user attach by hand. Refusing is better than switching the wrong terminal. The slice that implements this carries live tests with pty-attached clients for the one-client, two-client and popup cases.
 
 ### Which machine is "this machine"
 
@@ -44,10 +50,14 @@ A pane id is reused across process lifetimes. Today's `KillPane` guard compares 
 
 For switch the request carries the pid the UI saw, and every step checks it:
 
-- `PaneState` gains `pid` (additive; it changes only when the process does, so it adds no per-poll delta). The UI view model carries it.
-- `SwitchPane` gains `expected_pid` (additive, validated non-zero).
-- The node refuses unless published pid, tmux's current pid for that pane, and `expected_pid` all agree, with a new `PaneChanged` failure (not `UnknownPane`) so the UI can say "the pane changed, refresh" and not "no such pane".
+- `PaneState` gains `pid` (tag 14, additive; it changes only when the process does, so it adds no per-poll delta; 0 from a node that predates it). The UI view model will carry it.
+- `RevealPane { pane_ref, expected_pid }` is a new command (tag 6, `expected_pid` validated non-zero). The old unguarded `SwitchPane` (tag 2) was never offered by any node; it is removed and its tag retired, and a peer that still sent it is refused as a command with no kind.
+- The node refuses unless the published pid, tmux's current pid for that pane, and `expected_pid` all agree, with a new `PaneChanged` failure (not `UnknownPane`) so the UI can say "the pane changed, refresh" and not "no such pane". A stale request is refused before it becomes a job.
 - The local plans run the same check against tmux directly.
+
+**The general rule:** any control action whose meaning depends on a particular pane process must carry the pane incarnation the caller observed (today `PaneRef` plus `expected_pid`).
+
+**Capability, not just a field.** Semantic compatibility matters more than protobuf compatibility. The reveal is negotiated as `guarded_reveal_v1`; a node that does not offer it is refused by the orchestrator (`Unsupported`, nothing forwarded), and a node refuses the command if it was not accepted. A newer UI talking to an older peer gets "upgrade required", never an unguarded older behaviour.
 
 Reveal is idempotent and harmless, so a lost response never needs compensation; the UI starts the attach only after a success.
 
@@ -70,12 +80,12 @@ The dashboard exits only after `SwitchClient` succeeds or when it hands the term
 
 - `SendInput`: different security and UX questions (text injection, confirmation, secrets in logs). Its own ADR.
 - Key rotation, process-table and hook discovery, the third-machine UI test.
-- **Found while writing this:** `KillPane` has the stale-UI hole described above. The UI has no kill action yet, so nothing is exposed today; the `pid` added here is what lets `KillPane` carry `expected_pid` before such an action exists.
+- **`KillPane` is under-guarded today** (found while writing this): it compares the node's published pid with tmux's, but not with the pid the caller saw. The UI has no kill action yet, so nothing is exposed. It must adopt the rule above (`expected_pid`, a guarded capability) before any kill action is added to a UI.
 
 ## Slices
 
 1. This note.
-2. Protocol (`PaneState.pid`, `SwitchPane.expected_pid`, `PaneChanged`) and the node-side reveal with the pid guard, against real tmux. Includes the client-identification check for popups.
+2. **Done.** Protocol (`PaneState.pid`, `RevealPane.expected_pid`, `PaneChanged`, `guarded_reveal_v1`) and the node-side reveal with the pid guard, against real tmux (selects window and pane, touches no client, refuses a replaced pane and a pane id reused by a new server). The popup experiment is recorded above.
 3. Orchestrator routing: the `switch` capability offered by nodes, typed immediate failures, request timeout.
 4. UI: `plan_switch` (pure, table-driven tests), executors (`switch-client`, attach by exec), the Enter path and its messages.
 5. End to end: local selected pane, remote selected pane, pane replaced before the request, no suitable client, node disconnect mid-request.

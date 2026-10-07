@@ -34,6 +34,10 @@ pub struct PaneState {
     pub path: String,
     #[prost(string, tag = "12")]
     pub command: String,
+    /// The pane's process id: the pane incarnation a control action must name. Changes only
+    /// when the process does, so it adds no per-poll delta. 0 from a node that predates it.
+    #[prost(uint32, tag = "14")]
+    pub pid: u32,
 }
 
 impl PaneState {

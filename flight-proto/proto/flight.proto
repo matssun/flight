@@ -74,6 +74,8 @@ enum ErrorKindCode {
   ERROR_KIND_CODE_UNKNOWN_PANE = 7;
   ERROR_KIND_CODE_INVALID_REQUEST = 8;
   ERROR_KIND_CODE_NODE_UNREACHABLE = 9;
+  // The pane id exists but is no longer the process the request was about.
+  ERROR_KIND_CODE_PANE_CHANGED = 10;
 }
 
 enum NodeStatusCode {
@@ -115,6 +117,9 @@ message PaneState {
   string window = 10;
   string path = 11;
   string command = 12;
+  // The pane's process id: the pane incarnation a control action must name. 0 from a node
+  // that predates it.
+  uint32 pid = 14;
 }
 
 message ServerStatus {
@@ -176,8 +181,13 @@ message Command {
     PaneRefMsg pane_ref = 1;
     uint32 lines = 2;
   }
-  message SwitchPane {
+  // Make the pane the active pane of its window and its window the current one of its
+  // session, on the node's own tmux server; never touches a tmux client (ADR-003).
+  // Tag 2 was an unguarded SwitchPane that no node offered; it is retired.
+  message RevealPane {
     PaneRefMsg pane_ref = 1;
+    // The pane process the caller was looking at; the node refuses if it changed.
+    uint32 expected_pid = 2;
   }
   message SendInput {
     PaneRefMsg pane_ref = 1;
@@ -195,12 +205,13 @@ message Command {
     // Empty means the shell.
     string command = 5;
   }
+  reserved 2;
   oneof kind {
     GetPreview get_preview = 1;
-    SwitchPane switch_pane = 2;
     SendInput send_input = 3;
     KillPane kill_pane = 4;
     CreateSession create_session = 5;
+    RevealPane reveal_pane = 6;
   }
 }
 

@@ -159,6 +159,32 @@ impl Control for TmuxServers {
         }
     }
 
+    fn reveal_pane(
+        &self,
+        server: &ServerId,
+        pane: &PaneId,
+        expected_pid: u32,
+    ) -> Result<(), ControlError> {
+        let tmux = self.tmux(server)?;
+        let current = tmux
+            .list_panes()
+            .map_err(failed)?
+            .into_iter()
+            .find(|p| p.pane_id == pane.as_str())
+            .ok_or_else(|| {
+                ControlError::new(ErrorKindCode::UnknownPane, format!("no pane {pane}"))
+            })?;
+        // The request was issued against one process; only act if tmux still shows it.
+        if current.pane_pid != expected_pid {
+            return Err(ControlError::new(
+                ErrorKindCode::PaneChanged,
+                format!("pane {pane} is no longer the process this request targeted"),
+            ));
+        }
+        tmux.reveal_pane(&current.window_id, pane.as_str())
+            .map_err(failed)
+    }
+
     fn create_session(
         &self,
         server: &ServerId,

@@ -3,13 +3,16 @@
 //! Capabilities are named strings. Unknown names are not an error: they are negotiated away.
 
 pub const PREVIEW: &str = "preview";
-pub const SWITCH: &str = "switch";
+/// Reveal a pane, guarded by the pane process the caller saw (`RevealPane.expected_pid`).
+/// The name carries the semantics: a peer that lacks it is refused, never given an
+/// unguarded older behaviour.
+pub const GUARDED_REVEAL: &str = "guarded_reveal_v1";
 pub const SEND_INPUT: &str = "send_input";
 pub const KILL: &str = "kill";
 pub const CREATE_SESSION: &str = "create_session";
 
 /// Every capability this build knows about.
-pub const KNOWN: [&str; 5] = [PREVIEW, SWITCH, SEND_INPUT, KILL, CREATE_SESSION];
+pub const KNOWN: [&str; 5] = [PREVIEW, GUARDED_REVEAL, SEND_INPUT, KILL, CREATE_SESSION];
 
 /// The offered capabilities that `supported` also contains, in offered order, without
 /// duplicates. Anything unknown to this side is dropped silently.

@@ -10,7 +10,7 @@ use flight_state::HostId;
 fn required_capability(kind: &Kind) -> &'static str {
     match kind {
         Kind::GetPreview(_) => capability::PREVIEW,
-        Kind::SwitchPane(_) => capability::SWITCH,
+        Kind::RevealPane(_) => capability::GUARDED_REVEAL,
         Kind::SendInput(_) => capability::SEND_INPUT,
         Kind::KillPane(_) => capability::KILL,
         Kind::CreateSession(_) => capability::CREATE_SESSION,

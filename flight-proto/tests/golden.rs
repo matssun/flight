@@ -109,6 +109,40 @@ fn orchestrator_request_v1() {
 }
 
 #[test]
+fn orchestrator_reveal_pane_v1() {
+    check(
+        "orchestrator_reveal_pane",
+        OrchestratorFrame {
+            body: Some(orchestrator_body::Body::Request(Request {
+                request_id: 12,
+                command: Some(Command {
+                    kind: Some(command_kind::Kind::RevealPane(command_kind::RevealPane {
+                        pane_ref: pane_state("%1", StateCode::Busy).pane_ref,
+                        expected_pid: 4242,
+                    })),
+                }),
+            })),
+        },
+    );
+}
+
+#[test]
+fn pane_state_with_a_pid_v1() {
+    let mut pane = pane_state("%1", StateCode::Permit);
+    pane.pid = 4242;
+    check(
+        "node_pane_with_pid",
+        NodeFrame {
+            body: Some(node_body::Body::Delta(Delta {
+                incarnation: inc(1).as_bytes().to_vec(),
+                sequence: 1,
+                change: Some(delta_change::Change::PaneUpsert(pane)),
+            })),
+        },
+    );
+}
+
+#[test]
 fn ui_fleet_snapshot_v1() {
     check(
         "ui_fleet_snapshot",

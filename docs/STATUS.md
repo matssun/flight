@@ -88,6 +88,16 @@ Choose on correctness and complexity as well as CPU.
 `ctl/skip` is the node's default observer and `seq/all` stays as the fallback and reference. The capture observer
 PR is next.
 
+## Current branch: orchestrated-switch (ADR-003)
+
+Enter on a pane in the orchestrated dashboard. Slice 1 (design) and slice 2 (protocol and node-side guarded reveal)
+are done: `RevealPane { pane_ref, expected_pid }`, `PaneState.pid`, `PaneChanged`, capability `guarded_reveal_v1`
+(an older node is refused, never given an unguarded fallback), tested against real tmux (selects window and pane,
+touches no client, refuses a replaced pane and a pane id reused by a new server). Next: slice 3 (orchestrator
+routing, request timeout), slice 4 (UI `plan_switch` and executors, client identification: exactly one attached
+client on the UI's session, else refuse), slice 5 (end-to-end). `KillPane` is under-guarded and must adopt
+`expected_pid` before any kill action exists in a UI.
+
 ## Open limitations
 
 Third-machine UI test, orchestrated Enter/switch, hooks and process-table discovery, key rotation,

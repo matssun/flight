@@ -28,6 +28,7 @@ fn pane(node: &str, id: &str, state: StateCode) -> PaneState {
         window: "w".into(),
         path: String::new(),
         command: "codex".into(),
+        pid: 0,
     }
 }
 

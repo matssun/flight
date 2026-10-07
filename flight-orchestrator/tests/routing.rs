@@ -123,6 +123,50 @@ fn unknown_nodes_and_unoffered_capabilities_are_refused() {
     assert!(w.forwarded.is_empty());
 }
 
+fn reveal(id: u64, node: &str, pane: &str, expected_pid: u32) -> UiRequest {
+    UiRequest {
+        body: Some(ui_request_body::Body::Command(Request {
+            request_id: id,
+            command: Some(Command {
+                kind: Some(ck::Kind::RevealPane(ck::RevealPane {
+                    pane_ref: Some(pane_ref(node, pane)),
+                    expected_pid,
+                })),
+            }),
+        })),
+    }
+}
+
+#[test]
+fn a_reveal_is_forwarded_to_a_node_that_offers_the_guarded_capability() {
+    let mut w = ready();
+    send(&mut w, reveal(1, "node-a", "%1", 1));
+    assert!(error_kinds(&w).is_empty(), "{:?}", error_kinds(&w));
+    assert_eq!(w.forwarded.len(), 1);
+}
+
+#[test]
+fn an_older_node_without_the_guarded_capability_is_never_sent_a_reveal() {
+    let mut w = simple_world();
+    w.subscribe(UiId(1));
+    w.connect_offering(0, &["preview", "kill", "create_session"]);
+    w.observe(0, round(1, vec![obs("%1", 1, PERMIT_SCREEN)]));
+    send(&mut w, reveal(1, "node-a", "%1", 1));
+    assert_eq!(error_kinds(&w), vec![ErrorKindCode::Unsupported as i32]);
+    assert!(
+        w.forwarded.is_empty(),
+        "an unguarded older node must not see the request"
+    );
+}
+
+#[test]
+fn a_reveal_without_the_pane_process_never_reaches_routing() {
+    let mut w = ready();
+    send(&mut w, reveal(2, "node-a", "%1", 0));
+    assert_eq!(error_kinds(&w), vec![ErrorKindCode::InvalidRequest as i32]);
+    assert!(w.forwarded.is_empty());
+}
+
 #[test]
 fn an_invalid_command_is_rejected_before_routing() {
     let mut w = ready();

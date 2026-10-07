@@ -18,6 +18,7 @@ use support::*;
 #[derive(Default)]
 struct FakeControl {
     killed: Mutex<Vec<String>>,
+    revealed: Mutex<Vec<String>>,
 }
 
 impl Control for FakeControl {
@@ -26,6 +27,10 @@ impl Control for FakeControl {
     }
     fn kill_pane(&self, _: &ServerId, pane: &PaneId, pid: u32) -> Result<(), ControlError> {
         self.killed.lock().unwrap().push(format!("{pane}@{pid}"));
+        Ok(())
+    }
+    fn reveal_pane(&self, _: &ServerId, pane: &PaneId, pid: u32) -> Result<(), ControlError> {
+        self.revealed.lock().unwrap().push(format!("{pane}@{pid}"));
         Ok(())
     }
     fn create_session(&self, _: &ServerId, _: &str, _: &str, _: &str) -> Result<(), ControlError> {
@@ -41,6 +46,10 @@ thread_local! {
 
 fn killed() -> Vec<String> {
     CONTROL.with(|c| c.killed.lock().unwrap().clone())
+}
+
+fn revealed() -> Vec<String> {
+    CONTROL.with(|c| c.revealed.lock().unwrap().clone())
 }
 
 fn session() -> NodeSession {
@@ -313,24 +322,81 @@ fn kill_runs_only_when_the_capability_was_accepted() {
 }
 
 #[test]
-fn switch_and_input_are_unsupported_on_a_node() {
-    let mut s = ready(&["preview", "kill", "create_session", "switch", "send_input"]);
-    for kind in [
-        ck::Kind::SwitchPane(ck::SwitchPane {
-            pane_ref: pane("%1"),
+fn input_is_unsupported_on_a_node() {
+    let mut s = ready(&["preview", "kill", "create_session", "send_input"]);
+    let out = s.on_frame(
+        request(
+            6,
+            ck::Kind::SendInput(ck::SendInput {
+                pane_ref: pane("%1"),
+                text: "y".into(),
+                enter: true,
+            }),
+        ),
+        1,
+    );
+    assert_eq!(
+        error_kind(only_response(out)),
+        ErrorKindCode::Unsupported as i32
+    );
+}
+
+fn reveal(id: u64, pane_id: &str, expected_pid: u32) -> OrchestratorFrame {
+    request(
+        id,
+        ck::Kind::RevealPane(ck::RevealPane {
+            pane_ref: pane(pane_id),
+            expected_pid,
         }),
-        ck::Kind::SendInput(ck::SendInput {
-            pane_ref: pane("%1"),
-            text: "y".into(),
-            enter: true,
-        }),
-    ] {
-        let out = s.on_frame(request(6, kind), 1);
-        assert_eq!(
-            error_kind(only_response(out)),
-            ErrorKindCode::Unsupported as i32
-        );
-    }
+    )
+}
+
+#[test]
+fn reveal_runs_when_the_caller_saw_the_published_process() {
+    let mut s = ready(&["guarded_reveal_v1"]);
+    let out = s.on_frame(reveal(8, "%1", 7), 1);
+    assert!(matches!(
+        only_response(out),
+        response_result::Result::Done(_)
+    ));
+    assert_eq!(revealed(), vec!["%1@7".to_owned()]);
+}
+
+#[test]
+fn reveal_of_a_replaced_pane_is_refused_before_anything_runs() {
+    // The node publishes pid 7; the caller was looking at an earlier process under the same id.
+    let mut s = ready(&["guarded_reveal_v1"]);
+    let out = s.on_frame(reveal(9, "%1", 6), 1);
+    assert!(out.jobs.is_empty(), "a stale reveal must not become a job");
+    assert_eq!(
+        error_kind(only_response(out)),
+        ErrorKindCode::PaneChanged as i32
+    );
+    assert!(revealed().is_empty());
+}
+
+#[test]
+fn reveal_of_an_unknown_or_foreign_pane_is_refused() {
+    let mut s = ready(&["guarded_reveal_v1"]);
+    let unknown = s.on_frame(reveal(10, "%99", 7), 1);
+    assert_eq!(
+        error_kind(only_response(unknown)),
+        ErrorKindCode::UnknownPane as i32
+    );
+    assert!(revealed().is_empty());
+}
+
+#[test]
+fn a_peer_that_did_not_accept_guarded_reveal_gets_no_reveal_at_all() {
+    // An orchestrator from before the guarded capability accepted only the older set. There
+    // is no unguarded fallback: the request is refused, whatever pid it names.
+    let mut s = ready(&["preview", "kill", "create_session"]);
+    let out = s.on_frame(reveal(11, "%1", 7), 1);
+    assert_eq!(
+        error_kind(only_response(out)),
+        ErrorKindCode::Unsupported as i32
+    );
+    assert!(revealed().is_empty());
 }
 
 #[test]

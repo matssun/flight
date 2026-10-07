@@ -150,6 +150,23 @@ impl World {
     }
 
     /// Open a connection for node `i` and run the handshake.
+    /// Connect node `i` as a build that offers only `capabilities` (an older node).
+    pub fn connect_offering(&mut self, i: usize, capabilities: &[&str]) -> ConnId {
+        let conn = ConnId(self.next_conn);
+        self.next_conn += 1;
+        let mut hello = {
+            let node = &mut self.nodes[i];
+            node.conn = Some(conn);
+            self.orch.node_connected(conn, node.id.clone());
+            node.session.connect(vec![server().to_string()])
+        };
+        if let Some(flight_proto::node_body::Body::Hello(h)) = hello.body.as_mut() {
+            h.capabilities = capabilities.iter().map(|c| (*c).to_owned()).collect();
+        }
+        self.send_to_orch(conn, hello);
+        conn
+    }
+
     pub fn connect(&mut self, i: usize) -> ConnId {
         let conn = ConnId(self.next_conn);
         self.next_conn += 1;

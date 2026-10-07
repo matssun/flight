@@ -143,7 +143,7 @@ Envelope: `Frame { protocol_version, request_id?, body }`. Encoding: Protobuf, c
 **Request / response (either direction, matched by `request_id`)**
 
 - `GetPreview { pane_ref, lines }` -> `Preview { text, captured_at }`
-- `SwitchPane`, `SendInput`, `KillPane`, `CreateSession { name, dir, command? }`, `KillServer`, `GetHostStatus`
+- `RevealPane` (was `SwitchPane`; see ADR-003), `SendInput`, `KillPane`, `CreateSession { name, dir, command? }`, `KillServer`, `GetHostStatus`
 - Response is `Ok(..)` or a typed `Error { kind, message }` using the existing `HostError` kinds plus `Unsupported`, `ProtocolMismatch`, `NotAuthorized`.
 
 `PaneSummary { pane_ref, agent_kind, state, provenance, rule_id?, why, changed_at, session/window names, path, command }`. It is the existing resolved pane record minus screen text.
@@ -196,7 +196,7 @@ UI side: the UI speaks the same protocol to the orchestrator (`Subscribe`, then 
    - The node is the observation service: `TmuxServers` polled on a blocking thread feeds `NodeCore` (classify, fuse, resolve, Tracking) and streams snapshot and deltas through `NodeLink`; preview and kill are control jobs.
    - The dashboard reads through a `Backend` trait with two implementations: the direct `Collector` and `flight-client`'s `OrchestratedBackend` (`UiClient` -> `FleetImage` -> `UiSnapshot`). It is configured with an endpoint and a pinned identity only. Hosts carry a display label; identity stays the node id. Liveness shows as `stale`/`disconnected (last known)`, and a dead orchestrator link is an explicit row above last-known nodes.
    - Differential test: the same scripted tmux server feeds the direct collector and node -> orchestrator -> UI over real mTLS; their dashboard data must agree at every step (detection, state change, Done, pane replaced, tmux gone), as must previews. A real-process test enrolls a node and a UI by bundle and shows agents through the orchestrator.
-   - Not yet: switching to a remote pane through the orchestrator (the dashboard says so), hooks and process discovery on the node.
+   - Not yet: switching to a pane through the orchestrator (design in ADR-003; the node-side guarded reveal exists, the dashboard path does not), hooks and process discovery on the node.
 6. Real second machine on the LAN.
 7. Measure, then decide on packaging and the next UX changes.
 

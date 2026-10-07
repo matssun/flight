@@ -10,7 +10,7 @@ pub const MAX_PREVIEW_LINES: u32 = 2000;
 /// `CreateSession` names the host explicitly.
 #[derive(Clone, PartialEq, Eq, prost::Message)]
 pub struct Command {
-    #[prost(oneof = "command_kind::Kind", tags = "1, 2, 3, 4, 5")]
+    #[prost(oneof = "command_kind::Kind", tags = "1, 3, 4, 5, 6")]
     pub kind: Option<command_kind::Kind>,
 }
 
@@ -25,10 +25,18 @@ pub mod command_kind {
         pub lines: u32,
     }
 
+    /// Make the pane the active pane of its window and its window the current window of its
+    /// session, on the node's own tmux server. It never touches a tmux client: presenting the
+    /// pane to a person is the caller's business (ADR-003). Tag 2 was an unguarded
+    /// `SwitchPane` that no node ever offered; it is retired, not reused.
     #[derive(Clone, PartialEq, Eq, prost::Message)]
-    pub struct SwitchPane {
+    pub struct RevealPane {
         #[prost(message, optional, tag = "1")]
         pub pane_ref: Option<PaneRefMsg>,
+        /// The pane process the caller was looking at. A pane id is reused across process
+        /// lifetimes, so the node refuses unless this is still the pane's process.
+        #[prost(uint32, tag = "2")]
+        pub expected_pid: u32,
     }
 
     #[derive(Clone, PartialEq, Eq, prost::Message)]
@@ -67,14 +75,14 @@ pub mod command_kind {
     pub enum Kind {
         #[prost(message, tag = "1")]
         GetPreview(GetPreview),
-        #[prost(message, tag = "2")]
-        SwitchPane(SwitchPane),
         #[prost(message, tag = "3")]
         SendInput(SendInput),
         #[prost(message, tag = "4")]
         KillPane(KillPane),
         #[prost(message, tag = "5")]
         CreateSession(CreateSession),
+        #[prost(message, tag = "6")]
+        RevealPane(RevealPane),
     }
 }
 
@@ -88,7 +96,7 @@ impl Command {
         use command_kind::Kind::*;
         match self.kind.as_ref()? {
             GetPreview(c) => host_of(&c.pane_ref),
-            SwitchPane(c) => host_of(&c.pane_ref),
+            RevealPane(c) => host_of(&c.pane_ref),
             SendInput(c) => host_of(&c.pane_ref),
             KillPane(c) => host_of(&c.pane_ref),
             CreateSession(c) => Some(c.host.as_str()),
@@ -113,7 +121,13 @@ impl Validate for Command {
                 }
                 Ok(())
             }
-            SwitchPane(c) => pane_ref(&c.pane_ref),
+            RevealPane(c) => {
+                pane_ref(&c.pane_ref)?;
+                if c.expected_pid == 0 {
+                    return Err(Reject::OutOfRange("reveal_pane.expected_pid"));
+                }
+                Ok(())
+            }
             SendInput(c) => pane_ref(&c.pane_ref),
             KillPane(c) => pane_ref(&c.pane_ref),
             CreateSession(c) => {

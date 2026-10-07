@@ -57,10 +57,19 @@ Question: how should one node observe 10-500 tmux panes efficiently and correctl
   list, failed capture, timeout) discards the cache; recovery rebuilds the connection and starts with a full refresh.
   Parser unit tests, observer unit tests and live tests on a private tmux socket cover interleaved notifications,
   server restart (pane ids reused), connection loss, high output, and pane create/remove.
-- Not done: why `ctl/events` worked after `ctl/all`; integrating the observer into `flight-node`; a control-mode
-  soak test (hours, thousands of server events); a decision on the node's default interval.
+- Integrated (this branch): `flight-tmux` owns the control-mode connection; `flight-node` consumes a
+  `PaneObserver` (`SequentialObserver` = reference and fallback, `ControlSkipObserver`); `flight node run` defaults to
+  `--observer ctl-skip` at `--interval 0.5`; `--observer seq` keeps the reference path. A broken control connection
+  drops every cached screen, the round is answered sequentially, and the next healthy round is a full refresh (both
+  transitions appear in the node log). Our own control client is discounted from `focused`. Decisions are in ADR-002.
+- Integrated-path tests: in-memory tmux with randomized histories checked against the reference; live tests on a private
+  socket (agreement, focus, server restart with reused pane ids); a fault-injecting soak
+  (`FLIGHT_SOAK_SECS=1800 cargo test -p flight-node --test control_skip_soak -- --ignored --nocapture`); and a smoke of
+  the real binary (orchestrator + node + 20 agent panes, control client killed: unavailable then restored, 20 panes kept).
+- Not done: the long soak result (see below), a multi-hour soak, 500 real panes, why `ctl/events` worked after
+  `ctl/all` (irrelevant to the design).
 
-## Decision still open: the production observer
+## Production observer: decided
 
 Choose on correctness and complexity as well as CPU.
 
@@ -73,8 +82,8 @@ Choose on correctness and complexity as well as CPU.
 | control + skip | lowest | excellent | low at 250 panes, 0 stale | none | higher |
 | control + events | invalid | n/a | loses events outside the attached session | none | n/a |
 
-`ctl/skip` is the production candidate; `seq/all` stays as the fallback and reference path. Remaining before it
-becomes the node's default: integrate into `flight-node` behind the existing observation seam, then a soak test.
+`ctl/skip` is the node's default observer and `seq/all` stays as the fallback and reference. Open before the capture
+observer PR: the soak result.
 
 ## Open limitations
 

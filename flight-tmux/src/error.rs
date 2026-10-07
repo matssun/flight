@@ -14,6 +14,8 @@ pub enum TmuxError {
     /// tmux answered, but nothing in the answer matched the expected format (for example a
     /// field separator that was rewritten). Reported instead of silently showing no panes.
     Unparseable(String),
+    /// A control-mode connection broke or could not be trusted (closed, out of step, no reply).
+    Control(String),
 }
 
 impl fmt::Display for TmuxError {
@@ -29,6 +31,7 @@ impl fmt::Display for TmuxError {
                 f,
                 "tmux output was not in the expected format (first line: {sample:?}); is its locale UTF-8?"
             ),
+            Self::Control(why) => write!(f, "tmux control connection: {why}"),
             Self::Failed { code: None, stderr } => write!(f, "tmux killed by signal: {stderr}"),
         }
     }

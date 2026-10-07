@@ -14,7 +14,23 @@ pub struct PaneInfo {
     pub pane_pid: u32,
     /// Active pane of the active window of a session with an attached client.
     pub focused: bool,
+    /// The pieces `focused` is made of, so a caller whose own client is attached can discount it.
+    pub pane_active: bool,
+    pub window_active: bool,
+    pub session_attached: u32,
+    /// Epoch second of the window's last activity; 0 when tmux did not say (treat as unknown).
+    pub window_activity: u64,
     /// The foreground command (`#{pane_current_command}`), e.g. `zsh` or `claude`.
     pub current_command: String,
     pub pane_title: String,
+}
+
+impl PaneInfo {
+    /// `focused` as if `own_clients` of the attached clients of this pane's session did not
+    /// exist (a control connection of our own is not a person looking at the pane).
+    pub fn focused_excluding(&self, own_clients: u32) -> bool {
+        self.pane_active
+            && self.window_active
+            && self.session_attached.saturating_sub(own_clients) > 0
+    }
 }

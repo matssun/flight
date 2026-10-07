@@ -28,7 +28,7 @@ pub fn classify(transport: &Transport, err: &TmuxError) -> HostError {
         TmuxError::InvalidEndpoint(n) => HostError::InvalidConfig(format!("socket name {n:?}")),
         TmuxError::Spawn(e) => classify_spawn(transport, e),
         TmuxError::Failed { code, stderr } => classify_failed(transport, *code, stderr),
-        TmuxError::Unparseable(_) => HostError::RemoteCommandFailed {
+        TmuxError::Unparseable(_) | TmuxError::Control(_) => HostError::RemoteCommandFailed {
             code: None,
             stderr: err.to_string(),
         },

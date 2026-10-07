@@ -105,6 +105,8 @@ struct Pending {
     bytes: u64,
     events: u64,
     resyncs: u64,
+    /// Panes of the synthetic node the UI image currently shows (0 while the link is down).
+    visible: usize,
 }
 
 pub async fn run(a: Args) -> Result<(), String> {
@@ -141,6 +143,25 @@ pub async fn run(a: Args) -> Result<(), String> {
     let shared = Arc::new(Mutex::new(Pending::default()));
     let ui = ClientConfig::load(&a.ui_dir.join("ui")).map_err(|e| e.to_string())?;
     let ui_task = tokio::spawn(ui_side(ui, shared.clone()));
+    // Print every change in how many of the node's panes the UI can see, with the wall clock,
+    // so a restart's convergence time can be read off the log.
+    let watcher = tokio::spawn({
+        let shared = shared.clone();
+        async move {
+            let mut last = usize::MAX;
+            loop {
+                let seen = lock(&shared).visible;
+                if seen != last {
+                    let secs = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .map_or(0.0, |d| d.as_secs_f64());
+                    println!("visible {secs:.3} {seen}");
+                    last = seen;
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        }
+    });
 
     let mut permit = vec![false; a.panes];
     let mut rng = Rng(0x9E37_79B9_7F4A_7C15 ^ a.panes as u64);
@@ -150,7 +171,10 @@ pub async fn run(a: Args) -> Result<(), String> {
     while Instant::now() < end {
         // After the first tick, flip K distinct panes, noting when.
         if tick > 0 {
-            let mut chosen = Vec::new();
+            let mut chosen: Vec<usize> = Vec::new();
+            if a.flips >= a.panes {
+                chosen.extend(0..a.panes);
+            }
             while chosen.len() < a.flips.min(a.panes) {
                 let i = (rng.next() % a.panes as u64) as usize;
                 if !chosen.contains(&i) {
@@ -241,6 +265,7 @@ pub async fn run(a: Args) -> Result<(), String> {
     let _ = stop.send(true);
     let _ = conn.await;
     ui_task.abort();
+    watcher.abort();
     if let Some(dir) = &a.orch_dir {
         forget_self(dir, &node_id).await;
     }
@@ -265,10 +290,16 @@ async fn ui_side(ui: ClientConfig, shared: Arc<Mutex<Pending>>) {
         let mut image = FleetImage::new();
         loop {
             let Ok(Some(event)) = client.next_event().await else {
+                lock(&shared).visible = 0;
                 break;
             };
             let step = image.apply(&event);
             let mut p = lock(&shared);
+            p.visible = image
+                .nodes()
+                .values()
+                .find(|n| n.display_name == NAME)
+                .map_or(0, |n| n.panes.len());
             p.bytes += event.encoded_len() as u64;
             p.events += 1;
             if step == Step::Resync {

@@ -21,6 +21,19 @@ impl<R: TmuxRunner + ?Sized> TmuxRunner for Box<R> {
     }
 }
 
+/// The arguments of one tmux invocation: `-u` first, then the endpoint, then `args`.
+///
+/// `-u` forces UTF-8 output. Without it tmux judges the locale from the environment, and a
+/// process with no `LANG`/`LC_*` (a launchd or systemd service, a non-login ssh command) gets
+/// its `-F` field separators and every non-ASCII character in captured screens rewritten to
+/// `_`: the pane list then parses as empty and screen classification loses its glyphs.
+pub fn tmux_args(endpoint: &TmuxEndpoint, args: &[&str]) -> Vec<String> {
+    std::iter::once("-u".to_owned())
+        .chain(endpoint.args())
+        .chain(args.iter().map(|a| (*a).to_owned()))
+        .collect()
+}
+
 /// Runs the real `tmux` binary against one explicit endpoint.
 #[derive(Debug, Clone)]
 pub struct SystemRunner {
@@ -36,8 +49,7 @@ impl SystemRunner {
 impl TmuxRunner for SystemRunner {
     fn run(&self, args: &[&str]) -> Result<TmuxOutput, TmuxError> {
         let out = Command::new("tmux")
-            .args(self.endpoint.args())
-            .args(args)
+            .args(tmux_args(&self.endpoint, args))
             .output()
             .map_err(TmuxError::Spawn)?;
         if out.status.success() {
@@ -50,5 +62,19 @@ impl TmuxRunner for SystemRunner {
                 stderr: String::from_utf8_lossy(&out.stderr).trim().to_owned(),
             })
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn utf8_is_forced_before_the_endpoint_and_the_command() {
+        let endpoint = TmuxEndpoint::named("flight").unwrap();
+        assert_eq!(
+            tmux_args(&endpoint, &["list-panes", "-a"]),
+            ["-u", "-L", "flight", "list-panes", "-a"]
+        );
     }
 }

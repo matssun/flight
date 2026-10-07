@@ -60,3 +60,43 @@ fn private_socket_is_isolated_from_other_servers() {
     // to whatever default server the developer happens to be running.
     assert!(s.tmux.list_panes().is_err());
 }
+
+/// A service (launchd, systemd) or a non-login ssh command has no `LANG`/`LC_*`. tmux then
+/// rewrites the tab separators in `-F` output to `_`, which once made a node report "online,
+/// 0 panes". The argument list Flight really uses must survive an empty environment.
+#[test]
+fn pane_list_parses_with_no_locale_in_the_environment() {
+    let Some(s) = Server::start() else { return };
+    s.tmux.new_session("api", "/tmp").unwrap();
+    let endpoint = TmuxEndpoint::Path(s.socket.clone());
+    let path = std::env::var("PATH").unwrap_or_default();
+    let run = |args: Vec<String>| {
+        let out = Command::new("tmux")
+            .env_clear()
+            .env("PATH", &path)
+            .args(args)
+            .output()
+            .expect("run tmux");
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+
+    // Without -u, in this environment, the separators are rewritten (the original bug).
+    let without_u: Vec<String> = endpoint
+        .args()
+        .into_iter()
+        .chain(["list-panes", "-a", "-F", flight_tmux::PANE_FORMAT].map(str::to_owned))
+        .collect();
+    assert!(
+        flight_tmux::parse_panes_output(&run(without_u)).is_empty(),
+        "tmux no longer rewrites separators without -u: this guard can be relaxed"
+    );
+
+    // With the arguments Flight uses, the same environment yields the pane.
+    let with_u = flight_tmux::tmux_args(
+        &endpoint,
+        &["list-panes", "-a", "-F", flight_tmux::PANE_FORMAT],
+    );
+    let panes = flight_tmux::parse_panes_output(&run(with_u));
+    assert_eq!(panes.len(), 1, "{panes:?}");
+    assert_eq!(panes[0].session_name, "api");
+}

@@ -14,6 +14,9 @@ Flight never assumes your default tmux server: run your agents on `tmux -L fligh
 
 ## Distributed mode
 
+Run `flight node run` as a service (launchd/systemd), not from a shell or tmux: see `contrib/launchd/README.md` for why and how.
+
+
 One machine runs the orchestrator, every machine with agents runs a node, and any machine can show the dashboard. Everything is mutually authenticated (TLS 1.3, identities pinned by key fingerprint); nodes dial the orchestrator, so the orchestrator may live on this machine, on the LAN, or hosted, and the dashboard cannot tell which.
 
     # on the orchestrator machine

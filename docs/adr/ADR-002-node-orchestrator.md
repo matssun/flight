@@ -210,6 +210,45 @@ The session lock protects state transitions, not I/O. `NodeSession` validates a 
 - Key rotation and certificate renewal are not designed (a new key is a new identity; re-enroll).
 - The next milestone is the real LAN experiment: orchestrator + node on one Mac, a node on another, the dashboard on a laptop, with measurements (state-change and preview latency, idle CPU and traffic, reconnection, network loss, restarts of each role, 10/50/100 simulated panes) before any optimization.
 
+## LAN experiment (first results)
+
+Setup: two Apple-silicon Macs on one LAN (release builds). Mac A ran the orchestrator, a node and the UI; Mac B ran a node. Real tmux panes, mutual TLS between the machines. Measurement tooling is a separate crate (`tools/flight-load`: `lan`, `watch`, `synth`), never a mode of `flight node run`. Not yet covered: a real network (Wi-Fi/cable) interruption, and a three-machine layout.
+
+**Latency (state change on a node -> visible in a UI image).** The node polls every 2 s, so latency is the poll phase plus about 50 ms: local node min 52 ms, p50 1.27 s, max 2.0 s; the LAN node (trigger over ssh, so +-0.2 s) p50 1.35-1.6 s, max about 2.0-2.5 s. The network adds little; poll cadence dominates. (A first run looked like a constant 1.88 s: the measurement was phase-locked to the poll interval. Triggers now use random gaps.) Preview of the selected pane: 3-5 ms from a local node, 16-21 ms (p50 17) across the LAN.
+
+**Control plane with synthetic panes** (`flight-load synth`: a real node identity, `NodeLink` and `NodeCore` including classification, scripted panes, loopback; flips every 500 ms):
+
+| panes | flips/s | flip -> UI p50 / p99 | orchestrator CPU | orchestrator RSS | UI stream |
+|---|---|---|---|---|---|
+| 10 | 4 | 0.3 / 0.5 ms | 0.09% | 6.5 MB | 0.8 KB/s |
+| 50 | 10 | 0.4 / 1.2 ms | 0.07% | 6.4 MB | 2.1 KB/s |
+| 100 | 20 | 0.6 / 1.3 ms | 0.07% | 7.0 MB | 4.0 KB/s |
+| 500 | 50 | 2.0 / 128 ms | 0.15% | 7.3 MB | 11.6 KB/s |
+
+Every flip was seen, no resyncs, `backlog=0` throughout. The 500-pane p99 is the initial snapshot burst. The orchestrator is not the scaling limit.
+
+**Real tmux on the node** (100 panes on one node, default 2 s poll): the node used 0.8% of a core and 7.5 MB, its tmux server another 1.5-1.75%: polling costs roughly 0.008% of a core per pane for the node, plus the tmux server's share. Idle with 3 panes: node 0.1% CPU, 7 MB; orchestrator 0.01%, 5.8 MB; about 20 B/s out and 9 B/s in per node (heartbeats only). With panes changing: about 170 B/s per node, about 320 B/s into the UI, about 200-235 B per state change on the UI stream. The TUI itself: about 0.9% CPU, 8 MB.
+
+**Failure and recovery** (timeline from `flight-load watch`):
+
+| event | observed |
+|---|---|
+| orchestrator killed | UI link lost at once; agents and tmux unaffected |
+| orchestrator restarted | UI relinked in 0.07 s; nodes reconnected at +4.4 s and +5.7 s (their backoff after 20 s of failures); fleet rebuilt with panes and Done state intact |
+| node killed | `Disconnected` in 0.14 s, last-known panes kept |
+| node restarted | `Online` and converged in 0.26 s |
+| node frozen (silent partition) | `Stale` at 15.7 s, `Disconnected` at 20 s, `Online` 0.6 s after resume |
+| tmux server killed on a node | its panes left the UI within 1.4 s; back within 1.35 s of restart |
+| node revoked while connected | `Disconnected` in 11 ms; stays refused (`refused: not authorized`) |
+
+Findings and decisions:
+- The 20 s (not 30 s) disconnect on a frozen node is the server's HTTP/2 keepalive (10 s interval, 10 s timeout) detecting the dead peer before the heartbeat rule; both stay.
+- A revoked or unreachable node used to retry silently. `NodeLink` now takes a log hook and `flight node run` prints `connected to ...`, `link ended after ...` and `link down after ...: <why>; retrying` (identical failures once).
+- Nodes that are gone for good stay in the orchestrator image as `Disconnected` indefinitely (the `NodeRemoved` pruning policy is still open); after the scaling runs the UI listed hundreds of ghost synthetic panes until the orchestrator was restarted.
+- The two sites are joined by a route-based IPsec tunnel whose path MTU is 1419 while hosts assumed 1500 (MTU/MSS on Auto, and an overlap with a Site Magic tunnel prevented saving a fix). Large TCP packets stalled across it (long-standing intermittent SSH hangs; an 11 MB scp stalled; Flight's TLS handshake stalled the same way). On one LAN none of this applies. Flight itself does not work around a black-holed path MTU; the fix is MSS clamping on the tunnel.
+
+Open from the experiment: a physical network interruption (Wi-Fi off/on), UI on a third machine, 500+ real panes, and whether the 2 s default poll should change (latency is poll-bound; CPU is far below any concern).
+
 ## Open questions
 
 1. Hook ingestion path on the node (slice 2+).

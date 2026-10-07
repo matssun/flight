@@ -24,6 +24,9 @@ const JOB_TIMEOUT: Duration = Duration::from_secs(10);
 /// Outbox class of heartbeats: at most one waits to be sent.
 const HEARTBEAT: u8 = 0;
 
+/// Receives one-line notes about the link (connected, why it ended), for the operator.
+pub type LinkLog = Arc<dyn Fn(String) + Send + Sync>;
+
 pub struct NodeLinkConfig {
     /// `host:port` of the orchestrator.
     pub address: String,
@@ -64,6 +67,7 @@ pub struct NodeLink {
     control: Arc<dyn Control>,
     jobs: Arc<Semaphore>,
     out: Out,
+    log: Option<LinkLog>,
 }
 
 impl NodeLink {
@@ -74,6 +78,19 @@ impl NodeLink {
             control,
             jobs: Arc::new(Semaphore::new(MAX_CONCURRENT_JOBS)),
             out: Arc::default(),
+            log: None,
+        }
+    }
+
+    /// Report link transitions to `log`. Repeated identical failures are reported once.
+    pub fn with_log(mut self, log: LinkLog) -> Self {
+        self.log = Some(log);
+        self
+    }
+
+    fn say(&self, line: String) {
+        if let Some(log) = &self.log {
+            log(line);
         }
     }
 
@@ -98,11 +115,31 @@ impl NodeLink {
     /// Keep connected until `stop` flips, re-dialling with exponential backoff.
     pub async fn run(&self, mut stop: watch::Receiver<bool>) {
         let mut delay = self.cfg.reconnect_min;
+        let mut last_failure = String::new();
         loop {
             let started = std::time::Instant::now();
-            tokio::select! {
+            let outcome = tokio::select! {
                 _ = stop.changed() => return,
-                _ = self.run_once() => {}
+                outcome = self.run_once() => outcome,
+            };
+            match outcome {
+                Ok(()) => {
+                    last_failure.clear();
+                    self.say(format!(
+                        "link ended after {:.0?}: the orchestrator closed the connection",
+                        started.elapsed()
+                    ));
+                }
+                Err(e) => {
+                    let why = e.to_string();
+                    if why != last_failure {
+                        self.say(format!(
+                            "link down after {:.0?}: {why}; retrying",
+                            started.elapsed()
+                        ));
+                        last_failure = why;
+                    }
+                }
             }
             if started.elapsed() > self.cfg.reconnect_max {
                 delay = self.cfg.reconnect_min;
@@ -175,6 +212,7 @@ impl NodeLink {
             )
             .await?;
         let mut inbound = response.into_inner();
+        self.say(format!("connected to {}", self.cfg.address));
         let mut beat = tokio::time::interval(self.cfg.heartbeat_interval);
         let mut seq = 0u64;
         loop {

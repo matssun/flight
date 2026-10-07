@@ -419,6 +419,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "flight-load"
+version = "0.0.1"
+dependencies = [
+ "flight-classify",
+ "flight-client",
+ "flight-node",
+ "flight-proto",
+ "flight-state",
+ "flight-transport",
+ "flight-trust",
+ "prost",
+ "tokio",
+]
+
+[[package]]
 name = "flight-node"
 version = "0.0.1"
 dependencies = [

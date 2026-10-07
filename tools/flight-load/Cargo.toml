@@ -1,0 +1,20 @@
+[package]
+name = "flight-load"
+description = "Flight: measurement tool for the distributed control plane (not shipped with the product)"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+flight-client = { path = "../../flight-client" }
+flight-proto = { path = "../../flight-proto" }
+flight-state = { path = "../../flight-state" }
+flight-transport = { path = "../../flight-transport" }
+prost = "0.14"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "process"] }
+flight-classify = { path = "../../flight-classify" }
+flight-node = { path = "../../flight-node" }
+flight-trust = { path = "../../flight-trust" }

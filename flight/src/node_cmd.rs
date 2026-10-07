@@ -72,19 +72,22 @@ fn run_node(args: &[String]) -> Result<(), String> {
         ),
         config.display_name.clone(),
     );
-    let link = Arc::new(NodeLink::new(
-        NodeLinkConfig {
-            address: config.address.clone(),
-            orchestrator: config.orchestrator().map_err(|e| e.to_string())?,
-            identity: identity.clone(),
-            servers: sockets.iter().map(|s| (*s).to_owned()).collect(),
-            heartbeat_interval: Duration::from_secs(5),
-            reconnect_min: Duration::from_millis(500),
-            reconnect_max: Duration::from_secs(10),
-        },
-        session,
-        servers.clone(),
-    ));
+    let link = Arc::new(
+        NodeLink::new(
+            NodeLinkConfig {
+                address: config.address.clone(),
+                orchestrator: config.orchestrator().map_err(|e| e.to_string())?,
+                identity: identity.clone(),
+                servers: sockets.iter().map(|s| (*s).to_owned()).collect(),
+                heartbeat_interval: Duration::from_secs(5),
+                reconnect_min: Duration::from_millis(500),
+                reconnect_max: Duration::from_secs(10),
+            },
+            session,
+            servers.clone(),
+        )
+        .with_log(Arc::new(|line| println!("{line}"))),
+    );
 
     let rt = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     rt.block_on(async {

@@ -28,7 +28,7 @@ pub use peer::PeerIdentity;
 pub use admin::{admin_request, serve_admin};
 pub use enroll_client::enroll;
 pub use join::{config_path, identity_dir, join, probe, Joined};
-pub use node_link::{NodeLink, NodeLinkConfig};
+pub use node_link::{LinkLog, NodeLink, NodeLinkConfig};
 pub use observe::run_observer;
 pub use orchestrator_server::{serve, ServerConfig, ServerControl, ServerHandle};
 pub use ui_client::UiClient;

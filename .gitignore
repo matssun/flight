@@ -26,3 +26,4 @@ rustc-ice-*.txt
 # Upstream reference clones (read-only)
 /ref/
 .DS_Store
+/.lan/

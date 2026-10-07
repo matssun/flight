@@ -11,6 +11,7 @@
 //! the time since the trigger command started and since it returned), preview round trips,
 //! and the bytes the orchestrator sent this UI.
 
+mod observe;
 mod synth;
 
 use flight_client::ClientConfig;
@@ -50,6 +51,7 @@ fn parse() -> Result<Args, String> {
         Some("lan") => {}
         Some("watch") => return Err("watch".into()),
         Some("synth") => return Err("synth".into()),
+        Some("observe") => return Err("observe".into()),
         _ => return Err("usage: flight-load watch --ui-dir DIR --secs N | lan --ui-dir DIR --node NAME --session S --perm CMD --idle CMD [--cycles N] [--previews N]".into()),
     }
     while let Some(flag) = it.next() {
@@ -167,6 +169,13 @@ async fn main() {
     let args = match parse() {
         Ok(a) => a,
         Err(e) if e == "watch" => return watch().await,
+        Err(e) if e == "observe" => {
+            if let Err(e) = observe::main(std::env::args().skip(2)) {
+                eprintln!("flight-load: {e}");
+                std::process::exit(1);
+            }
+            return;
+        }
         Err(e) if e == "synth" => {
             let parsed = synth::Args::parse(std::env::args().skip(2));
             match parsed {

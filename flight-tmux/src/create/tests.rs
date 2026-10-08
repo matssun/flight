@@ -150,3 +150,20 @@ fn a_session_that_vanishes_is_reported_and_cleaned_up_by_id() {
         &["kill-session", "-t", "$7"]
     );
 }
+
+/// The program may end before the mark is set; the session is then already gone, and the
+/// answer is "it exited", not a tmux error.
+#[test]
+fn a_program_that_ends_before_the_mark_lands_is_an_exit_not_a_tmux_error() {
+    let script = Script {
+        fail: vec![
+            ("set-option", "can't find session: $7"),
+            ("has-session", "can't find session: $7"),
+        ],
+        ..Script::default()
+    };
+    let err = Tmux::with_runner(&script)
+        .create_session(&spec(Launch::DefaultShell))
+        .unwrap_err();
+    assert!(matches!(err, CreateError::Exited), "{err}");
+}

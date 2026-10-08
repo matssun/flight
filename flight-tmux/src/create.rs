@@ -64,8 +64,17 @@ impl<R: TmuxRunner> Tmux<R> {
 
     /// Mark the new session and watch it live through its first moments.
     fn settle(&self, id: &str) -> Result<(), CreateError> {
-        self.runner()
-            .run(&["set-option", "-t", id, FLIGHT_SESSION_OPTION, "1"])?;
+        if let Err(e) = self
+            .runner()
+            .run(&["set-option", "-t", id, FLIGHT_SESSION_OPTION, "1"])
+        {
+            // A program that ends at once takes its session with it before the mark lands:
+            // that is an exited program, not a tmux failure.
+            if self.runner().run(&["has-session", "-t", id]).is_err() {
+                return Err(CreateError::Exited);
+            }
+            return Err(e.into());
+        }
         for check in 0..LAUNCH_CHECKS {
             if check > 0 {
                 sleep(LAUNCH_CHECK_EVERY);

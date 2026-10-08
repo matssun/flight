@@ -342,7 +342,8 @@ fn an_open_terminal_is_validated_at_the_boundary() {
     assert!(open(|o| o.terminal_id = vec![7; TERMINAL_ID_LEN])
         .validate()
         .is_ok());
-    let bad: Vec<(Box<dyn FnOnce(&mut command_kind::OpenTerminal)>, &str)> = vec![
+    type Mutation = Box<dyn FnOnce(&mut command_kind::OpenTerminal)>;
+    let bad: Vec<(Mutation, &str)> = vec![
         (
             Box::new(|o| o.expected_pid = 0),
             "open_terminal.expected_pid",

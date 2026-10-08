@@ -13,6 +13,8 @@ pub struct OrchestratorConfig {
     pub terminal_limits: TerminalLimits,
     /// After a node answered an open, how long both ends have to attach their streams.
     pub terminal_attach_window_secs: u64,
+    /// How long an attached terminal lives after its UI's last lease (ADR-004).
+    pub terminal_lease_ttl_secs: u64,
 }
 
 /// How many terminals may be open at once. Beyond a limit an open fails at once with `Busy`
@@ -43,6 +45,7 @@ impl Default for OrchestratorConfig {
             request_timeout_secs: 10,
             terminal_limits: TerminalLimits::default(),
             terminal_attach_window_secs: 10,
+            terminal_lease_ttl_secs: 15,
         }
     }
 }

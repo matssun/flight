@@ -90,6 +90,7 @@ enum ExitReasonCode {
   EXIT_REASON_CODE_STALLED = 5;
   EXIT_REASON_CODE_REVOKED = 6;
   EXIT_REASON_CODE_SHUTDOWN = 7;
+  EXIT_REASON_CODE_LEASE_EXPIRED = 8;
 }
 
 enum NodeStatusCode {
@@ -347,10 +348,18 @@ message FleetDelta {
 // Start receiving the fleet: a FleetSnapshot, then FleetDeltas.
 message Subscribe {}
 
+// A UI's terminal presentation is alive (ADR-004). Sent on the UI's control stream, never on
+// the terminal stream, so terminal backpressure cannot delay it. The orchestrator ignores it
+// unless the id is a live terminal bound to this UI's authenticated identity.
+message TerminalLease {
+  bytes terminal_id = 1;
+}
+
 message UiRequest {
   oneof body {
     Subscribe subscribe = 1;
     Request command = 2;
+    TerminalLease terminal_lease = 3;
   }
 }
 

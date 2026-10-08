@@ -24,6 +24,8 @@ pub struct OrchestratorCore {
     pub(crate) pending: Pending,
     /// The latest time any event carried: ages in operator notes are measured against it.
     pub(crate) clock: u64,
+    /// When the last tick ran: a long gap means the orchestrator itself was not running.
+    pub(crate) last_tick: u64,
     pub(crate) terminals: Terminals,
     pub(crate) ui_identity: HashMap<UiId, String>,
     /// Where terminal ids come from: 128 random bits. Replaceable so tests can be exact.
@@ -40,6 +42,7 @@ impl OrchestratorCore {
             hub: FleetHub::new(incarnation),
             pending: Pending::default(),
             clock: 0,
+            last_tick: 0,
             terminals: Terminals::default(),
             ui_identity: HashMap::new(),
             terminal_ids: Box::new(random_terminal_id),

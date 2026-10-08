@@ -18,5 +18,6 @@ pub use switch::{
     RemoteOps, SwitchError, SwitchPlan, SwitchTarget, Switcher, TmuxEnv, UiContext, UiPlacement,
 };
 pub use terminal::{
-    relay, run_terminal, terminal_request_shape, EscapeAction, EscapeFilter, TerminalEnd,
+    relay, run_terminal, terminal_request_shape, EscapeAction, EscapeFilter, Lease, TerminalEnd,
+    LEASE_PERIOD,
 };

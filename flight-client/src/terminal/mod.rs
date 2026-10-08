@@ -6,10 +6,12 @@
 
 mod end;
 mod escape;
+mod lease;
 mod relay;
 mod tty;
 
 pub use end::TerminalEnd;
 pub use escape::{EscapeAction, EscapeFilter};
+pub use lease::{Lease, LEASE_PERIOD};
 pub use relay::relay;
 pub use tty::{run_terminal, terminal_request_shape};

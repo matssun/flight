@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use crate::terminal::{EscapeAction, EscapeFilter, TerminalEnd};
+use crate::terminal::{EscapeAction, EscapeFilter, Lease, TerminalEnd};
 use flight_proto::{
     terminal_body, TerminalClose, TerminalFrame, TerminalResize, MAX_TERMINAL_DATA,
 };
@@ -10,7 +10,6 @@ use tokio::sync::mpsc;
 
 /// How long to wait for the far end to finish reading a goodbye.
 const GOODBYE: Duration = Duration::from_secs(1);
-
 fn frame(body: terminal_body::Body) -> TerminalFrame {
     TerminalFrame { body: Some(body) }
 }
@@ -28,6 +27,7 @@ pub async fn relay(
     mut resizes: mpsc::Receiver<(u16, u16)>,
     output: mpsc::Sender<Vec<u8>>,
     hint: impl Fn() + Send + 'static,
+    mut lease: Lease,
 ) -> TerminalEnd {
     let from_remote = tokio::spawn(async move {
         loop {
@@ -92,23 +92,35 @@ pub async fn relay(
     });
     tokio::pin!(from_remote);
     tokio::pin!(to_remote);
-    tokio::select! {
-        done = &mut from_remote => {
-            to_remote.abort();
-            done.unwrap_or_else(|e| TerminalEnd::Lost(e.to_string()))
-        }
-        done = &mut to_remote => {
-            match done {
-                Ok((end, sender)) => {
-                    // Half-close, then let the goodbye be read before the stream is dropped.
-                    drop(sender);
-                    let _ = tokio::time::timeout(GOODBYE, &mut from_remote).await;
+    let mut renewals = tokio::time::interval(lease.period);
+    renewals.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    loop {
+        tokio::select! {
+            done = &mut from_remote => {
+                to_remote.abort();
+                return done.unwrap_or_else(|e| TerminalEnd::Lost(e.to_string()));
+            }
+            done = &mut to_remote => {
+                return match done {
+                    Ok((end, sender)) => {
+                        // Half-close, then let the goodbye be read before the stream is dropped.
+                        drop(sender);
+                        let _ = tokio::time::timeout(GOODBYE, &mut from_remote).await;
+                        from_remote.abort();
+                        end
+                    }
+                    Err(e) => {
+                        from_remote.abort();
+                        TerminalEnd::Lost(e.to_string())
+                    }
+                };
+            }
+            // The first tick is immediate: the lease starts with the presentation.
+            _ = renewals.tick() => {
+                if let Err(why) = (lease.renew)() {
                     from_remote.abort();
-                    end
-                }
-                Err(e) => {
-                    from_remote.abort();
-                    TerminalEnd::Lost(e.to_string())
+                    to_remote.abort();
+                    return TerminalEnd::Lost(format!("the control connection is gone: {why}"));
                 }
             }
         }

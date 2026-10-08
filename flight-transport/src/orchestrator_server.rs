@@ -128,6 +128,11 @@ impl ServerControl {
         lock(&self.state).terminals_open()
     }
 
+    /// Relays (queues plus abort signal) still held; zero once every terminal has finished.
+    pub fn terminal_relays(&self) -> usize {
+        lock(&self.state).terminal_relays()
+    }
+
     /// The most frames ever queued in one terminal direction inside the orchestrator. Bounded
     /// by design; exposed so a test can assert it.
     pub fn terminal_queue_peak(&self) -> usize {

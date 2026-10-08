@@ -10,7 +10,7 @@ use flight_orchestrator::{Side, TerminalId, UiId};
 use flight_proto::{
     command_kind as ck, node_body, orchestrator_body, response_result, ui_event_body,
     ui_request_body, Command, ErrorKindCode, ExitReasonCode, NodeFrame, Request, Response,
-    UiRequest,
+    TerminalLease, UiRequest,
 };
 use support::*;
 
@@ -271,17 +271,111 @@ fn an_open_nobody_attaches_to_expires_and_the_id_stays_dead() {
     assert_eq!(w.orch.terminal_count(), 0);
 }
 
-#[test]
-fn a_live_terminal_does_not_expire() {
-    let mut w = world();
-    let id = open_one(&mut w, UiId(1), 1, "%1", 1);
+fn lease(w: &mut World, ui: UiId, id: &[u8]) {
+    send(
+        w,
+        ui,
+        UiRequest {
+            body: Some(ui_request_body::Body::TerminalLease(TerminalLease {
+                terminal_id: id.to_vec(),
+            })),
+        },
+    );
+}
+
+fn attached(w: &mut World) -> Vec<u8> {
+    let id = open_one(w, UiId(1), 1, "%1", 1);
     w.orch.terminal_attach(Side::Ui, &id, "ui-a").unwrap();
     w.orch.terminal_attach(Side::Node, &id, "node-a").unwrap();
-    w.advance(5);
-    w.advance(5);
-    w.advance(5);
+    id
+}
+
+fn is_open(w: &World, id: &[u8]) -> bool {
     let id: TerminalId = id.try_into().unwrap();
-    assert!(w.orch.terminal_is_open(&id));
+    w.orch.terminal_is_open(&id)
+}
+
+#[test]
+fn an_idle_terminal_with_a_renewing_ui_never_expires() {
+    let mut w = world();
+    let id = attached(&mut w);
+    // Ten lease lifetimes with no output of any kind (the core never sees output).
+    for _ in 0..30 {
+        lease(&mut w, UiId(1), &id);
+        w.advance(5);
+    }
+    assert!(is_open(&w, &id));
+}
+
+#[test]
+fn a_terminal_whose_ui_stops_renewing_expires_with_its_own_reason() {
+    let mut w = world();
+    let id = attached(&mut w);
+    lease(&mut w, UiId(1), &id);
+    for _ in 0..14 {
+        w.advance(1);
+    }
+    assert!(is_open(&w, &id), "still inside the lease");
+    w.advance(2);
+    let dead: TerminalId = id.clone().try_into().unwrap();
+    assert!(w.ended.contains(&(dead, ExitReasonCode::LeaseExpired)));
+    assert!(!is_open(&w, &id));
+    assert!(w.orch.terminal_attach(Side::Ui, &dead, "ui-a").is_err());
+    assert_eq!(w.orch.terminal_count(), 0);
+}
+
+#[test]
+fn two_missed_renewals_and_late_ones_are_survivable() {
+    let mut w = world();
+    let id = attached(&mut w);
+    // A renewal every 14 s: late, but inside the lifetime.
+    for _ in 0..5 {
+        for _ in 0..14 {
+            w.advance(1);
+        }
+        lease(&mut w, UiId(1), &id);
+    }
+    assert!(is_open(&w, &id));
+}
+
+#[test]
+fn only_the_owning_identity_can_renew_and_unknown_ids_are_ignored() {
+    let mut w = world();
+    let id = attached(&mut w);
+    for _ in 0..4 {
+        lease(&mut w, UiId(2), &id);
+        lease(&mut w, UiId(1), &[9; 16]);
+        lease(&mut w, UiId(1), &id[..5]);
+        w.advance(5);
+    }
+    assert!(!is_open(&w, &id), "another UI's renewals must not count");
+}
+
+#[test]
+fn a_lease_does_not_extend_the_attach_window() {
+    let mut w = world();
+    let id = open_one(&mut w, UiId(1), 1, "%1", 1);
+    lease(&mut w, UiId(1), &id);
+    w.advance(11);
+    assert!(!is_open(&w, &id));
+}
+
+#[test]
+fn time_the_orchestrator_was_not_running_is_not_held_against_the_ui() {
+    let mut w = world();
+    let id = attached(&mut w);
+    w.advance(1);
+    // The whole orchestrator process is paused for 20 s; its next tick sees the gap.
+    w.now += 20;
+    let fx = w.orch.tick(w.now);
+    w.deliver(fx);
+    assert!(is_open(&w, &id));
+    // The UI has a fresh lifetime and still has to renew.
+    lease(&mut w, UiId(1), &id);
+    for _ in 0..16 {
+        w.advance(1);
+    }
+    assert!(!is_open(&w, &id));
 }
 
 #[test]

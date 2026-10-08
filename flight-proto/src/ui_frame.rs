@@ -10,12 +10,12 @@ pub struct Subscribe {}
 /// consumes state and issues operator commands; it can never publish node state.
 #[derive(Clone, PartialEq, Eq, prost::Message)]
 pub struct UiRequest {
-    #[prost(oneof = "ui_request_body::Body", tags = "1, 2")]
+    #[prost(oneof = "ui_request_body::Body", tags = "1, 2, 3")]
     pub body: Option<ui_request_body::Body>,
 }
 
 pub mod ui_request_body {
-    use crate::{Request, Subscribe};
+    use crate::{Request, Subscribe, TerminalLease};
 
     #[derive(Clone, PartialEq, Eq, prost::Oneof)]
     pub enum Body {
@@ -23,6 +23,8 @@ pub mod ui_request_body {
         Subscribe(Subscribe),
         #[prost(message, tag = "2")]
         Command(Request),
+        #[prost(message, tag = "3")]
+        TerminalLease(TerminalLease),
     }
 }
 
@@ -35,6 +37,13 @@ impl Validate for UiRequest {
         {
             ui_request_body::Body::Subscribe(_) => Ok(()),
             ui_request_body::Body::Command(r) => r.validate_from_ui(),
+            ui_request_body::Body::TerminalLease(l) => {
+                if l.terminal_id.len() == crate::TERMINAL_ID_LEN {
+                    Ok(())
+                } else {
+                    Err(Reject::OutOfRange("terminal_lease.terminal_id"))
+                }
+            }
         }
     }
 }

@@ -32,6 +32,10 @@ impl OrchestratorCore {
                     fx
                 }
             },
+            Some(ui_request_body::Body::TerminalLease(lease)) => {
+                self.terminal_lease(ui, &lease.terminal_id, now);
+                Effects::default()
+            }
             None => Effects::default(),
         }
     }

@@ -69,8 +69,8 @@ pub use server_status::{AvailabilityCode, ServerStatus};
 pub use snapshot::Snapshot;
 pub use terminal::{
     terminal_body, valid_term, Origin, TerminalAttach, TerminalClose, TerminalData, TerminalExit,
-    TerminalFrame, TerminalOpened, TerminalResize, MAX_TERMINAL_DATA, MAX_TERMINAL_DIM,
-    MAX_TERM_LEN, TERMINAL_ID_LEN,
+    TerminalFrame, TerminalLease, TerminalOpened, TerminalResize, MAX_TERMINAL_DATA,
+    MAX_TERMINAL_DIM, MAX_TERM_LEN, TERMINAL_ID_LEN,
 };
 pub use ui_frame::{ui_event_body, ui_request_body, Subscribe, UiEvent, UiRequest};
 pub use validate::Validate;

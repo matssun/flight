@@ -179,6 +179,12 @@ impl Row<'_> {
         if !self.selected {
             return line;
         }
+        // Dim text on the highlight would nearly vanish: lift it one step.
+        for span in &mut line.spans {
+            if span.style.fg == Some(Color::DarkGray) {
+                span.style = span.style.fg(Color::Gray);
+            }
+        }
         let gap = self.width.saturating_sub(line.width());
         if gap > 0 {
             line.spans.push(Span::raw(" ".repeat(gap)));

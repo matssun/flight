@@ -250,7 +250,14 @@ impl Control for TmuxServers {
     }
 
     fn create_session(&self, request: &SessionRequest) -> Result<(), ControlError> {
-        let tmux = self.tmux(&request.server)?;
+        // The node, not the caller, decides where a session lives: its first backend.
+        let server = self.servers.keys().next().ok_or_else(|| {
+            ControlError::new(
+                ErrorKindCode::TmuxUnavailable,
+                "this node has no session backend",
+            )
+        })?;
+        let tmux = self.tmux(server)?;
         create(tmux, request, &self.session_env, failed)
     }
 }

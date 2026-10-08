@@ -144,18 +144,20 @@ impl ViewModel {
     }
 
     /// The nodes a session can be created on: those the orchestrator has a live link to.
-    /// A node with no tmux server yet is included, since creating a session starts one.
+    /// A node with no sessions yet is included, since creating one is how it gets its first.
     fn connected_hosts(&self) -> Vec<HostChoice> {
-        self.snapshot
-            .hosts
-            .iter()
-            .filter(|h| matches!(h.health, HostHealth::Online | HostHealth::NoServer))
-            .map(|h| HostChoice {
-                host: h.host.clone(),
-                server: h.server.clone(),
-                label: h.label.clone(),
-            })
-            .collect()
+        let mut out: Vec<HostChoice> = Vec::new();
+        for h in &self.snapshot.hosts {
+            if matches!(h.health, HostHealth::Online | HostHealth::NoServer)
+                && !out.iter().any(|c| c.host == h.host)
+            {
+                out.push(HostChoice {
+                    host: h.host.clone(),
+                    label: h.label.clone(),
+                });
+            }
+        }
+        out
     }
 
     fn apply_form(&mut self, input: super::FormInput) -> Effect {

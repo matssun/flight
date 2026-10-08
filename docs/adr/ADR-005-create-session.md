@@ -8,9 +8,15 @@ Status: Implemented. Scope: one vertical slice. Not in scope: project discovery,
 
 `n` in the dashboard opens a "New session" form: host, name, directory, program (`Claude` or `Shell`). Create sends one typed request, `UI -> orchestrator -> node -> local tmux`. The node does everything; the orchestrator only routes it by `host` to a connected node that offers `create_session_v1`, exactly as it routes every other command. No SSH. No command line travels: the program is the enum `ProgramCode { Claude, Shell }`.
 
+## Product boundary
+
+Flight is the user-facing session/workspace manager. tmux is currently an internal execution/persistence backend. Normal Flight workflows must not require users to understand or operate tmux.
+
+So the request names a host, a label, a directory and a program, and nothing of the backend: no tmux server, socket, pane or window id. The node picks its backend (today its first tmux server) and translates. The label is not the session's identity: once observed, the session is known by its typed pane identity like every other. The dashboard says "no sessions yet" and "session backend missing" where it used to name tmux.
+
 ## Protocol
 
-- `Command.kind` tag 8 `CreateSession { host, server, name, dir, program }`. Tag 5 (an earlier `CreateSession` that carried a free-form `command` string and was never reachable from a UI) is reserved. A peer that still sends tag 5 decodes to a command with no kind and is refused; it is never reinterpreted.
+- `Command.kind` tag 8 `CreateSession { host, name, dir, program }`. Tag 5 (an earlier `CreateSession` that carried a free-form `command` string and was never reachable from a UI) is reserved. A peer that still sends tag 5 decodes to a command with no kind and is refused; it is never reinterpreted.
 - Capability `create_session_v1` replaces `create_session`. This is needed even though nothing released uses it: nodes already running advertise the old name, and an orchestrator sending the new message to one would see `program` ignored and a Claude request quietly become a plain shell. The name carries the semantics (same reasoning as `guarded_reveal_v1`); the old name is no longer in `KNOWN`, so it is negotiated away.
 - `ErrorKindCode` gains `AlreadyExists = 12`, `InvalidDirectory = 13`, `ProgramUnavailable = 14`. They only occur in answer to a `CreateSession`, which only a peer that negotiated `create_session_v1` can send, so an older peer never meets an enum value it rejects. Success is the existing `Done`.
 - Bounds, checked at the UI edge, the orchestrator, the node's frame validation and again on the node before tmux: name 1 to 64 bytes of `[A-Za-z0-9_-]` not starting with `-` (tmux rewrites `.` and `:` and treats a leading `-` as an option, so what is typed is what the session is called); directory at most 4096 bytes, absolute or `~`-relative, no control characters; unknown or unspecified program refused. The rules live once, in `flight-state` (`valid_session_name`, `valid_dir`).

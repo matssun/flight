@@ -194,7 +194,6 @@ fn create_sends_exactly_the_chosen_host_name_directory_and_program() {
         panic!("{effect:?} / {:?}", error(&vm));
     };
     assert_eq!(req.host.as_str(), "dev1");
-    assert_eq!(req.server.as_str(), "flight");
     assert_eq!(req.name, "api");
     assert_eq!(req.dir, "/srv/work");
     assert_eq!(req.program, Program::Shell);

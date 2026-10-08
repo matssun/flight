@@ -103,7 +103,8 @@ fn push_pane(out: &mut ListLines, p: &PaneView, marker: &'static str, host: Opti
             Style::default().add_modifier(Modifier::DIM),
         ));
     }
-    spans.push(Span::raw(format!("{:<16}", p.session)));
+    // 15 characters and a space at most: a long name must not run into the next column.
+    spans.push(Span::raw(format!("{:<16.15}", p.session)));
     spans.push(Span::raw(format!("{:<9}", format!("{:?}", p.agent))));
     spans.push(Span::styled(
         format!("{icon} {label}"),

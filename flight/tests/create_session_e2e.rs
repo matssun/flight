@@ -83,15 +83,12 @@ fn sessions(node: &Node) -> Vec<String> {
     names
 }
 
-fn host_of(
-    snapshot: &UiSnapshot,
-    label: &str,
-) -> Option<(flight_state::HostId, flight_state::ServerId)> {
+fn host_of(snapshot: &UiSnapshot, label: &str) -> Option<flight_state::HostId> {
     snapshot
         .hosts
         .iter()
         .find(|h| h.label == label && matches!(h.health, HostHealth::Online | HostHealth::NoServer))
-        .map(|h| (h.host.clone(), h.server.clone()))
+        .map(|h| h.host.clone())
 }
 
 fn request(
@@ -101,10 +98,9 @@ fn request(
     dir: &Path,
     program: Program,
 ) -> Result<(), CreateFailure> {
-    let (host, server) = host_of(&backend.snapshot(0), label).expect("node is connected");
+    let host = host_of(&backend.snapshot(0), label).expect("node is connected");
     backend.create_session(&NewSessionRequest {
         host,
-        server,
         host_label: label.to_owned(),
         name: name.to_owned(),
         dir: dir.to_string_lossy().into_owned(),
@@ -224,19 +220,18 @@ fn a_ui_creates_sessions_on_the_node_it_names_through_the_orchestrator_without_s
     wait("the orchestrator to see node-b go", || {
         host_of(&backend.snapshot(0), "node-b").is_none()
     });
-    let (host, server) = {
+    let host = {
         let s = backend.snapshot(0);
         let h = s
             .hosts
             .iter()
             .find(|h| h.label == "node-b")
             .expect("node-b");
-        (h.host.clone(), h.server.clone())
+        h.host.clone()
     };
     assert_eq!(
         backend.create_session(&NewSessionRequest {
             host,
-            server,
             host_label: "node-b".into(),
             name: "late".into(),
             dir: dir_b.to_string_lossy().into_owned(),

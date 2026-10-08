@@ -68,7 +68,6 @@ impl Live {
 
     fn create(&self, name: &str, dir: &str, program: Program) -> Result<(), ControlError> {
         self.servers.create_session(&SessionRequest {
-            server: ServerId::new("live"),
             name: name.to_owned(),
             dir: dir.to_owned(),
             program,
@@ -270,21 +269,4 @@ fn a_name_that_is_not_a_plain_name_never_reaches_tmux() {
         assert_eq!(kind(err), ErrorKindCode::InvalidRequest, "{bad:?}");
     }
     assert!(live.sessions().is_empty());
-}
-
-#[test]
-fn an_unknown_server_is_refused() {
-    let Some(live) = Live::start("server") else {
-        return;
-    };
-    let err = live
-        .servers
-        .create_session(&SessionRequest {
-            server: ServerId::new("elsewhere"),
-            name: "work".into(),
-            dir: live.dir("p"),
-            program: Program::Shell,
-        })
-        .unwrap_err();
-    assert_eq!(kind(err), ErrorKindCode::InvalidRequest);
 }

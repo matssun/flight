@@ -187,7 +187,6 @@ impl NewSessionForm {
         }
         Ok(NewSessionRequest {
             host: host.host.clone(),
-            server: host.server.clone(),
             host_label: host.label.clone(),
             name: self.name.clone(),
             dir: self.dir.clone(),

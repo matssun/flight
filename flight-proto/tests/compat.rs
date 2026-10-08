@@ -476,7 +476,6 @@ fn terminal_syntax_helpers_agree_with_the_rules() {
 fn create(f: impl FnOnce(&mut command_kind::CreateSession)) -> Command {
     let mut c = command_kind::CreateSession {
         host: "mac-local".into(),
-        server: "flight".into(),
         name: "api".into(),
         dir: "/work".into(),
         program: ProgramCode::Claude as i32,
@@ -529,10 +528,6 @@ fn a_malformed_or_oversized_create_session_is_refused() {
     assert_eq!(
         create(|c| c.host.clear()).validate(),
         Err(Reject::Empty("create_session.host"))
-    );
-    assert_eq!(
-        create(|c| c.server.clear()).validate(),
-        Err(Reject::Empty("create_session.server"))
     );
 }
 

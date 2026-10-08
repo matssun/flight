@@ -204,7 +204,6 @@ impl Backend for OrchestratedBackend {
     fn create_session(&mut self, request: &NewSessionRequest) -> Result<(), CreateFailure> {
         let kind = ck::Kind::CreateSession(ck::CreateSession {
             host: request.host.as_str().to_owned(),
-            server: request.server.as_str().to_owned(),
             name: request.name.clone(),
             dir: request.dir.clone(),
             program: match request.program {

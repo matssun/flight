@@ -25,10 +25,10 @@ pub fn health_look(h: &HostHealth) -> (&'static str, String, Color) {
         HostHealth::Online => ("●", "online".to_owned(), Color::Green),
         HostHealth::Stale => ("!", "stale (last known)".to_owned(), Color::Yellow),
         HostHealth::Disconnected => ("!", "disconnected (last known)".to_owned(), Color::Red),
-        HostHealth::NoServer => ("○", "no Flight tmux server".to_owned(), Color::DarkGray),
+        HostHealth::NoServer => ("○", "no sessions yet".to_owned(), Color::DarkGray),
         HostHealth::Unreachable(_) => ("!", "unreachable".to_owned(), Color::Red),
         HostHealth::AuthFailed(_) => ("!", "authentication failed".to_owned(), Color::Red),
-        HostHealth::NoTmux => ("!", "tmux not installed".to_owned(), Color::Red),
+        HostHealth::NoTmux => ("!", "session backend missing".to_owned(), Color::Red),
         HostHealth::Failed(_) => ("!", "error".to_owned(), Color::Red),
     }
 }

@@ -322,7 +322,6 @@ fn create(id: u64, node: &str, name: &str, program: ProgramCode) -> UiRequest {
             command: Some(Command {
                 kind: Some(ck::Kind::CreateSession(ck::CreateSession {
                     host: node.into(),
-                    server: "flight".into(),
                     name: name.into(),
                     dir: "/work".into(),
                     program: program as i32,

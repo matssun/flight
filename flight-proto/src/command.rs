@@ -79,15 +79,13 @@ pub mod command_kind {
         pub pane_ref: Option<PaneRefMsg>,
     }
 
-    /// A detached session on the node's own tmux server. The program is a [`ProgramCode`],
+    /// A new session on a node; the node decides how to realize it. The program is a [`ProgramCode`],
     /// never a command line. Tag 5 of [`Kind`] was an earlier `CreateSession` that carried
     /// one; it is retired, not reused.
     #[derive(Clone, PartialEq, Eq, prost::Message)]
     pub struct CreateSession {
         #[prost(string, tag = "1")]
         pub host: String,
-        #[prost(string, tag = "2")]
-        pub server: String,
         #[prost(string, tag = "3")]
         pub name: String,
         #[prost(string, tag = "4")]
@@ -176,7 +174,6 @@ impl Validate for Command {
             KillPane(c) => pane_ref(&c.pane_ref),
             CreateSession(c) => {
                 non_empty(&c.host, "create_session.host")?;
-                non_empty(&c.server, "create_session.server")?;
                 if !valid_session_name(&c.name) {
                     return Err(Reject::OutOfRange("create_session.name"));
                 }

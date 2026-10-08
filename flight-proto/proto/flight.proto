@@ -239,13 +239,13 @@ message Command {
   message KillPane {
     PaneRefMsg pane_ref = 1;
   }
-  // A detached session on the node's own tmux server (create_session_v1). `name` is 1 to 64
+  // A new session on a node (create_session_v1); the node decides how to realize it. `name` is 1 to 64
   // bytes of [A-Za-z0-9_-] starting with a letter, digit or underscore; `dir` is an absolute
   // path or `~`-relative (expanded on the node) of at most 4096 bytes. Tag 5 of this oneof was
   // an earlier CreateSession that carried a free-form command line; it is retired.
   message CreateSession {
     string host = 1;
-    string server = 2;
+    reserved 2;
     string name = 3;
     string dir = 4;
     ProgramCode program = 5;

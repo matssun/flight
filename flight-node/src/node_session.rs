@@ -223,7 +223,6 @@ impl NodeSession {
                 Ok(ControlJob::create(
                     id,
                     SessionRequest {
-                        server: flight_state::ServerId::new(c.server.as_str()),
                         name: c.name.clone(),
                         dir: c.dir.clone(),
                         program,

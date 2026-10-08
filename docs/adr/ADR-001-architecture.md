@@ -4,6 +4,10 @@
 
 Status: Proposed
 
+## Product boundary (added with ADR-005)
+
+Flight is the user-facing session/workspace manager. tmux is currently an internal execution/persistence backend. Normal Flight workflows must not require users to understand or operate tmux. The decisions below describe the implementation, tmux included, as it was built.
+
 ## Decision
 
 A Rust workspace of small crates, written fresh, using sesh, tmux-sessionizer and Fleet as design references only.

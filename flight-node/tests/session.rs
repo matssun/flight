@@ -40,7 +40,7 @@ impl Control for FakeControl {
         self.created
             .lock()
             .unwrap()
-            .push(format!("{}/{}@{}:{:?}", r.server, r.name, r.dir, r.program));
+            .push(format!("{}@{}:{:?}", r.name, r.dir, r.program));
         Ok(())
     }
 }
@@ -559,7 +559,6 @@ fn create(id: u64, host: &str, name: &str, program: ProgramCode) -> Orchestrator
         id,
         ck::Kind::CreateSession(ck::CreateSession {
             host: host.into(),
-            server: "flight".into(),
             name: name.into(),
             dir: "/work".into(),
             program: program as i32,
@@ -579,7 +578,7 @@ fn a_create_session_for_this_node_becomes_a_job_with_the_typed_program() {
             response_result::Result::Done(_)
         ));
     }
-    assert_eq!(created(), ["flight/a@/work:Claude", "flight/b@/work:Shell"]);
+    assert_eq!(created(), ["a@/work:Claude", "b@/work:Shell"]);
 }
 
 #[test]

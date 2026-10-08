@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use crate::{OpenedTerminal, TerminalSpec};
+use crate::{OpenedTerminal, SessionRequest, TerminalSpec};
 use flight_proto::{
     node_body, response_result, ErrorInfo, ErrorKindCode, NodeFrame, Preview, Response,
 };
@@ -70,14 +70,14 @@ pub trait Control: Send + Sync {
         ))
     }
 
-    /// A detached session; `command` empty means the shell.
-    fn create_session(
-        &self,
-        server: &ServerId,
-        name: &str,
-        dir: &str,
-        command: &str,
-    ) -> Result<(), ControlError>;
+    /// Create a detached session running a program from a closed set. All or nothing: on
+    /// failure no session of that name is left behind, and an existing one is never touched.
+    fn create_session(&self, _request: &SessionRequest) -> Result<(), ControlError> {
+        Err(ControlError::new(
+            ErrorKindCode::Unsupported,
+            "creating a session is not available on this control",
+        ))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -97,12 +97,7 @@ enum Op {
         pane: PaneId,
         pid: u32,
     },
-    Create {
-        server: ServerId,
-        name: String,
-        dir: String,
-        command: String,
-    },
+    Create(SessionRequest),
     OpenTerminal(TerminalSpec),
 }
 
@@ -140,21 +135,10 @@ impl ControlJob {
         }
     }
 
-    pub(crate) fn create(
-        request_id: u64,
-        server: ServerId,
-        name: String,
-        dir: String,
-        command: String,
-    ) -> Self {
+    pub(crate) fn create(request_id: u64, request: SessionRequest) -> Self {
         Self {
             request_id,
-            op: Op::Create {
-                server,
-                name,
-                dir,
-                command,
-            },
+            op: Op::Create(request),
         }
     }
 
@@ -198,13 +182,8 @@ impl ControlJob {
             Op::Reveal { server, pane, pid } => control
                 .reveal_pane(server, pane, *pid)
                 .map(|()| response_result::Result::Done(response_result::Done {})),
-            Op::Create {
-                server,
-                name,
-                dir,
-                command,
-            } => control
-                .create_session(server, name, dir, command)
+            Op::Create(request) => control
+                .create_session(request)
                 .map(|()| response_result::Result::Done(response_result::Done {})),
             // A terminal is opened through `Control::open_terminal`, never through this path.
             Op::OpenTerminal(_) => Err(ControlError::new(

@@ -4,9 +4,9 @@ use crate::{PaneInfo, TmuxError};
 
 /// Format string for `list-panes -F`. `pane_title` stays LAST so a tab inside a
 /// title cannot shift the other fields.
-pub const PANE_FORMAT: &str = "#{pane_id}\t#{session_name}\t#{window_name}\t#{window_id}\t#{window_index}\t#{pane_current_path}\t#{pane_pid}\t#{pane_active}\t#{window_active}\t#{session_attached}\t#{pane_current_command}\t#{window_activity}\t#{pane_title}";
+pub const PANE_FORMAT: &str = "#{pane_id}\t#{session_name}\t#{window_name}\t#{window_id}\t#{window_index}\t#{pane_current_path}\t#{pane_pid}\t#{pane_active}\t#{window_active}\t#{session_attached}\t#{pane_current_command}\t#{window_activity}\t#{?@flight_session,1,0}\t#{pane_title}";
 
-const FIELDS: usize = 13;
+const FIELDS: usize = 14;
 
 /// Parse `list-panes -F PANE_FORMAT` output, failing when panes were listed but none could be
 /// read (say so rather than report "no panes").
@@ -41,6 +41,7 @@ fn parse_line(line: &str) -> Option<PaneInfo> {
     // Unknown (0) rather than a parse failure: the pane is still listed, observers just
     // cannot rely on its activity.
     let window_activity = it.next()?.trim().parse().unwrap_or(0);
+    let flight_session = it.next()? == "1";
     let pane_title = it.next()?.to_owned();
     Some(PaneInfo {
         pane_id,
@@ -56,6 +57,7 @@ fn parse_line(line: &str) -> Option<PaneInfo> {
         session_attached: attached,
         window_activity,
         current_command,
+        flight_session,
         pane_title,
     })
 }
@@ -65,7 +67,9 @@ mod tests {
     use super::*;
 
     fn line(title: &str, active: &str, attached: &str) -> String {
-        format!("%3\tapi\tbuild\t@5\t2\t/tmp/x\t99\t{active}\t1\t{attached}\tclaude\t1700\t{title}")
+        format!(
+            "%3\tapi\tbuild\t@5\t2\t/tmp/x\t99\t{active}\t1\t{attached}\tclaude\t1700\t0\t{title}"
+        )
     }
 
     #[test]

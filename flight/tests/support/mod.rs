@@ -165,3 +165,104 @@ pub fn start_orchestrator(base: &Path) -> (Proc, String) {
     }
     (Proc(child), addr.expect("listening line"))
 }
+
+/// A just-enough terminal emulator for a ratatui dashboard: it follows cursor moves and prints,
+/// ignores styling, and so can be asked what is on the screen rather than what was written
+/// (ratatui rewrites only the cells that changed, so the byte stream is not readable text).
+pub struct Screen {
+    cells: Vec<Vec<char>>,
+    row: usize,
+    col: usize,
+    pending: String,
+}
+
+impl Screen {
+    pub fn new(rows: usize, cols: usize) -> Self {
+        Self {
+            cells: vec![vec![' '; cols]; rows],
+            row: 0,
+            col: 0,
+            pending: String::new(),
+        }
+    }
+
+    pub fn feed(&mut self, chunk: &str) {
+        let data = std::mem::take(&mut self.pending) + chunk;
+        let chars: Vec<char> = data.chars().collect();
+        let mut i = 0;
+        while i < chars.len() {
+            match chars[i] {
+                '\x1b' => {
+                    // An escape sequence cut by the end of the chunk waits for the rest.
+                    let Some(&next) = chars.get(i + 1) else {
+                        self.pending = chars[i..].iter().collect();
+                        return;
+                    };
+                    if next != '[' {
+                        i += 2;
+                        continue;
+                    }
+                    let Some(end) = chars[i + 2..].iter().position(|c| ('@'..='~').contains(c))
+                    else {
+                        self.pending = chars[i..].iter().collect();
+                        return;
+                    };
+                    let params: String = chars[i + 2..i + 2 + end].iter().collect();
+                    self.csi(&params, chars[i + 2 + end]);
+                    i += 3 + end;
+                }
+                '\r' => {
+                    self.col = 0;
+                    i += 1;
+                }
+                '\n' => {
+                    self.row += 1;
+                    i += 1;
+                }
+                c => {
+                    if let Some(cell) = self
+                        .cells
+                        .get_mut(self.row)
+                        .and_then(|r| r.get_mut(self.col))
+                    {
+                        *cell = c;
+                    }
+                    self.col += 1;
+                    i += 1;
+                }
+            }
+        }
+    }
+
+    fn csi(&mut self, params: &str, op: char) {
+        let nums: Vec<usize> = params
+            .trim_start_matches('?')
+            .split(';')
+            .map(|p| p.parse().unwrap_or(0))
+            .collect();
+        let n =
+            |i: usize, default: usize| nums.get(i).copied().filter(|v| *v > 0).unwrap_or(default);
+        match op {
+            'H' | 'f' => {
+                self.row = n(0, 1) - 1;
+                self.col = n(1, 1) - 1;
+            }
+            'C' => self.col += n(0, 1),
+            'J' => {
+                for row in &mut self.cells {
+                    row.iter_mut().for_each(|c| *c = ' ');
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// The screen as lines, trailing spaces trimmed.
+    pub fn text(&self) -> String {
+        self.cells
+            .iter()
+            .map(|r| r.iter().collect::<String>().trim_end().to_owned())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}

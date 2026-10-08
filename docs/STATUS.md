@@ -109,6 +109,11 @@ configuration and no direct UI-to-node path; everything travels over the authent
   did not notice by itself a vanished node while blocked sending to a wedged UI (its stall limit is the backstop).
 - `KillPane` is under-guarded and must adopt `expected_pid` before any kill action exists in a UI.
 
+## Current branch: create-session (ADR-005)
+
+`n` in the dashboard opens "New session" (host, name, directory, Claude or Shell); the node creates it on its own tmux
+server, all or nothing, and it shows up like any other session. See ADR-005. Results of the two-machine run are in the PR.
+
 ## Open limitations
 
 Third-machine UI test, hooks and process-table discovery, key rotation,

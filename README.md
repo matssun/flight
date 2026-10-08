@@ -2,7 +2,7 @@
 
 # Flight
 
-A tmux session manager with an agent dashboard, in Rust. Session sources and connect rules follow sesh; the agent-state dashboard follows Fleet.
+A session manager with an agent dashboard, in Rust. tmux is the internal backend that keeps sessions alive; you never operate it. Session sources and connect rules follow sesh; the agent-state dashboard follows Fleet.
 
 Status: v0. A ratatui dashboard over one or more tmux servers (local, and remote over SSH).
 
@@ -10,7 +10,7 @@ Status: v0. A ratatui dashboard over one or more tmux servers (local, and remote
     flight --ssh mini-2            # also watch a remote host via an ssh alias
     flight --once                  # print one frame as text and exit
 
-Flight never assumes your default tmux server: run your agents on `tmux -L flight`. Keys: arrows or j/k, Enter, Tab, r, q.
+Create sessions from the dashboard: press `n`, choose the machine and directory, pick Claude or Shell, Create. Enter opens a session; `Ctrl-]` then `q` returns to the dashboard and the session keeps running. Flight uses its own private tmux server and never touches your default one. Keys: arrows or j/k, Enter, n, Tab, r, q.
 
 ## Distributed mode
 

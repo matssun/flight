@@ -13,6 +13,7 @@ mod pane_id;
 mod pane_ref;
 mod server_id;
 mod session_id;
+mod session_name;
 mod session_ref;
 mod window_id;
 
@@ -25,6 +26,7 @@ pub use pane_ref::PaneRef;
 pub use policy::{needs_attention, sort_rank};
 pub use server_id::ServerId;
 pub use session_id::SessionId;
+pub use session_name::{valid_dir, valid_session_name, MAX_DIR_LEN, MAX_SESSION_NAME_LEN};
 pub use session_ref::SessionRef;
 pub use window_id::WindowId;
 

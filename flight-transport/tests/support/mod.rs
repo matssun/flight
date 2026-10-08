@@ -5,6 +5,7 @@
 use flight_classify::AgentKind;
 use flight_node::{
     Control, ControlError, NodeCore, NodeSession, PaneObservation, Round, ServerOutcome,
+    SessionRequest,
 };
 use flight_orchestrator::OrchestratorConfig;
 use flight_proto::{Incarnation, UiEvent};
@@ -29,7 +30,7 @@ impl Control for PreviewControl {
     fn kill_pane(&self, _: &ServerId, _: &PaneId, _: u32) -> Result<(), ControlError> {
         Ok(())
     }
-    fn create_session(&self, _: &ServerId, _: &str, _: &str, _: &str) -> Result<(), ControlError> {
+    fn create_session(&self, _: &SessionRequest) -> Result<(), ControlError> {
         Ok(())
     }
 }

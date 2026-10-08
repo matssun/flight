@@ -31,7 +31,15 @@ wire_enum! {
         NodeUnreachable = 9,
         PaneChanged = 10,
         Busy = 11,
+        AlreadyExists = 12,
+        InvalidDirectory = 13,
+        ProgramUnavailable = 14,
     }
+}
+
+wire_enum! {
+    /// What a new session runs: a closed set, never a command line.
+    ProgramCode { Claude = 1, Shell = 2 }
 }
 
 wire_enum! {

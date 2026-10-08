@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 use super::ControlLink;
+use crate::pane_agent;
 use crate::tmux_servers::SCRAPE_LINES;
 use crate::{PaneObservation, ServerOutcome};
-use flight_classify::detect_agent;
 use flight_tmux::{parse_panes_checked, TmuxError, PANE_FORMAT};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -139,7 +139,7 @@ impl Watch {
 
         let agents: Vec<_> = infos
             .into_iter()
-            .filter_map(|info| Some((detect_agent(&info.current_command)?, info)))
+            .filter_map(|info| Some((pane_agent(&info)?, info)))
             .collect();
         let stale: Vec<&str> = agents
             .iter()

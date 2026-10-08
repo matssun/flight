@@ -66,7 +66,7 @@ fn event_loop(
         if event::poll(Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
-                    if let Some(action) = action_for(key) {
+                    if let Some(action) = action_for(key, vm.form().is_some()) {
                         let effect = vm_apply(&mut vm, action);
                         if let Some(exit) = handle(worker, effect) {
                             return Ok(exit);
@@ -101,6 +101,9 @@ fn handle(worker: &Worker, effect: Effect) -> Option<Exit> {
         Effect::Switch(p) => {
             let _ = worker.tx.send(Cmd::Switch(p));
         }
+        Effect::Create(request) => {
+            let _ = worker.tx.send(Cmd::Create(request));
+        }
     }
     None
 }
@@ -113,6 +116,10 @@ fn on_message(vm: &mut ViewModel, worker: &Worker, msg: Msg) -> Option<Exit> {
         }
         Msg::Preview(p) => {
             vm.apply_preview(p);
+            None
+        }
+        Msg::Created(request, result) => {
+            vm.apply_created(&request, result);
             None
         }
         Msg::Switched(Ok(())) => Some(Exit::Switched),

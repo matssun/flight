@@ -12,7 +12,11 @@ pub const GUARDED_REVEAL: &str = "guarded_reveal_v1";
 pub const TERMINAL: &str = "terminal_v1";
 pub const SEND_INPUT: &str = "send_input";
 pub const KILL: &str = "kill";
-pub const CREATE_SESSION: &str = "create_session";
+/// Create a session from a typed request: host, name, directory and a program from a closed
+/// set. The name carries the semantics. The earlier `create_session` carried a free-form
+/// command line and is retired: a node that still offers it must never be sent a request
+/// whose program it would silently ignore.
+pub const CREATE_SESSION: &str = "create_session_v1";
 
 /// Every capability this build knows about.
 pub const KNOWN: [&str; 6] = [

@@ -22,6 +22,8 @@ pub struct PaneInfo {
     pub window_activity: u64,
     /// The foreground command (`#{pane_current_command}`), e.g. `zsh` or `claude`.
     pub current_command: String,
+    /// The session was created by Flight (carries `@flight_session`).
+    pub flight_session: bool,
     pub pane_title: String,
 }
 

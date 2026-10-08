@@ -80,9 +80,6 @@ impl Control for NoControl {
     fn kill_pane(&self, _: &ServerId, _: &PaneId, _: u32) -> Result<(), ControlError> {
         Ok(())
     }
-    fn create_session(&self, _: &ServerId, _: &str, _: &str, _: &str) -> Result<(), ControlError> {
-        Ok(())
-    }
 }
 
 /// A tiny xorshift: enough to pick panes without a dependency.

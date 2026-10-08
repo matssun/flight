@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 
 use crate::control::response_frame;
-use crate::{ControlError, ControlJob, NodeCore, Round, TerminalSpec};
+use crate::{ControlError, ControlJob, NodeCore, Program, Round, SessionRequest, TerminalSpec};
 use flight_proto::{
     capability, command_kind::Kind, node_body, orchestrator_body, Command, ErrorKindCode,
-    Heartbeat, NodeFrame, NodeHello, OrchestratorFrame, PaneRefMsg, ProtocolVersion, Request,
-    Validate, CURRENT_VERSION, TERMINAL_ID_LEN,
+    Heartbeat, NodeFrame, NodeHello, OrchestratorFrame, PaneRefMsg, ProgramCode, ProtocolVersion,
+    Request, Validate, CURRENT_VERSION, TERMINAL_ID_LEN,
 };
 use flight_state::PaneRef;
 
@@ -210,12 +210,23 @@ impl NodeSession {
                         "wrong host",
                     ));
                 }
+                let program = match ProgramCode::try_from(c.program) {
+                    Ok(ProgramCode::Claude) => Program::Claude,
+                    Ok(ProgramCode::Shell) => Program::Shell,
+                    _ => {
+                        return Err(ControlError::new(
+                            ErrorKindCode::InvalidRequest,
+                            "unknown program",
+                        ))
+                    }
+                };
                 Ok(ControlJob::create(
                     id,
-                    flight_state::ServerId::new(c.server.as_str()),
-                    c.name.clone(),
-                    c.dir.clone(),
-                    c.command.clone(),
+                    SessionRequest {
+                        name: c.name.clone(),
+                        dir: c.dir.clone(),
+                        program,
+                    },
                 ))
             }
             Some(Kind::RevealPane(c)) => {

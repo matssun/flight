@@ -13,7 +13,10 @@ mod snapshot;
 mod view;
 
 pub use app::{run, run_with_notice, Exit};
-pub use collect::{Backend, Collector};
+pub use collect::{Backend, Collector, CreateFailure};
 pub use render::{render, render_to_string};
 pub use snapshot::{HostHealth, HostView, PanePreview, PaneView, UiSnapshot};
-pub use view::{attention_panes, section_panes, tree_panes, Action, Effect, Section, ViewModel};
+pub use view::{
+    attention_panes, section_panes, tree_panes, Action, Effect, Field, FormInput, FormOutcome,
+    HostChoice, NewSessionForm, NewSessionRequest, Program, Section, ViewModel,
+};

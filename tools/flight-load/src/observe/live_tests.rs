@@ -101,6 +101,10 @@ fn wait_for<T: Transport>(o: &mut Observer<T>, pane: &str, needle: &str) {
         if last.as_deref().is_some_and(|s| s.contains(needle)) {
             return;
         }
+        if last.is_none() {
+            // A round that failed (a server still starting) is followed by a recovery.
+            let _ = o.recover();
+        }
         std::thread::sleep(Duration::from_millis(100));
     }
     panic!("{pane} never showed {needle}; last screen: {last:?}");
@@ -184,7 +188,7 @@ fn high_output_does_not_stall_or_hide_a_quiet_pane<T: Transport>(srv: &Server, m
     srv.say("quiet", "calm");
     wait_for(&mut o, &quiet, "MARK_calm");
     let noisy = srv.pane_of("noisy");
-    assert!(screen(&mut o, &noisy).unwrap().contains('y'));
+    wait_for(&mut o, &noisy, "y");
 }
 
 fn run_all<T: Transport>(make: impl Fn(&Server) -> Option<Observer<T>>) {

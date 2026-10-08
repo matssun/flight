@@ -5,10 +5,12 @@
 
 mod support;
 
-use flight_node::{Control, ControlError, NodeSession, SessionOutput, ADVERTISED_CAPABILITIES};
+use flight_node::{
+    Control, ControlError, NodeSession, SessionOutput, SessionRequest, ADVERTISED_CAPABILITIES,
+};
 use flight_proto::{
     command_kind as ck, node_body, orchestrator_body, response_result, Command, ErrorKindCode,
-    Goodbye, Heartbeat, NodeFrame, OrchestratorFrame, OrchestratorHello, PaneRefMsg,
+    Goodbye, Heartbeat, NodeFrame, OrchestratorFrame, OrchestratorHello, PaneRefMsg, ProgramCode,
     ProtocolVersion, Request, ResyncRequest, Validate, CURRENT_VERSION,
 };
 use flight_state::{PaneId, ServerId};
@@ -19,6 +21,7 @@ use support::*;
 struct FakeControl {
     killed: Mutex<Vec<String>>,
     revealed: Mutex<Vec<String>>,
+    created: Mutex<Vec<String>>,
 }
 
 impl Control for FakeControl {
@@ -33,7 +36,11 @@ impl Control for FakeControl {
         self.revealed.lock().unwrap().push(format!("{pane}@{pid}"));
         Ok(())
     }
-    fn create_session(&self, _: &ServerId, _: &str, _: &str, _: &str) -> Result<(), ControlError> {
+    fn create_session(&self, r: &SessionRequest) -> Result<(), ControlError> {
+        self.created
+            .lock()
+            .unwrap()
+            .push(format!("{}@{}:{:?}", r.name, r.dir, r.program));
         Ok(())
     }
 }
@@ -46,6 +53,10 @@ thread_local! {
 
 fn killed() -> Vec<String> {
     CONTROL.with(|c| c.killed.lock().unwrap().clone())
+}
+
+fn created() -> Vec<String> {
+    CONTROL.with(|c| c.created.lock().unwrap().clone())
 }
 
 fn revealed() -> Vec<String> {
@@ -323,7 +334,7 @@ fn kill_runs_only_when_the_capability_was_accepted() {
 
 #[test]
 fn input_is_unsupported_on_a_node() {
-    let mut s = ready(&["preview", "kill", "create_session", "send_input"]);
+    let mut s = ready(&["preview", "kill", "create_session_v1", "send_input"]);
     let out = s.on_frame(
         request(
             6,
@@ -390,7 +401,7 @@ fn reveal_of_an_unknown_or_foreign_pane_is_refused() {
 fn a_peer_that_did_not_accept_guarded_reveal_gets_no_reveal_at_all() {
     // An orchestrator from before the guarded capability accepted only the older set. There
     // is no unguarded fallback: the request is refused, whatever pid it names.
-    let mut s = ready(&["preview", "kill", "create_session"]);
+    let mut s = ready(&["preview", "kill", "create_session_v1"]);
     let out = s.on_frame(reveal(11, "%1", 7), 1);
     assert_eq!(
         error_kind(only_response(out)),
@@ -541,4 +552,69 @@ fn an_open_without_the_orchestrators_id_is_not_accepted() {
     let out = s.on_frame(frame, 1);
     assert!(out.jobs.is_empty());
     assert!(out.close.is_some(), "an invalid frame ends the stream");
+}
+
+fn create(id: u64, host: &str, name: &str, program: ProgramCode) -> OrchestratorFrame {
+    request(
+        id,
+        ck::Kind::CreateSession(ck::CreateSession {
+            host: host.into(),
+            name: name.into(),
+            dir: "/work".into(),
+            program: program as i32,
+        }),
+    )
+}
+
+#[test]
+fn a_create_session_for_this_node_becomes_a_job_with_the_typed_program() {
+    let host = "node-1";
+    let mut s = ready(&["create_session_v1"]);
+    for (name, program) in [("a", ProgramCode::Claude), ("b", ProgramCode::Shell)] {
+        let out = s.on_frame(create(20, host, name, program), 1);
+        assert_eq!(out.jobs.len(), 1);
+        assert!(matches!(
+            only_response(out),
+            response_result::Result::Done(_)
+        ));
+    }
+    assert_eq!(created(), ["a@/work:Claude", "b@/work:Shell"]);
+}
+
+#[test]
+fn a_create_session_for_another_host_is_refused_and_creates_nothing() {
+    let mut s = ready(&["create_session_v1"]);
+    let out = s.on_frame(create(21, "someone-else", "a", ProgramCode::Shell), 1);
+    assert!(out.jobs.is_empty());
+    assert_eq!(
+        error_kind(only_response(out)),
+        ErrorKindCode::InvalidRequest as i32
+    );
+    assert!(created().is_empty());
+}
+
+#[test]
+fn a_peer_that_only_accepted_the_retired_create_capability_creates_nothing() {
+    // An orchestrator from before `create_session_v1` negotiated the old name. Its request
+    // would carry no program this node honours: refuse it, never run it as a shell.
+    let host = "node-1";
+    let mut s = ready(&["preview", "create_session"]);
+    let out = s.on_frame(create(22, host, "a", ProgramCode::Claude), 1);
+    assert_eq!(
+        error_kind(only_response(out)),
+        ErrorKindCode::Unsupported as i32
+    );
+    assert!(created().is_empty());
+}
+
+#[test]
+fn a_malformed_create_session_closes_the_stream_before_any_job() {
+    let host = "node-1";
+    let mut s = ready(&["create_session_v1"]);
+    for bad in ["a b", "a;rm", "", "../x"] {
+        let out = s.on_frame(create(23, host, bad, ProgramCode::Shell), 1);
+        assert!(out.jobs.is_empty(), "{bad:?}");
+        assert!(out.close.is_some(), "{bad:?}");
+    }
+    assert!(created().is_empty());
 }

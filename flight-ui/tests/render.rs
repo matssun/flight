@@ -73,9 +73,9 @@ fn host_failures_are_visible_and_do_not_hide_healthy_hosts() {
     for want in [
         "● mini-1  online",
         "! mini-2  unreachable",
-        "○ macbook  no Flight tmux server",
+        "○ macbook  no sessions yet",
         "! mini-3  authentication failed",
-        "! mini-4  tmux not installed",
+        "! mini-4  session backend missing",
     ] {
         assert!(text.contains(want), "missing {want:?} in:\n{text}");
     }

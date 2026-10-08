@@ -23,7 +23,7 @@ pub const USAGE: &str = "usage: flight node <command>
         enroll this machine with an orchestrator (the bundle comes from
         `flight orchestrator enrollment create`)
   run [--socket NAME]... [--interval SECS] [--observer ctl-skip|seq] [--exit-after-link-down SECS]
-      [--config-dir DIR]
+      [--no-terminal] [--config-dir DIR]
         observe local tmux (tmux -L NAME; default 'flight') and report to the orchestrator.
         --interval: seconds between polls (fractions allowed; default 0.5). A round that takes
         longer than the interval is followed by at least as much idle time, and is reported.
@@ -32,6 +32,9 @@ pub const USAGE: &str = "usage: flight node <command>
         breaks it drops everything it believed, answers from the sequential path and starts
         again with a full refresh. seq is the plain reference path (a tmux process per
         command; roughly 10 times the CPU at 100 panes) for comparison and debugging.
+        --no-terminal: do not offer interactive terminals. By default an authorized UI can open
+        a terminal onto a pane of this node (a tmux client in a PTY owned by the node, relayed
+        through the orchestrator). Turn it off for a read-only node.
         --exit-after-link-down: exit with status 75 after this long of nothing but immediate
         \"no route to host\" failures (never because the orchestrator is merely down), so that a
         supervisor (launchd, systemd, a shell loop) restarts the node. Restarting is safe: tmux
@@ -71,7 +74,7 @@ fn run_node(args: &[String]) -> Result<(), String> {
             "--exit-after-link-down",
             "--config-dir",
         ],
-        &[],
+        &["--no-terminal"],
     )?;
     let dir = node_dir(&config_dir(&args)?);
     let config = ConnectionConfig::load(&config_path(&dir)).map_err(|e| {
@@ -104,8 +107,9 @@ fn run_node(args: &[String]) -> Result<(), String> {
         let endpoint = TmuxEndpoint::named(socket).map_err(|e| e.to_string())?;
         servers.add(
             ServerId::new(*socket),
-            Box::new(SystemRunner::new(endpoint)),
+            Box::new(SystemRunner::new(endpoint.clone())),
         );
+        servers.allow_terminal(ServerId::new(*socket), endpoint);
     }
     let servers = Arc::new(servers);
     let observer: Box<dyn PaneObserver> = match observer_kind {
@@ -122,13 +126,16 @@ fn run_node(args: &[String]) -> Result<(), String> {
         }
     };
 
-    let session = NodeSession::new(
+    let mut session = NodeSession::new(
         NodeCore::new(
             identity.fingerprint().host_id(),
             fresh_incarnation().map_err(|e| e.to_string())?,
         ),
         config.display_name.clone(),
     );
+    if args.switch("--no-terminal") {
+        session = session.without_terminal();
+    }
     let link = NodeLink::new(
         NodeLinkConfig {
             address: config.address.clone(),

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use crate::{OpenedTerminal, TerminalSpec};
 use flight_proto::{
     node_body, response_result, ErrorInfo, ErrorKindCode, NodeFrame, Preview, Response,
 };
@@ -60,6 +61,15 @@ pub trait Control: Send + Sync {
         ))
     }
 
+    /// Start a terminal onto the pane: a tmux client in a PTY the node owns, attached only if
+    /// the pane still is the process the request was about. Nothing is created otherwise.
+    fn open_terminal(&self, _spec: &TerminalSpec) -> Result<OpenedTerminal, ControlError> {
+        Err(ControlError::new(
+            ErrorKindCode::Unsupported,
+            "terminals are not available on this control",
+        ))
+    }
+
     /// A detached session; `command` empty means the shell.
     fn create_session(
         &self,
@@ -93,6 +103,7 @@ enum Op {
         dir: String,
         command: String,
     },
+    OpenTerminal(TerminalSpec),
 }
 
 /// A validated control request, detached from the session: everything needed to perform it
@@ -147,6 +158,23 @@ impl ControlJob {
         }
     }
 
+    pub(crate) fn open_terminal(spec: TerminalSpec) -> Self {
+        Self {
+            request_id: spec.request_id,
+            op: Op::OpenTerminal(spec),
+        }
+    }
+
+    /// The terminal this job opens, if it is one. Opening hands back a live process, which a
+    /// plain response cannot carry, so the caller runs it with [`Control::open_terminal`]
+    /// and answers itself.
+    pub fn terminal(&self) -> Option<&TerminalSpec> {
+        match &self.op {
+            Op::OpenTerminal(spec) => Some(spec),
+            _ => None,
+        }
+    }
+
     pub fn request_id(&self) -> u64 {
         self.request_id
     }
@@ -178,6 +206,11 @@ impl ControlJob {
             } => control
                 .create_session(server, name, dir, command)
                 .map(|()| response_result::Result::Done(response_result::Done {})),
+            // A terminal is opened through `Control::open_terminal`, never through this path.
+            Op::OpenTerminal(_) => Err(ControlError::new(
+                ErrorKindCode::Unsupported,
+                "a terminal cannot be opened as a plain request",
+            )),
         };
         response_frame(self.request_id, result)
     }

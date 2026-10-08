@@ -13,3 +13,4 @@ flight-proto = { path = "../flight-proto" }
 flight-state = { path = "../flight-state" }
 flight-tmux = { path = "../flight-tmux" }
 getrandom = "0.2"
+portable-pty = "0.8"

@@ -22,6 +22,7 @@ mod node_session;
 mod observer;
 mod pane_resolve;
 mod round;
+mod terminal;
 mod tmux_servers;
 mod unavailable;
 
@@ -31,5 +32,6 @@ pub use node_core::NodeCore;
 pub use node_session::{NodeSession, SessionOutput, ADVERTISED_CAPABILITIES};
 pub use observer::{ControlLink, ControlSkipObserver, PaneObserver, SequentialObserver};
 pub use round::{PaneObservation, Round, ServerOutcome};
+pub use terminal::{tmux_attach_command, OpenedTerminal, TerminalProcess, TerminalSpec};
 pub use tmux_servers::TmuxServers;
 pub use unavailable::Unavailable;

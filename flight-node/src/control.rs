@@ -228,6 +228,14 @@ pub(crate) fn response_frame(
     }
 }
 
+/// The plain success answer to a request.
+pub fn done_frame(request_id: u64) -> NodeFrame {
+    response_frame(
+        request_id,
+        Ok(response_result::Result::Done(response_result::Done {})),
+    )
+}
+
 /// A failure response for a request that never reached a [`Control`] (busy, timed out).
 pub fn error_frame(request_id: u64, kind: ErrorKindCode, message: &str) -> NodeFrame {
     response_frame(request_id, Err(ControlError::new(kind, message)))

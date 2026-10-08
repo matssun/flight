@@ -18,7 +18,13 @@ pub struct OpenedTerminal {
     /// Blocks until output or end of file. Ends (with `Ok(0)` or an error) once the child
     /// has gone away.
     pub reader: Box<dyn Read + Send>,
+    /// Ask tmux to redraw this client's whole screen. Used after output was discarded because
+    /// the far end could not keep up. May block briefly; failures are ignored.
+    pub redraw: Redraw,
 }
+
+/// How to make a terminal's tmux client repaint itself.
+pub type Redraw = Box<dyn Fn() + Send + Sync>;
 
 fn io_err(e: impl std::fmt::Display) -> io::Error {
     io::Error::other(e.to_string())
@@ -60,6 +66,7 @@ impl TerminalProcess {
                 child,
             },
             reader,
+            redraw: Box::new(|| {}),
         })
     }
 
@@ -103,8 +110,30 @@ impl TerminalProcess {
         }
     }
 
+    /// A handle that can hang the child up without owning the process, so another thread can
+    /// end a terminal whose owner is blocked writing to it.
+    pub fn hang_up_handle(&self) -> HangUp {
+        HangUp(self.child.clone_killer())
+    }
+
     pub fn process_id(&self) -> Option<u32> {
         self.child.process_id()
+    }
+}
+
+/// Hangs a terminal's tmux client up from any thread.
+pub struct HangUp(Box<dyn portable_pty::ChildKiller + Send + Sync>);
+
+impl HangUp {
+    /// Send the hang-up signal. Harmless if the child is already gone.
+    pub fn hang_up(&mut self) {
+        let _ = self.0.kill();
+    }
+}
+
+impl Clone for HangUp {
+    fn clone(&self) -> Self {
+        Self(self.0.clone_killer())
     }
 }
 

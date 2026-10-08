@@ -35,6 +35,26 @@ impl<R: TmuxRunner> Tmux<R> {
             .collect())
     }
 
+    /// Redraw the whole screen of the client whose tmux client process is `pid`. A no-op if
+    /// there is no such client (it may have just gone).
+    pub fn refresh_client_of_pid(&self, pid: u32) -> Result<(), TmuxError> {
+        let out = self
+            .runner()
+            .run(&["list-clients", "-F", "#{client_pid}\t#{client_name}"])?;
+        let wanted = pid.to_string();
+        let name = out.stdout.lines().find_map(|line| {
+            let (p, name) = line.split_once('\t')?;
+            (p == wanted).then(|| name.to_owned())
+        });
+        match name {
+            Some(name) => self
+                .runner()
+                .run(&["refresh-client", "-t", &name])
+                .map(drop),
+            None => Ok(()),
+        }
+    }
+
     /// The id (`$N`) of the session that holds `pane`. Does not depend on any client.
     pub fn session_id_of_pane(&self, pane: &str) -> Result<String, TmuxError> {
         let out = self

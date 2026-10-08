@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 
 use crate::outbox::Outbox;
-use crate::paths::{ENROLL, NODE_CONNECT, SERVICE_NAME, UI_CONNECT};
+use crate::paths::{ENROLL, NODE_CONNECT, SERVICE_NAME, TERMINAL_NODE, TERMINAL_UI, UI_CONNECT};
 use crate::shared::{lock, now, SharedState};
+use crate::terminal_stream::terminal_stream;
 use crate::PeerIdentity;
 use flight_proto::{
-    EnrollRequest, EnrollResponse, NodeFrame, OrchestratorFrame, RoleCode, UiEvent, UiRequest,
-    Validate,
+    EnrollRequest, EnrollResponse, NodeFrame, OrchestratorFrame, RoleCode, TerminalFrame, UiEvent,
+    UiRequest, Validate,
 };
 use flight_trust::Role;
 use std::convert::Infallible;
@@ -180,6 +181,18 @@ impl StreamingService<UiRequest> for UiConnectSvc {
     }
 }
 
+struct TerminalSvc(SharedState, flight_orchestrator::Side);
+
+impl StreamingService<TerminalFrame> for TerminalSvc {
+    type Response = TerminalFrame;
+    type ResponseStream = BoxStream<TerminalFrame>;
+    type Future = BoxFuture<Result<Response<Self::ResponseStream>, Status>>;
+
+    fn call(&mut self, request: Request<Streaming<TerminalFrame>>) -> Self::Future {
+        Box::pin(terminal_stream(self.0.clone(), request, self.1))
+    }
+}
+
 struct EnrollSvc(SharedState);
 
 impl UnaryService<EnrollRequest> for EnrollSvc {
@@ -215,6 +228,17 @@ where
                 let mut grpc = Grpc::new(ProstCodec::<UiEvent, UiRequest>::default());
                 Ok(grpc.streaming(UiConnectSvc(state), req).await)
             }),
+            TERMINAL_NODE | TERMINAL_UI => {
+                let side = if req.uri().path() == TERMINAL_NODE {
+                    flight_orchestrator::Side::Node
+                } else {
+                    flight_orchestrator::Side::Ui
+                };
+                Box::pin(async move {
+                    let mut grpc = Grpc::new(ProstCodec::<TerminalFrame, TerminalFrame>::default());
+                    Ok(grpc.streaming(TerminalSvc(state, side), req).await)
+                })
+            }
             ENROLL => Box::pin(async move {
                 let mut grpc = Grpc::new(ProstCodec::<EnrollResponse, EnrollRequest>::default());
                 Ok(grpc.unary(EnrollSvc(state), req).await)

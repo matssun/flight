@@ -228,6 +228,23 @@ impl OrchestratorCore {
         }
     }
 
+    /// End every terminal of one node connection with `reason` (it is being revoked).
+    pub fn end_node_terminals(&mut self, conn: ConnId, reason: ExitReasonCode) -> Effects {
+        let mut fx = Effects::default();
+        self.end_conn_terminals(conn, reason, &mut fx);
+        fx
+    }
+
+    /// End every terminal (the orchestrator is stopping).
+    pub fn end_all_terminals(&mut self, reason: ExitReasonCode) -> Effects {
+        let mut fx = Effects::default();
+        for id in self.terminals.ids_where(|_| true) {
+            self.terminals.remove(&id);
+            fx.terminals_ended.push((id, reason));
+        }
+        fx
+    }
+
     /// Terminals that never got both ends in time die; so does a request nobody answered.
     pub(crate) fn expire_terminals(&mut self, now: u64, fx: &mut Effects) {
         for id in self.terminals.ids_where(|t| t.deadline <= now) {

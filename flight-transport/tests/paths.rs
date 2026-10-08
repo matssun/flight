@@ -14,6 +14,8 @@ fn the_service_in_the_proto_declares_the_paths_the_transport_serves() {
     for rpc in [
         "rpc NodeConnect(stream NodeFrame) returns (stream OrchestratorFrame);",
         "rpc UiConnect(stream UiRequest) returns (stream UiEvent);",
+        "rpc TerminalNode(stream TerminalFrame) returns (stream TerminalFrame);",
+        "rpc TerminalUi(stream TerminalFrame) returns (stream TerminalFrame);",
         "rpc Enroll(EnrollRequest) returns (EnrollResponse);",
     ] {
         assert!(proto.contains(rpc), "{rpc}");

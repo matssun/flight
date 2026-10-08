@@ -26,12 +26,14 @@ mod terminal;
 mod tmux_servers;
 mod unavailable;
 
-pub use control::{error_frame, Control, ControlError, ControlJob};
+pub use control::{done_frame, error_frame, Control, ControlError, ControlJob};
 pub use incarnation::fresh_incarnation;
 pub use node_core::NodeCore;
 pub use node_session::{NodeSession, SessionOutput, ADVERTISED_CAPABILITIES};
 pub use observer::{ControlLink, ControlSkipObserver, PaneObserver, SequentialObserver};
 pub use round::{PaneObservation, Round, ServerOutcome};
-pub use terminal::{tmux_attach_command, OpenedTerminal, TerminalProcess, TerminalSpec};
+pub use terminal::{
+    tmux_attach_command, HangUp, OpenedTerminal, Redraw, TerminalProcess, TerminalSpec,
+};
 pub use tmux_servers::TmuxServers;
 pub use unavailable::Unavailable;

@@ -159,6 +159,7 @@ fn a_terminal_attaches_one_client_to_the_pane_and_carries_input_output_and_size(
     let OpenedTerminal {
         mut process,
         reader,
+        ..
     } = live.servers.open_terminal(&live.spec(&pane, pid)).unwrap();
     let rx = output_of(reader);
     let clients = live.wait_clients(1);
@@ -237,6 +238,7 @@ fn tmux_itself_refuses_a_wrong_pid_in_the_attach_command() {
         let OpenedTerminal {
             mut process,
             reader,
+            ..
         } = TerminalProcess::spawn("tmux", &args, &env(), 80, 24).unwrap();
         let _rx = output_of(reader);
         if expect_client {
@@ -281,6 +283,7 @@ fn the_terminal_ends_by_itself_when_the_user_detaches_in_tmux() {
     let OpenedTerminal {
         mut process,
         reader,
+        ..
     } = live.servers.open_terminal(&live.spec(&pane, pid)).unwrap();
     let rx = output_of(reader);
     live.wait_clients(1);

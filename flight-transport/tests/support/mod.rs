@@ -123,6 +123,36 @@ pub fn node_link_with(
     ))
 }
 
+/// A node link whose terminals give up on a far end that stays behind for `stall`.
+pub fn node_link_stalling(
+    identity: &Arc<Identity>,
+    addr: &str,
+    orchestrator: &Fingerprint,
+    control: Arc<dyn Control>,
+    stall: Duration,
+) -> Arc<NodeLink> {
+    let session = NodeSession::new(
+        NodeCore::new(identity.fingerprint().host_id(), inc(1)),
+        "mini-1",
+    );
+    Arc::new(
+        NodeLink::new(
+            NodeLinkConfig {
+                address: addr.to_owned(),
+                identity: identity.clone(),
+                orchestrator: orchestrator.clone(),
+                servers: vec!["flight".to_owned()],
+                heartbeat_interval: Duration::from_millis(500),
+                reconnect_min: Duration::from_millis(50),
+                reconnect_max: Duration::from_millis(200),
+            },
+            session,
+            control,
+        )
+        .with_terminal_stall(stall),
+    )
+}
+
 pub fn obs(pane: &str, pid: u32, screen: &str) -> PaneObservation {
     PaneObservation {
         pane: PaneId::new(pane),

@@ -8,5 +8,5 @@ mod process;
 mod spec;
 
 pub use command::tmux_attach_command;
-pub use process::{OpenedTerminal, TerminalProcess};
+pub use process::{HangUp, OpenedTerminal, Redraw, TerminalProcess};
 pub use spec::TerminalSpec;

@@ -27,3 +27,4 @@ tower = { version = "0.5", features = ["util"] }
 
 [dev-dependencies]
 flight-classify = { path = "../flight-classify" }
+flight-tmux = { path = "../flight-tmux" }

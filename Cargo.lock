@@ -510,6 +510,7 @@ dependencies = [
  "flight-orchestrator",
  "flight-proto",
  "flight-state",
+ "flight-tmux",
  "flight-trust",
  "http",
  "http-body",

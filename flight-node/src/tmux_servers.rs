@@ -225,12 +225,20 @@ impl Control for TmuxServers {
         // tmux repeats the check inside the command that attaches.
         let args = tmux_attach_command(endpoint, spec.pane.as_str(), spec.pid);
         let env = terminal_env(&spec.term);
-        TerminalProcess::spawn("tmux", &args, &env, spec.cols, spec.rows).map_err(|e| {
-            ControlError::new(
-                ErrorKindCode::RemoteCommandFailed,
-                format!("cannot start a terminal: {e}"),
-            )
-        })
+        let mut opened = TerminalProcess::spawn("tmux", &args, &env, spec.cols, spec.rows)
+            .map_err(|e| {
+                ControlError::new(
+                    ErrorKindCode::RemoteCommandFailed,
+                    format!("cannot start a terminal: {e}"),
+                )
+            })?;
+        if let Some(client_pid) = opened.process.process_id() {
+            let tmux = Tmux::new(endpoint.clone());
+            opened.redraw = Box::new(move || {
+                let _ = tmux.refresh_client_of_pid(client_pid);
+            });
+        }
+        Ok(opened)
     }
 
     fn create_session(

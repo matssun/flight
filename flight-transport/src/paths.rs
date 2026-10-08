@@ -6,4 +6,6 @@
 pub(crate) const SERVICE_NAME: &str = "flight.v1.Flight";
 pub(crate) const NODE_CONNECT: &str = "/flight.v1.Flight/NodeConnect";
 pub(crate) const UI_CONNECT: &str = "/flight.v1.Flight/UiConnect";
+pub(crate) const TERMINAL_NODE: &str = "/flight.v1.Flight/TerminalNode";
+pub(crate) const TERMINAL_UI: &str = "/flight.v1.Flight/TerminalUi";
 pub(crate) const ENROLL: &str = "/flight.v1.Flight/Enroll";

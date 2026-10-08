@@ -3,9 +3,10 @@
 use crate::connector::{connect_with, DEFAULT_DIAL_TIMEOUT};
 use crate::failure_log::FailureLog;
 use crate::link_end::LinkEnd;
+use crate::node_terminal::{self, NodeTerminalEnd};
 use crate::outbox::Outbox;
 use crate::paths::NODE_CONNECT;
-use crate::shared::{now, OUTBOX_CAPACITY};
+use crate::shared::{now, DEFAULT_TERMINAL_STALL, OUTBOX_CAPACITY};
 use crate::unreachable_watch::{jittered, UnreachableWatch};
 use crate::TransportError;
 use flight_node::{error_frame, Control, ControlJob, NodeSession, Round};
@@ -22,6 +23,8 @@ use tonic_prost::ProstCodec;
 
 /// Control operations (tmux capture, kill, ...) running at once.
 const MAX_CONCURRENT_JOBS: usize = 4;
+/// Terminals open at once on one node.
+const MAX_TERMINALS: usize = 4;
 /// A control operation that has not finished by then is answered as failed.
 const JOB_TIMEOUT: Duration = Duration::from_secs(10);
 /// Outbox class of heartbeats: at most one waits to be sent.
@@ -69,10 +72,12 @@ pub struct NodeLink {
     session: Arc<Mutex<NodeSession>>,
     control: Arc<dyn Control>,
     jobs: Arc<Semaphore>,
+    terminals: Arc<Semaphore>,
     out: Out,
     log: Option<LinkLog>,
     repeat_report: Duration,
     dial_timeout: Duration,
+    terminal_stall: Duration,
     unreachable_limit: Option<Duration>,
 }
 
@@ -83,12 +88,21 @@ impl NodeLink {
             session: Arc::new(Mutex::new(session)),
             control,
             jobs: Arc::new(Semaphore::new(MAX_CONCURRENT_JOBS)),
+            terminals: Arc::new(Semaphore::new(MAX_TERMINALS)),
             out: Arc::default(),
             log: None,
             repeat_report: Duration::from_secs(30),
             dial_timeout: DEFAULT_DIAL_TIMEOUT,
+            terminal_stall: DEFAULT_TERMINAL_STALL,
             unreachable_limit: None,
         }
+    }
+
+    /// How long a terminal's far end may stay behind before the node gives the terminal up
+    /// (default 30 s).
+    pub fn with_terminal_stall(mut self, stall: Duration) -> Self {
+        self.terminal_stall = stall;
+        self
     }
 
     /// Bound on each dialling step (TCP connect, TLS handshake); default 5 s.
@@ -300,6 +314,10 @@ impl NodeLink {
     /// its response. Bounded: when all workers are busy the request is refused at once.
     fn spawn_job(&self, job: ControlJob, outbox: Arc<Outbox<NodeFrame>>) {
         let id = job.request_id();
+        if let Some(spec) = job.terminal().cloned() {
+            self.spawn_terminal(spec, outbox);
+            return;
+        }
         let Ok(permit) = self.jobs.clone().try_acquire_owned() else {
             let _ = outbox.push_reliable(error_frame(
                 id,
@@ -323,6 +341,58 @@ impl NodeLink {
                 ),
             };
             let _ = outbox.push_reliable(frame);
+        });
+    }
+
+    /// Open a terminal: refuse at once if the node is at its limit, otherwise start the PTY on
+    /// a blocking thread, answer the request, and run the stream until it ends. The slot is
+    /// held until then.
+    fn spawn_terminal(&self, spec: flight_node::TerminalSpec, outbox: Arc<Outbox<NodeFrame>>) {
+        let id = spec.request_id;
+        let Ok(slot) = self.terminals.clone().try_acquire_owned() else {
+            let _ = outbox.push_reliable(error_frame(
+                id,
+                ErrorKindCode::Busy,
+                "this node has too many open terminals",
+            ));
+            return;
+        };
+        let control = self.control.clone();
+        let end = NodeTerminalEnd {
+            address: self.cfg.address.clone(),
+            identity: self.cfg.identity.clone(),
+            orchestrator: self.cfg.orchestrator.clone(),
+            dial_timeout: self.dial_timeout,
+            stall: self.terminal_stall,
+        };
+        let log = self.log.clone();
+        let terminal_id = spec.terminal_id;
+        tokio::spawn(async move {
+            let work = tokio::task::spawn_blocking(move || control.open_terminal(&spec));
+            let opened = match tokio::time::timeout(JOB_TIMEOUT, work).await {
+                Ok(Ok(Ok(opened))) => opened,
+                Ok(Ok(Err(e))) => {
+                    let _ = outbox.push_reliable(error_frame(id, e.kind, &e.message));
+                    return;
+                }
+                _ => {
+                    let _ = outbox.push_reliable(error_frame(
+                        id,
+                        ErrorKindCode::RemoteCommandFailed,
+                        "operation timed out",
+                    ));
+                    return;
+                }
+            };
+            // The answer first; the stream follows. The orchestrator accepts either order.
+            let done = flight_node::done_frame(id);
+            let _ = outbox.push_reliable(done);
+            let say = move |line: String| {
+                if let Some(log) = &log {
+                    log(line);
+                }
+            };
+            node_terminal::run(end, terminal_id, opened, slot, say).await;
         });
     }
 }

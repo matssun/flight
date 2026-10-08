@@ -49,6 +49,14 @@ pub async fn start(
     trust: TrustStore,
     trust_path: Option<PathBuf>,
 ) -> (ServerHandle, Fingerprint, String) {
+    start_with_core(trust, trust_path, OrchestratorConfig::default()).await
+}
+
+pub async fn start_with_core(
+    trust: TrustStore,
+    trust_path: Option<PathBuf>,
+    core: OrchestratorConfig,
+) -> (ServerHandle, Fingerprint, String) {
     let identity = Identity::generate().expect("orchestrator identity");
     let orchestrator = identity.fingerprint().clone();
     let handle = serve(ServerConfig {
@@ -56,7 +64,7 @@ pub async fn start(
         identity,
         trust,
         trust_path,
-        core: OrchestratorConfig::default(),
+        core,
         incarnation: inc(77),
         tick_interval: Duration::from_millis(100),
     })

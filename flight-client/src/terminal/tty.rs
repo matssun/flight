@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use crate::terminal::{relay, TerminalEnd};
+use crate::terminal::{relay, Lease, TerminalEnd};
 use crate::ClientConfig;
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, size};
 use flight_proto::valid_term;
@@ -66,6 +66,10 @@ pub fn run_terminal(config: &ClientConfig, terminal_id: &[u8]) -> TerminalEnd {
         Ok(client) => client,
         Err(e) => return TerminalEnd::Lost(e.to_string()),
     };
+    let lease = match runtime.block_on(Lease::connect(config, terminal_id)) {
+        Ok(lease) => lease,
+        Err(why) => return TerminalEnd::Lost(why),
+    };
     let Ok(_raw) = RawMode::enter() else {
         return TerminalEnd::Lost("cannot put the terminal in raw mode".to_owned());
     };
@@ -97,7 +101,7 @@ pub fn run_terminal(config: &ClientConfig, terminal_id: &[u8]) -> TerminalEnd {
             .write_all(b"\r\n[Ctrl-] q leaves; Ctrl-] Ctrl-] sends a literal Ctrl-]]\r\n");
     };
     let end = runtime.block_on(relay(
-        sender, receiver, input_rx, resize_rx, output_tx, hint,
+        sender, receiver, input_rx, resize_rx, output_tx, hint, lease,
     ));
 
     stop.store(true, Ordering::Relaxed);

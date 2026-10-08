@@ -235,6 +235,11 @@ impl Shared {
         self.relays.values().map(Relay::peak).max().unwrap_or(0)
     }
 
+    /// Relays still held (queues and abort signal), one per terminal not yet finished.
+    pub(crate) fn terminal_relays(&self) -> usize {
+        self.relays.len()
+    }
+
     pub(crate) fn terminals_open(&self) -> usize {
         self.core.terminal_count()
     }

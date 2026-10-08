@@ -166,6 +166,9 @@ impl OrchestratorCore {
         identity: &str,
     ) -> Result<(TerminalId, Attached), AttachRefused> {
         let id: TerminalId = <[u8; TERMINAL_ID_LEN]>::try_from(id).map_err(|_| AttachRefused)?;
+        let lease_until = self
+            .clock
+            .saturating_add(self.config.terminal_lease_ttl_secs);
         let t = self.terminals.get_mut(&id).ok_or(AttachRefused)?;
         match side {
             Side::Node => {
@@ -185,8 +188,8 @@ impl OrchestratorCore {
         }
         let both = t.ui_attached && t.node_attached;
         if both {
-            // From here only an end of either stream removes it; the deadline no longer applies.
-            t.deadline = u64::MAX;
+            // From here the attach window no longer applies: the UI's lease keeps it alive.
+            t.deadline = lease_until;
         }
         Ok((id, Attached { both }))
     }
@@ -245,11 +248,54 @@ impl OrchestratorCore {
         fx
     }
 
-    /// Terminals that never got both ends in time die; so does a request nobody answered.
+    /// A UI says its presentation of terminal `id` is alive. Valid only for a live, fully
+    /// attached terminal bound to this UI's authenticated identity; anything else is ignored
+    /// exactly like an unknown id. Time is the orchestrator's own: the UI sends none.
+    pub fn terminal_lease(&mut self, ui: UiId, id: &[u8], now: u64) {
+        let Ok(id) = <[u8; TERMINAL_ID_LEN]>::try_from(id) else {
+            return;
+        };
+        let identity = self.identity_of(ui);
+        let until = now.saturating_add(self.config.terminal_lease_ttl_secs);
+        if let Some(t) = self.terminals.get_mut(&id) {
+            if t.ui_identity == identity && t.ui_attached && t.node_attached {
+                t.deadline = t.deadline.max(until);
+            }
+        }
+    }
+
+    /// If the orchestrator itself was not running for a while, that time is not the UI's
+    /// fault: extend every lease by the gap.
+    pub(crate) fn forgive_pause(&mut self, now: u64) {
+        let gap = now.saturating_sub(self.last_tick);
+        if self.last_tick != 0 && gap > self.config.terminal_lease_ttl_secs / 2 {
+            for id in self
+                .terminals
+                .ids_where(|t| t.ui_attached && t.node_attached)
+            {
+                if let Some(t) = self.terminals.get_mut(&id) {
+                    t.deadline = t.deadline.saturating_add(gap);
+                }
+            }
+        }
+        self.last_tick = now;
+    }
+
+    /// Terminals that never got both ends in time die; so does a request nobody answered; so
+    /// does an attached terminal whose UI stopped renewing its lease.
     pub(crate) fn expire_terminals(&mut self, now: u64, fx: &mut Effects) {
         for id in self.terminals.ids_where(|t| t.deadline <= now) {
+            let attached = self
+                .terminals
+                .get(&id)
+                .is_some_and(|t| t.ui_attached && t.node_attached);
             self.terminals.remove(&id);
-            fx.terminals_ended.push((id, ExitReasonCode::StartFailed));
+            let reason = if attached {
+                ExitReasonCode::LeaseExpired
+            } else {
+                ExitReasonCode::StartFailed
+            };
+            fx.terminals_ended.push((id, reason));
         }
     }
 }

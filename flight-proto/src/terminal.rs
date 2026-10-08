@@ -33,6 +33,14 @@ pub struct TerminalAttach {
     pub terminal_id: Vec<u8>,
 }
 
+/// A UI's terminal presentation is alive (ADR-004). Sent on the UI's control stream so that
+/// terminal backpressure cannot delay it.
+#[derive(Clone, PartialEq, Eq, prost::Message)]
+pub struct TerminalLease {
+    #[prost(bytes = "vec", tag = "1")]
+    pub terminal_id: Vec<u8>,
+}
+
 /// Opaque terminal bytes: output when a node sent them, keystrokes when a UI did. Nobody
 /// between the PTY and the user's terminal interprets them.
 #[derive(Clone, PartialEq, Eq, prost::Message)]

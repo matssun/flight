@@ -10,7 +10,7 @@ use flight_node::TmuxServers;
 use flight_proto::{
     command_kind as ck, response_result, terminal_body, ui_event_body, ui_request_body, Command,
     ErrorKindCode, ExitReasonCode, NodeStatusCode, PaneRefMsg, Request, Response, Subscribe,
-    TerminalClose, TerminalFrame, TerminalResize, UiRequest,
+    TerminalClose, TerminalFrame, TerminalLease, TerminalResize, UiRequest,
 };
 use flight_state::ServerId;
 use flight_tmux::{SystemRunner, Tmux, TmuxEndpoint, TmuxRunner};
@@ -37,8 +37,12 @@ struct Rig {
     tmux: Tmux,
     tmux_name: String,
     stop: watch::Sender<bool>,
+    /// The node runs on its own runtime so a test can make it vanish without a goodbye.
+    node_runtime: Option<tokio::runtime::Runtime>,
     ui: UiClient,
     next_request: u64,
+    lease_ttl: u64,
+    leases: std::sync::Mutex<Vec<tokio::task::JoinHandle<()>>>,
 }
 
 fn tmux_available() -> bool {
@@ -53,6 +57,16 @@ impl Rig {
     }
 
     async fn start_with(tag: &str, command: &str, stall: Duration) -> (Self, String, u32) {
+        Self::start_full(tag, command, stall, 15).await
+    }
+
+    /// `ttl`: how many seconds a terminal lives after its UI's last lease.
+    async fn start_full(
+        tag: &str,
+        command: &str,
+        stall: Duration,
+        ttl: u64,
+    ) -> (Self, String, u32) {
         let serial = ONE_AT_A_TIME.lock().await;
         let tmux_name = format!("flight-test-{}-{tag}", std::process::id());
         let endpoint = TmuxEndpoint::named(&tmux_name).unwrap();
@@ -88,12 +102,21 @@ impl Rig {
         let node_id = Arc::new(Identity::generate().unwrap());
         let ui_id = Identity::generate().unwrap();
         let trust = trust_with(&[(&node_id, "mini-1")], &[(&ui_id, "laptop")]);
-        let (server, orch, addr) = start(trust, None).await;
+        let core = flight_orchestrator::OrchestratorConfig {
+            terminal_lease_ttl_secs: ttl,
+            ..Default::default()
+        };
+        let (server, orch, addr) = start_with_core(trust, None, core).await;
         let node_fp = node_id.fingerprint().clone();
         let link = node_link_stalling(&node_id, &addr, &orch, Arc::new(servers), stall);
         let (stop, stop_rx) = watch::channel(false);
         let runner = link.clone();
-        tokio::spawn(async move { runner.run(stop_rx).await });
+        let node_runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        node_runtime.spawn(async move { runner.run(stop_rx).await });
         wait_until("node online", || {
             node_status(&server, &node_fp) == Some(NodeStatusCode::Online as i32)
         })
@@ -120,8 +143,11 @@ impl Rig {
                 tmux,
                 tmux_name,
                 stop,
+                node_runtime: Some(node_runtime),
                 ui,
                 next_request: 100,
+                lease_ttl: ttl,
+                leases: std::sync::Mutex::new(Vec::new()),
             },
             pane,
             pid,
@@ -169,10 +195,53 @@ impl Rig {
         }
     }
 
+    /// Attach as a UI whose presentation renews its lease three times per lifetime, until
+    /// `stop_leasing`.
     async fn attach(&self, id: &[u8]) -> TerminalClient {
+        let term = self.attach_unleased(id).await;
+        let control = UiClient::connect(&self.addr, &self.ui_id, &self.orch)
+            .await
+            .expect("control");
+        let (id, period) = (
+            id.to_vec(),
+            Duration::from_millis(self.lease_ttl * 1000 / 3),
+        );
+        let task = tokio::spawn(async move {
+            loop {
+                let lease = UiRequest {
+                    body: Some(ui_request_body::Body::TerminalLease(TerminalLease {
+                        terminal_id: id.clone(),
+                    })),
+                };
+                if control.send(lease).is_err() {
+                    return;
+                }
+                tokio::time::sleep(period).await;
+            }
+        });
+        self.leases.lock().unwrap().push(task);
+        term
+    }
+
+    /// Attach and never renew: a UI that is connected but not alive.
+    async fn attach_unleased(&self, id: &[u8]) -> TerminalClient {
         TerminalClient::connect_ui(&self.addr, &self.ui_id, &self.orch, id)
             .await
             .expect("ui terminal")
+    }
+
+    fn stop_leasing(&self) {
+        for task in self.leases.lock().unwrap().drain(..) {
+            task.abort();
+        }
+    }
+
+    /// Every resource of a finished terminal is released: the tmux client, the orchestrator's
+    /// table entry and its relay.
+    async fn assert_gone(&self) {
+        self.wait_clients(0).await;
+        wait_until("terminal table empty", || self.server.terminals_open() == 0).await;
+        wait_until("relays released", || self.server.terminal_relays() == 0).await;
     }
 
     fn clients(&self) -> Vec<String> {
@@ -203,9 +272,21 @@ impl Rig {
     }
 }
 
+impl Rig {
+    /// The node disappears the way a killed process does: its tasks and sockets are dropped
+    /// with no chance to say anything.
+    fn vanish_node(&mut self) {
+        if let Some(runtime) = self.node_runtime.take() {
+            runtime.shutdown_background();
+        }
+    }
+}
+
 impl Drop for Rig {
     fn drop(&mut self) {
         let _ = self.stop.send(true);
+        self.stop_leasing();
+        self.vanish_node();
         let _ = self.tmux.kill_server();
         let _ = &self.tmux_name;
     }
@@ -238,6 +319,17 @@ async fn read_until(term: &mut TerminalClient, needle: &str) -> String {
 }
 
 /// The reason in the terminal's final frame; drains output until it arrives.
+/// The terminal ended because its lease lapsed. The exit frame is best effort (the stream can
+/// close first, as in the node-lost case), so the stream ending without one also counts; the
+/// cleanup checks that follow are the real assertion.
+async fn assert_lease_expired(term: &mut TerminalClient) {
+    let reason = exit_reason(term).await;
+    assert!(
+        reason.is_none() || reason == Some(ExitReasonCode::LeaseExpired as i32),
+        "ended with {reason:?}"
+    );
+}
+
 async fn exit_reason(term: &mut TerminalClient) -> Option<i32> {
     within("terminal exit", async {
         loop {
@@ -473,4 +565,163 @@ async fn a_ui_wedged_past_the_stall_limit_loses_the_terminal_and_nothing_is_left
     assert_eq!(rig.server.terminals_open(), 0, "the stall rule never fired");
     rig.wait_clients(0).await;
     drop(term);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_node_lost_while_the_relay_is_blocked_on_a_wedged_ui_is_noticed_promptly() {
+    if !tmux_available() {
+        return;
+    }
+    let (mut rig, pane, pid) = Rig::start_with(
+        "lostblocked",
+        "sh -c 'while :; do echo flood-flood-flood-flood-flood-flood; done'",
+        Duration::from_secs(60),
+    )
+    .await;
+    rig.server.set_terminal_stall(Duration::from_secs(60));
+    let id = rig.open(&pane, pid).await.unwrap();
+    let mut term = rig.attach(&id).await;
+    rig.wait_clients(1).await;
+    read_until(&mut term, "flood").await;
+    // The UI stops reading. How fast the orchestrator's queue toward it fills depends on the
+    // machine (HTTP/2 windows absorb a lot on some), so wait a while and say what was reached.
+    let mut blocked = false;
+    for _ in 0..300 {
+        if rig.server.terminal_queue_peak() >= 4 {
+            blocked = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    eprintln!("relay queue full before the node vanished: {blocked}");
+    // Let the HTTP/2 windows in front of the queue fill as well.
+    tokio::time::sleep(Duration::from_secs(8)).await;
+
+    let lost = std::time::Instant::now();
+    rig.vanish_node();
+    for _ in 0..400 {
+        if rig.server.terminals_open() == 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let took = lost.elapsed();
+    eprintln!("node loss noticed after {took:?}");
+    assert_eq!(
+        rig.server.terminals_open(),
+        0,
+        "node loss was never noticed"
+    );
+    assert!(took < Duration::from_secs(5), "node loss took {took:?}");
+    rig.wait_clients(0).await;
+    drop(term);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_idle_terminal_with_a_live_ui_outlives_many_lease_lifetimes() {
+    if !tmux_available() {
+        return;
+    }
+    let (mut rig, pane, pid) = Rig::start_full("idle", "cat", Duration::from_secs(30), 3).await;
+    let id = rig.open(&pane, pid).await.unwrap();
+    let mut term = rig.attach(&id).await;
+    rig.wait_clients(1).await;
+    // Four lifetimes of silence in both directions.
+    tokio::time::sleep(Duration::from_secs(12)).await;
+    assert_eq!(
+        rig.server.terminals_open(),
+        1,
+        "an idle terminal was torn down"
+    );
+    term.send(TerminalFrame::data(b"still-here\n".to_vec()))
+        .await
+        .unwrap();
+    read_until(&mut term, "still-here").await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_ui_that_stops_renewing_loses_an_idle_terminal_and_nothing_is_left() {
+    if !tmux_available() {
+        return;
+    }
+    let (mut rig, pane, pid) = Rig::start_full("nolease", "cat", Duration::from_secs(30), 3).await;
+    let id = rig.open(&pane, pid).await.unwrap();
+    // Connected, reading, but never alive: no lease is ever sent.
+    let mut term = rig.attach_unleased(&id).await;
+    rig.wait_clients(1).await;
+    let started = std::time::Instant::now();
+    assert_lease_expired(&mut term).await;
+    rig.assert_gone().await;
+    let took = started.elapsed();
+    assert!(took < Duration::from_secs(8), "took {took:?}");
+    // The id is dead for good.
+    let again = TerminalClient::connect_ui(&rig.addr, &rig.ui_id, &rig.orch, &id).await;
+    let refused = match again {
+        Ok(mut t) => matches!(t.next().await, Err(_) | Ok(None)),
+        Err(_) => true,
+    };
+    assert!(refused, "an expired id must not attach");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_ui_that_stops_renewing_and_stops_reading_loses_a_busy_terminal_too() {
+    if !tmux_available() {
+        return;
+    }
+    // Stall limits far away: only the lease can end this one.
+    let (mut rig, pane, pid) = Rig::start_full(
+        "busylease",
+        "sh -c 'while :; do echo flood-flood-flood-flood-flood-flood; done'",
+        Duration::from_secs(60),
+        3,
+    )
+    .await;
+    rig.server.set_terminal_stall(Duration::from_secs(60));
+    let id = rig.open(&pane, pid).await.unwrap();
+    let mut term = rig.attach(&id).await;
+    rig.wait_clients(1).await;
+    read_until(&mut term, "flood").await;
+    // Not reading for a while: whether the queues have filled yet depends on the machine, and
+    // the lease does not care.
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    rig.stop_leasing();
+    let started = std::time::Instant::now();
+    wait_until("the lease to lapse", || rig.server.terminals_open() == 0).await;
+    rig.assert_gone().await;
+    let took = started.elapsed();
+    assert!(took < Duration::from_secs(10), "took {took:?}");
+    drop(term);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn fifty_terminals_come_and_go_and_leave_nothing_behind() {
+    if !tmux_available() {
+        return;
+    }
+    let (mut rig, pane, pid) = Rig::start_full("fifty", "cat", Duration::from_secs(30), 2).await;
+    // More than the node's limit of four: a leaked slot would make a later open Busy.
+    for n in 0..50 {
+        let id = rig
+            .open(&pane, pid)
+            .await
+            .unwrap_or_else(|k| panic!("open {n}: {k}"));
+        let mut term = if n % 10 == 9 {
+            // Every tenth UI just stops being alive.
+            rig.attach_unleased(&id).await
+        } else {
+            rig.attach(&id).await
+        };
+        rig.wait_clients(1).await;
+        if n % 10 == 9 {
+            assert_lease_expired(&mut term).await;
+        } else {
+            term.send(TerminalFrame {
+                body: Some(terminal_body::Body::Close(TerminalClose {})),
+            })
+            .await
+            .unwrap();
+        }
+        rig.stop_leasing();
+        rig.assert_gone().await;
+    }
 }

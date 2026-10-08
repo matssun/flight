@@ -6,15 +6,15 @@
 
 use flight_classify::AgentKind;
 use flight_client::{
-    relay, ClientConfig, Handoff, OrchestratedBackend, RemoteOps, Switcher, TerminalEnd,
+    relay, ClientConfig, Handoff, Lease, OrchestratedBackend, RemoteOps, Switcher, TerminalEnd,
 };
 use flight_node::{NodeCore, NodeSession, PaneObservation, Round, ServerOutcome, TmuxServers};
 use flight_orchestrator::OrchestratorConfig;
-use flight_proto::{ExitReasonCode, Incarnation};
+use flight_proto::{ui_request_body, ExitReasonCode, Incarnation, TerminalLease, UiRequest};
 use flight_state::{AgentState, HostId, PaneId, PaneRef, ServerId};
 use flight_tmux::{SystemRunner, Tmux, TmuxEndpoint, TmuxRunner};
 use flight_transport::{
-    serve, NodeLink, NodeLinkConfig, ServerConfig, ServerHandle, TerminalClient,
+    serve, NodeLink, NodeLinkConfig, ServerConfig, ServerHandle, TerminalClient, UiClient,
 };
 use flight_trust::{Identity, Role, TrustStore};
 use flight_ui::{Backend, PaneView};
@@ -203,6 +203,10 @@ fn start(tag: &str, command: &str, terminals: bool) -> Rig {
 }
 
 impl Rig {
+    fn relays_open(&self) -> usize {
+        self.server.as_ref().map_or(0, |s| s.terminal_relays())
+    }
+
     fn terminals_open(&self) -> usize {
         self.server.as_ref().map_or(0, |s| s.terminals_open())
     }
@@ -263,6 +267,14 @@ impl Rig {
 
     /// Attach the relay to terminal `id` with plain channels.
     fn show(&self, id: &[u8]) -> Shown {
+        let lease = self
+            .rt
+            .block_on(Lease::connect(&self.config, id))
+            .expect("lease");
+        self.show_with(id, lease)
+    }
+
+    fn show_with(&self, id: &[u8], lease: Lease) -> Shown {
         let client = self
             .rt
             .block_on(TerminalClient::connect_ui(
@@ -283,6 +295,7 @@ impl Rig {
             resize_rx,
             output_tx,
             || {},
+            lease,
         ));
         Shown {
             input: input_tx,
@@ -579,4 +592,94 @@ fn losing_the_orchestrator_mid_session_ends_the_relay_and_hangs_the_node_up() {
         .runner()
         .run(&["has-session", "-t", "=work"])
         .expect("the session is untouched");
+}
+
+#[test]
+fn a_presenter_whose_control_connection_dies_stops_renewing_and_the_terminal_goes() {
+    if !tmux_available() {
+        return;
+    }
+    let mut rig = start("leasectl", "cat", true);
+    // The presenter's dedicated control connection, which the test can kill. Its lease is
+    // renewed every second; the orchestrator's lifetime (15 s) and stall limit (30 s) are
+    // far away, so only the presenter noticing can end this quickly.
+    let control = Arc::new(std::sync::Mutex::new(Some(
+        rig.rt
+            .block_on(UiClient::connect(
+                &rig.config.address,
+                &rig.config.identity,
+                &rig.config.orchestrator,
+            ))
+            .expect("control"),
+    )));
+    let id = rig.enter(0);
+    let renewals = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let lease = {
+        let (control, renewals, id) = (control.clone(), renewals.clone(), id.clone());
+        Lease {
+            period: Duration::from_secs(1),
+            renew: Box::new(move || {
+                let guard = control.lock().unwrap_or_else(|p| p.into_inner());
+                let client = guard.as_ref().ok_or("it was dropped")?;
+                client
+                    .send(UiRequest {
+                        body: Some(ui_request_body::Body::TerminalLease(TerminalLease {
+                            terminal_id: id.clone(),
+                        })),
+                    })
+                    .map_err(|e| e.to_string())?;
+                renewals.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                Ok(())
+            }),
+        }
+    };
+    let mut shown = rig.show_with(&id, lease);
+    rig.wait("tmux client attached", |r| {
+        r.clients() == vec!["work".to_owned()]
+    });
+    // Normal traffic, and the lease is being renewed.
+    rig.rt
+        .block_on(shown.input.send(b"healthy-traffic\r".to_vec()))
+        .expect("input");
+    read_until(&rig, &mut shown, "healthy-traffic");
+    rig.wait("renewals", |_| {
+        renewals.load(std::sync::atomic::Ordering::Relaxed) >= 2
+    });
+
+    // The control connection dies; the terminal stream itself is untouched.
+    let killed = Instant::now();
+    drop(control.lock().unwrap_or_else(|p| p.into_inner()).take());
+    let end = finish(&rig, shown);
+    let took = killed.elapsed();
+    eprintln!("presenter ended after {took:?}: {end}");
+    assert!(
+        matches!(&end, TerminalEnd::Lost(why) if why.contains("control connection")),
+        "{end:?}"
+    );
+    let stopped_at = renewals.load(std::sync::atomic::Ordering::Relaxed);
+
+    rig.wait("no tmux client left", |r| r.clients().is_empty());
+    rig.wait("table empty", |r| r.terminals_open() == 0);
+    rig.wait("relay released", |r| r.relays_open() == 0);
+    assert!(took < Duration::from_secs(5), "took {took:?}");
+    std::thread::sleep(Duration::from_secs(2));
+    assert_eq!(
+        renewals.load(std::sync::atomic::Ordering::Relaxed),
+        stopped_at,
+        "the presenter kept renewing"
+    );
+
+    // No node slot was consumed: the node's limit is four, and five more terminals open.
+    for n in 0..5 {
+        let id = rig.enter(0);
+        let shown = rig.show(&id);
+        rig.wait("tmux client attached", |r| r.clients().len() == 1);
+        rig.rt
+            .block_on(shown.input.send(b"\x1dq".to_vec()))
+            .expect("input");
+        assert_eq!(finish(&rig, shown), TerminalEnd::UserLeft, "terminal {n}");
+        rig.wait("no tmux client left", |r| r.clients().is_empty());
+        rig.wait("table empty", |r| r.terminals_open() == 0);
+    }
+    rig.wait("relays released", |r| r.relays_open() == 0);
 }

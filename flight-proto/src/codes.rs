@@ -44,6 +44,7 @@ wire_enum! {
         Stalled = 5,
         Revoked = 6,
         Shutdown = 7,
+        LeaseExpired = 8,
     }
 }
 

@@ -9,6 +9,7 @@ impl OrchestratorCore {
     /// fail requests that outlived their deadline. Pane state is never touched.
     pub fn tick(&mut self, now: u64) -> Effects {
         self.clock = self.clock.max(now);
+        self.forgive_pause(now);
         let mut fx = Effects::default();
         let (stale_after, disconnect_after) =
             (self.config.stale_after(), self.config.disconnect_after());

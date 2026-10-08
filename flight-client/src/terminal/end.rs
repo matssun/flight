@@ -37,6 +37,9 @@ impl fmt::Display for TerminalEnd {
                 }
                 ExitReasonCode::Revoked => f.write_str("this identity is no longer authorized"),
                 ExitReasonCode::Shutdown => f.write_str("the orchestrator is shutting down"),
+                ExitReasonCode::LeaseExpired => {
+                    f.write_str("the terminal's lease lapsed (this UI stopped renewing it)")
+                }
                 ExitReasonCode::Unspecified => f.write_str("the terminal ended"),
             },
             Self::Lost(why) => write!(f, "the terminal connection was lost: {why}"),

@@ -223,6 +223,13 @@ impl NodeSession {
                 }
                 Ok(ControlJob::reveal(id, pane.server, pane.pane, published))
             }
+            Some(Kind::OpenTerminal(_)) => {
+                need(capability::TERMINAL)?;
+                Err(ControlError::new(
+                    ErrorKindCode::Unsupported,
+                    "terminals are not available yet",
+                ))
+            }
             Some(Kind::SendInput(_)) => Err(ControlError::new(
                 ErrorKindCode::Unsupported,
                 "input is not available yet",

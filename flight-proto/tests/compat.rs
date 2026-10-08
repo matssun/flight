@@ -320,3 +320,154 @@ fn every_message_kind_round_trips() {
         assert_eq!(decode::<NodeFrame>(&encode(&f)), Ok(f));
     }
 }
+
+fn open(f: impl FnOnce(&mut command_kind::OpenTerminal)) -> Command {
+    let mut open = command_kind::OpenTerminal {
+        pane_ref: pane_state("%1", StateCode::Busy).pane_ref,
+        expected_pid: 4242,
+        cols: 80,
+        rows: 24,
+        term: "xterm-256color".to_owned(),
+        terminal_id: Vec::new(),
+    };
+    f(&mut open);
+    Command {
+        kind: Some(command_kind::Kind::OpenTerminal(open)),
+    }
+}
+
+#[test]
+fn an_open_terminal_is_validated_at_the_boundary() {
+    assert!(open(|_| {}).validate().is_ok());
+    assert!(open(|o| o.terminal_id = vec![7; TERMINAL_ID_LEN])
+        .validate()
+        .is_ok());
+    let bad: Vec<(Box<dyn FnOnce(&mut command_kind::OpenTerminal)>, &str)> = vec![
+        (
+            Box::new(|o| o.expected_pid = 0),
+            "open_terminal.expected_pid",
+        ),
+        (Box::new(|o| o.cols = 0), "open_terminal.size"),
+        (Box::new(|o| o.rows = 0), "open_terminal.size"),
+        (
+            Box::new(|o| o.cols = MAX_TERMINAL_DIM + 1),
+            "open_terminal.size",
+        ),
+        (Box::new(|o| o.rows = u32::MAX), "open_terminal.size"),
+        (Box::new(|o| o.term = String::new()), "open_terminal.term"),
+        (
+            Box::new(|o| o.term = "x".repeat(MAX_TERM_LEN + 1)),
+            "open_terminal.term",
+        ),
+        (
+            Box::new(|o| o.term = "xterm;rm".to_owned()),
+            "open_terminal.term",
+        ),
+        (
+            Box::new(|o| o.term = "a b".to_owned()),
+            "open_terminal.term",
+        ),
+        (
+            Box::new(|o| o.term = "x\n".to_owned()),
+            "open_terminal.term",
+        ),
+        (
+            Box::new(|o| o.terminal_id = vec![1; 15]),
+            "open_terminal.terminal_id",
+        ),
+    ];
+    for (mutate, what) in bad {
+        assert_eq!(
+            open(mutate).validate(),
+            Err(Reject::OutOfRange(what)),
+            "{what}"
+        );
+    }
+}
+
+#[test]
+fn a_ui_cannot_choose_the_terminal_id_and_a_node_must_be_given_one() {
+    let ui = |id: Vec<u8>| UiRequest {
+        body: Some(ui_request_body::Body::Command(Request {
+            request_id: 1,
+            command: Some(open(|o| o.terminal_id = id)),
+        })),
+    };
+    assert!(ui(Vec::new()).validate().is_ok());
+    assert_eq!(
+        ui(vec![7; TERMINAL_ID_LEN]).validate(),
+        Err(Reject::Mismatch("open_terminal.terminal_id"))
+    );
+    let node = |id: Vec<u8>| OrchestratorFrame {
+        body: Some(orchestrator_body::Body::Request(Request {
+            request_id: 1,
+            command: Some(open(|o| o.terminal_id = id)),
+        })),
+    };
+    assert!(node(vec![7; TERMINAL_ID_LEN]).validate().is_ok());
+    assert_eq!(
+        node(Vec::new()).validate(),
+        Err(Reject::Missing("open_terminal.terminal_id"))
+    );
+}
+
+#[test]
+fn terminal_frames_are_bounded_and_directional() {
+    use Origin::{Node, Ui};
+    let data = |n: usize| TerminalFrame::data(vec![0; n]);
+    assert!(data(MAX_TERMINAL_DATA).validate_from(Ui).is_ok());
+    assert_eq!(
+        data(MAX_TERMINAL_DATA + 1).validate(),
+        Err(Reject::TooLarge {
+            len: MAX_TERMINAL_DATA + 1,
+            max: MAX_TERMINAL_DATA
+        })
+    );
+    assert!(TerminalFrame::attach(vec![0; 15]).validate().is_err());
+    assert!(TerminalFrame::attach(vec![0; TERMINAL_ID_LEN])
+        .validate()
+        .is_ok());
+    let resize = |cols, rows| TerminalFrame {
+        body: Some(terminal_body::Body::Resize(TerminalResize { cols, rows })),
+    };
+    assert!(resize(80, 24).validate_from(Ui).is_ok());
+    assert!(resize(0, 24).validate().is_err());
+    assert!(resize(80, MAX_TERMINAL_DIM + 1).validate().is_err());
+    assert!(
+        resize(80, 24).validate_from(Node).is_err(),
+        "a node cannot resize"
+    );
+    let exit = TerminalFrame {
+        body: Some(terminal_body::Body::Exit(TerminalExit {
+            reason: ExitReasonCode::NodeLost as i32,
+            status: 0,
+        })),
+    };
+    assert!(exit.validate_from(Node).is_ok());
+    assert!(
+        exit.validate_from(Ui).is_err(),
+        "a UI cannot exit a terminal"
+    );
+    let unknown = TerminalFrame {
+        body: Some(terminal_body::Body::Exit(TerminalExit {
+            reason: 99,
+            status: 0,
+        })),
+    };
+    assert!(unknown.validate().is_err());
+    let close = TerminalFrame {
+        body: Some(terminal_body::Body::Close(TerminalClose {})),
+    };
+    assert!(close.validate_from(Ui).is_ok() && close.validate_from(Node).is_err());
+    assert!(TerminalFrame::default().validate().is_err());
+}
+
+#[test]
+fn terminal_syntax_helpers_agree_with_the_rules() {
+    for ok in ["xterm", "xterm-256color", "screen.xterm_new", "a"] {
+        assert!(valid_term(ok), "{ok}");
+    }
+    for bad in ["", "a b", "a;b", "é", &"x".repeat(33)] {
+        assert!(!valid_term(bad), "{bad:?}");
+    }
+}

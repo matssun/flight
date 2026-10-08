@@ -11,6 +11,7 @@ fn required_capability(kind: &Kind) -> &'static str {
     match kind {
         Kind::GetPreview(_) => capability::PREVIEW,
         Kind::RevealPane(_) => capability::GUARDED_REVEAL,
+        Kind::OpenTerminal(_) => capability::TERMINAL,
         Kind::SendInput(_) => capability::SEND_INPUT,
         Kind::KillPane(_) => capability::KILL,
         Kind::CreateSession(_) => capability::CREATE_SESSION,

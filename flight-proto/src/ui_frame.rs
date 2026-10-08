@@ -34,7 +34,17 @@ impl Validate for UiRequest {
             .ok_or(Reject::Missing("ui_request.body"))?
         {
             ui_request_body::Body::Subscribe(_) => Ok(()),
-            ui_request_body::Body::Command(r) => r.validate(),
+            ui_request_body::Body::Command(r) => {
+                r.validate()?;
+                if let Some(crate::command_kind::Kind::OpenTerminal(open)) =
+                    r.command.as_ref().and_then(|c| c.kind.as_ref())
+                {
+                    if !open.terminal_id.is_empty() {
+                        return Err(Reject::Mismatch("open_terminal.terminal_id"));
+                    }
+                }
+                Ok(())
+            }
         }
     }
 }

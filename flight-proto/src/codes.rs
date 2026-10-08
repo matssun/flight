@@ -30,6 +30,20 @@ wire_enum! {
         InvalidRequest = 8,
         NodeUnreachable = 9,
         PaneChanged = 10,
+        Busy = 11,
+    }
+}
+
+wire_enum! {
+    /// Why a terminal session ended (ADR-003).
+    ExitReasonCode {
+        ClientExited = 1,
+        StartFailed = 2,
+        ClosedByUi = 3,
+        NodeLost = 4,
+        Stalled = 5,
+        Revoked = 6,
+        Shutdown = 7,
     }
 }
 

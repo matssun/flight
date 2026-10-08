@@ -55,7 +55,17 @@ impl Validate for OrchestratorFrame {
             Hello(m) => m.validate(),
             Heartbeat(m) => m.validate(),
             Resync(_) => Ok(()),
-            Request(m) => m.validate(),
+            Request(m) => {
+                m.validate()?;
+                if let Some(crate::command_kind::Kind::OpenTerminal(open)) =
+                    m.command.as_ref().and_then(|c| c.kind.as_ref())
+                {
+                    if open.terminal_id.len() != crate::TERMINAL_ID_LEN {
+                        return Err(Reject::Missing("open_terminal.terminal_id"));
+                    }
+                }
+                Ok(())
+            }
             Goodbye(g) => ErrorKindCode::decode(g.reason, "goodbye.reason").map(|_| ()),
         }
     }

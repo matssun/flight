@@ -22,7 +22,13 @@ use std::time::Duration;
 use support::*;
 use tokio::sync::watch;
 
+/// These tests start tmux servers and PTYs in one process. A child forked by one test can
+/// briefly inherit a descriptor another test's PTY depends on, which delays the end-of-file
+/// that tells a node its tmux client is gone, so they run one at a time.
+static ONE_AT_A_TIME: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 struct Rig {
+    _serial: tokio::sync::MutexGuard<'static, ()>,
     server: ServerHandle,
     addr: String,
     orch: Fingerprint,
@@ -47,6 +53,7 @@ impl Rig {
     }
 
     async fn start_with(tag: &str, command: &str, stall: Duration) -> (Self, String, u32) {
+        let serial = ONE_AT_A_TIME.lock().await;
         let tmux_name = format!("flight-test-{}-{tag}", std::process::id());
         let endpoint = TmuxEndpoint::named(&tmux_name).unwrap();
         let tmux = Tmux::new(endpoint.clone());
@@ -104,6 +111,7 @@ impl Rig {
         .await;
         (
             Self {
+                _serial: serial,
                 server,
                 addr,
                 orch,
@@ -324,6 +332,11 @@ async fn detaching_in_tmux_ends_the_terminal_with_a_reason() {
     let id = rig.open(&pane, pid).await.unwrap();
     let mut term = rig.attach(&id).await;
     rig.wait_clients(1).await;
+    // A client is listed before it is attached to its session; detaching then does nothing.
+    wait_until("attached to its session", || {
+        rig.clients().iter().any(|c| c.starts_with("work "))
+    })
+    .await;
     rig.tmux
         .runner()
         .run(&["detach-client", "-s", "work"])

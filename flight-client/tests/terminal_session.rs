@@ -23,7 +23,13 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, watch};
 
+/// These tests start tmux servers and PTYs in one process. A child forked by one test can
+/// briefly inherit a descriptor another test's PTY depends on, which delays the end-of-file
+/// that tells a node its tmux client is gone, so they run one at a time.
+static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 struct Rig {
+    _serial: std::sync::MutexGuard<'static, ()>,
     rt: tokio::runtime::Runtime,
     server: Option<ServerHandle>,
     config: ClientConfig,
@@ -40,6 +46,7 @@ fn tmux_available() -> bool {
 }
 
 fn start(tag: &str, command: &str, terminals: bool) -> Rig {
+    let serial = ONE_AT_A_TIME.lock().unwrap_or_else(|p| p.into_inner());
     let rt = tokio::runtime::Runtime::new().expect("runtime");
     let name = format!("flight-test-{}-{tag}", std::process::id());
     let endpoint = TmuxEndpoint::named(&name).expect("endpoint");
@@ -183,6 +190,7 @@ fn start(tag: &str, command: &str, terminals: bool) -> Rig {
         std::thread::sleep(Duration::from_millis(50));
     }
     Rig {
+        _serial: serial,
         rt,
         server: Some(server),
         config,
@@ -441,7 +449,10 @@ fn a_remote_detach_ends_the_relay_with_the_reason() {
     let mut rig = start("detach", "cat", true);
     let id = rig.enter(0);
     let shown = rig.show(&id);
-    rig.wait("tmux client attached", |r| r.clients().len() == 1);
+    // A client is listed before it is attached to its session; detaching then does nothing.
+    rig.wait("attached to its session", |r| {
+        r.clients() == vec!["work".to_owned()]
+    });
     rig.tmux
         .runner()
         .run(&["detach-client", "-s", "work"])

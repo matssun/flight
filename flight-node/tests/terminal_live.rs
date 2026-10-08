@@ -287,6 +287,15 @@ fn the_terminal_ends_by_itself_when_the_user_detaches_in_tmux() {
     } = live.servers.open_terminal(&live.spec(&pane, pid)).unwrap();
     let rx = output_of(reader);
     live.wait_clients(1);
+    // A client is listed before it is attached to its session; detaching then does nothing.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !live.clients().iter().any(|c| c.starts_with("work ")) {
+        assert!(
+            Instant::now() < deadline,
+            "client never attached to its session"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
     live.raw(&["detach-client", "-s", "work"]);
     // End of file on the output, then a reapable exit.
     let deadline = Instant::now() + Duration::from_secs(10);

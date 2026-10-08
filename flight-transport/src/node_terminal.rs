@@ -32,6 +32,10 @@ const MIN_FRAME_GAP: Duration = Duration::from_millis(8);
 /// Sent before a redraw: CAN and SUB abort an escape sequence the terminal may be in the
 /// middle of, then reset attributes.
 const RESYNC_PREFIX: &[u8] = b"\x18\x1a\x1b[0m";
+/// How long after the tmux client exits the reader gets to deliver its last output.
+const EXIT_DRAIN: Duration = Duration::from_millis(150);
+/// How often the input side looks for work and for the client having exited.
+const WRITER_POLL: Duration = Duration::from_millis(10);
 /// How long a hung-up tmux client has to be reaped.
 const REAP_GRACE: Duration = Duration::from_secs(2);
 
@@ -58,9 +62,13 @@ pub(crate) async fn run(
         redraw,
     } = opened;
     let killer = process.hang_up_handle();
+    let output = Arc::new(Output::default());
     let (cmd_tx, cmd_rx) = mpsc::channel::<Command>(4);
     let (code_tx, code_rx) = oneshot::channel::<Option<i32>>();
-    let writer = std::thread::spawn(move || write_loop(process, cmd_rx, code_tx));
+    let writer = {
+        let output = output.clone();
+        std::thread::spawn(move || write_loop(process, cmd_rx, &output, code_tx))
+    };
 
     let hang_up = || killer.clone().hang_up();
 
@@ -97,7 +105,6 @@ pub(crate) async fn run(
     // Output: the blocking reader appends to a bounded buffer and this task sends it on in
     // frames of up to 16 KiB. Reads that arrive while a send is waiting coalesce into larger
     // frames instead of queueing as many small ones.
-    let output = Arc::new(Output::default());
     let discarded = Arc::new(AtomicU64::new(0));
     let reader_thread = {
         let (output, discarded) = (output.clone(), discarded.clone());
@@ -288,16 +295,81 @@ fn read_loop(
 fn write_loop(
     mut process: flight_node::TerminalProcess,
     mut commands: mpsc::Receiver<Command>,
+    output: &Output,
     done: oneshot::Sender<Option<i32>>,
 ) {
-    while let Some(command) = commands.blocking_recv() {
-        let ok = match command {
-            Command::Write(bytes) => process.write_all(&bytes).is_ok(),
-            Command::Resize(cols, rows) => process.resize(cols, rows).is_ok(),
-        };
-        if !ok {
-            break;
+    let mut exited_at: Option<std::time::Instant> = None;
+    loop {
+        match commands.try_recv() {
+            Ok(command) => {
+                let ok = match command {
+                    Command::Write(bytes) => process.write_all(&bytes).is_ok(),
+                    Command::Resize(cols, rows) => process.resize(cols, rows).is_ok(),
+                };
+                if !ok {
+                    break;
+                }
+            }
+            Err(mpsc::error::TryRecvError::Disconnected) => break,
+            Err(mpsc::error::TryRecvError::Empty) => {
+                // The terminal ends when the tmux client does, not only when the PTY reports
+                // end of file: a stray process holding the PTY open must not keep it alive.
+                // Give the reader a moment to deliver what the client said last.
+                match exited_at {
+                    None if process.try_exit_code().is_some() => {
+                        exited_at = Some(std::time::Instant::now());
+                    }
+                    Some(at) if at.elapsed() > EXIT_DRAIN => {
+                        output.lock().done = true;
+                        output.wake.notify_one();
+                        exited_at = None;
+                        // Keep serving commands until the async side hangs up.
+                        std::thread::sleep(WRITER_POLL);
+                        continue;
+                    }
+                    _ => {}
+                }
+                std::thread::sleep(WRITER_POLL);
+            }
         }
     }
     let _ = done.send(process.hang_up(REAP_GRACE));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_terminal_ends_when_the_client_exits_even_if_something_else_holds_the_pty_open() {
+        // The shell exits at once; the background sleep inherits the PTY and keeps it open, so
+        // the output never reaches end of file.
+        let opened = flight_node::TerminalProcess::spawn(
+            "sh",
+            &["-c".to_owned(), "sleep 3 & exit 3".to_owned()],
+            &[("PATH".to_owned(), std::env::var("PATH").unwrap_or_default())],
+            80,
+            24,
+        )
+        .expect("spawn");
+        let output = Arc::new(Output::default());
+        let (commands, receiver) = mpsc::channel::<Command>(4);
+        let (done, code) = oneshot::channel();
+        let writer = {
+            let output = output.clone();
+            std::thread::spawn(move || write_loop(opened.process, receiver, &output, done))
+        };
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while !output.lock().done {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the exit of the client was not noticed"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        drop(commands);
+        let _ = writer.join();
+        assert_eq!(code.blocking_recv().ok().flatten(), Some(3));
+        drop(opened.reader);
+    }
 }

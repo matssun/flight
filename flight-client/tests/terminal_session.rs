@@ -448,7 +448,11 @@ fn a_remote_detach_ends_the_relay_with_the_reason() {
     }
     let mut rig = start("detach", "cat", true);
     let id = rig.enter(0);
-    let shown = rig.show(&id);
+    let mut shown = rig.show(&id);
+    // The user's terminal is reading, so the relay can get to the end of the stream.
+    let mut output = std::mem::replace(&mut shown.output, mpsc::channel(1).1);
+    rig.rt
+        .spawn(async move { while output.recv().await.is_some() {} });
     // A client is listed before it is attached to its session; detaching then does nothing.
     rig.wait("attached to its session", |r| {
         r.clients() == vec!["work".to_owned()]
@@ -522,7 +526,10 @@ fn a_pane_id_reused_by_a_restarted_tmux_is_refused_even_though_the_node_has_not_
     // tmux restarts and hands the same pane ids to new processes; the node's last observation
     // (and so the dashboard's pid) is now a lie.
     let _ = rig.tmux.runner().run(&["kill-server"]);
-    rig.tmux
+    // The old server may still be shutting down; starting a new one then fails.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while rig
+        .tmux
         .runner()
         .run(&[
             "new-session",
@@ -535,7 +542,11 @@ fn a_pane_id_reused_by_a_restarted_tmux_is_refused_even_though_the_node_has_not_
             "30",
             "cat",
         ])
-        .expect("session");
+        .is_err()
+    {
+        assert!(Instant::now() < deadline, "tmux would not restart");
+        std::thread::sleep(Duration::from_millis(50));
+    }
     rig.tmux
         .runner()
         .run(&["split-window", "-d", "-t", "work:", "cat"])

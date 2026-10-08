@@ -2,7 +2,7 @@
 
 # ADR-003: Switching to a pane through the orchestrator
 
-Status: Revised and approved (remote presentation is a Flight-native terminal session). Slices 2 (protocol and node-side reveal) and 3 (orchestrator routing) are implemented and stand. Slice 4 is implemented for local presentation only; its ssh-based remote presentation is **superseded** by the Flight-native terminal session below and is to be removed. Nothing in this revision is implemented yet.
+Status: Accepted and implemented (remote presentation is a Flight-native terminal session). Slices 1 to 10 are done on the branch `orchestrated-switch`; nothing is pushed. Slices 2 (protocol and node-side reveal) and 3 (orchestrator routing) are implemented and stand. Slice 4 is implemented for local presentation only; its ssh-based remote presentation is **superseded** by the Flight-native terminal session below and is to be removed. Nothing in this revision is implemented yet.
 
 ## Invariant
 
@@ -213,4 +213,4 @@ An earlier revision of this note presented a remote pane with `ssh -t <destinati
 7. **Done (synchronous part).** Node: PTY (`portable-pty`, no unsafe code of ours), the guarded tmux command, session planning (capability, pid, id), `--no-terminal`, hang-up and reap; the stream pumps, the per-node limit and the terminal dial-out are part of slice 8 because they are the other half of the transport. Hang-up is `SIGHUP` to the tmux client (a detach as far as tmux is concerned), then a reap; against real tmux, including the atomic-recheck cases (right pid, wrong pid), every lifecycle row, and the process-table check.
 8. **Done.** Orchestrator and transport: terminal table, id minting, attach authentication, splice, direction/size checks, limits, stall rule, node-loss and revoke handling; core-level tests with the in-memory world, then transport tests with real streams (including the wedged-UI backpressure test).
 9. **Done.** UI: terminal presenter (suspend dashboard, raw relay, resize, local detach key, return to dashboard), plan `RemoteTerminal`.
-10. End to end: remote selected pane through a real orchestrator and node with no ssh anywhere (the test environment has none configured), the pane-replaced race across the whole chain, node disconnect mid-session, orchestrator restart mid-session, UI wedge.
+10. **Done.** End to end: remote selected pane through a real orchestrator and node with no ssh anywhere (the test environment has none configured), the pane-replaced race across the whole chain, node disconnect mid-session, orchestrator restart mid-session, UI wedge.

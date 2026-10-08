@@ -80,9 +80,9 @@ fn serve_command(args: &[String]) -> Result<(), String> {
         let advertise = args
             .value("--advertise")
             .map_or_else(|| handle.local_addr().to_string(), str::to_owned);
-        handle.clone_control().set_log(std::sync::Arc::new(|line| {
-            println!("{} {line}", crate::clock::utc_clock())
-        }));
+        handle
+            .clone_control()
+            .set_log(std::sync::Arc::new(|line| crate::clock::log_line(&line)));
         let admin = serve_admin(
             dir.join("admin.sock"),
             handle.clone_control(),

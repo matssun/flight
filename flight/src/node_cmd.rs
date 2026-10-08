@@ -149,9 +149,7 @@ fn run_node(args: &[String]) -> Result<(), String> {
         session,
         servers.clone(),
     )
-    .with_log(Arc::new(|line| {
-        println!("{} {line}", crate::clock::utc_clock());
-    }));
+    .with_log(Arc::new(|line| crate::clock::log_line(&line)));
     let link = Arc::new(match exit_after {
         Some(limit) => link.with_unreachable_limit(limit),
         None => link,

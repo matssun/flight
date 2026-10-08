@@ -7,68 +7,10 @@
 
 mod support;
 
-use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::Stdio;
 use std::time::{Duration, Instant};
 use support::*;
-
-fn flight() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_flight"))
-}
-
-/// A child process killed on drop.
-struct Proc(Child);
-
-impl Drop for Proc {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
-
-fn run_ok(base: &Path, args: &[&str]) -> String {
-    let out = flight()
-        .args(args)
-        .arg("--config-dir")
-        .arg(base)
-        .output()
-        .expect("run flight");
-    assert!(
-        out.status.success(),
-        "flight {args:?} failed: {}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    String::from_utf8_lossy(&out.stdout).into_owned()
-}
-
-fn start_orchestrator(base: &Path) -> (Proc, String) {
-    let mut child = flight()
-        .args([
-            "orchestrator",
-            "run",
-            "--listen",
-            "127.0.0.1:0",
-            "--name",
-            "e2e-orch",
-            "--config-dir",
-        ])
-        .arg(base)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("start orchestrator");
-    let stdout = child.stdout.take().expect("stdout");
-    let mut lines = BufReader::new(stdout).lines();
-    let mut addr = None;
-    for _ in 0..3 {
-        let line = lines.next().expect("orchestrator output").expect("line");
-        if let Some(a) = line.strip_prefix("listening on ") {
-            addr = Some(a.to_owned());
-        }
-    }
-    (Proc(child), addr.expect("listening line"))
-}
 
 fn dir_is_empty(path: &Path) -> bool {
     !path.exists()

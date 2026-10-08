@@ -25,7 +25,7 @@ use tokio::sync::{mpsc, watch};
 
 struct Rig {
     rt: tokio::runtime::Runtime,
-    server: ServerHandle,
+    server: Option<ServerHandle>,
     config: ClientConfig,
     backend: OrchestratedBackend,
     tmux: Tmux,
@@ -184,7 +184,7 @@ fn start(tag: &str, command: &str, terminals: bool) -> Rig {
     }
     Rig {
         rt,
-        server,
+        server: Some(server),
         config,
         backend,
         tmux,
@@ -195,6 +195,10 @@ fn start(tag: &str, command: &str, terminals: bool) -> Rig {
 }
 
 impl Rig {
+    fn terminals_open(&self) -> usize {
+        self.server.as_ref().map_or(0, |s| s.terminals_open())
+    }
+
     fn view(&self, i: usize, pid_offset: u32) -> PaneView {
         let (id, pid) = &self.panes[i];
         PaneView {
@@ -288,6 +292,16 @@ struct Shown {
     task: tokio::task::JoinHandle<TerminalEnd>,
 }
 
+impl Rig {
+    /// Stop the orchestrator (it is gone for good in this test).
+    fn stop_orchestrator(&mut self) {
+        // `shutdown` consumes the handle; swap in nothing by moving it out of an Option.
+        if let Some(server) = self.server.take() {
+            self.rt.block_on(server.shutdown());
+        }
+    }
+}
+
 impl Drop for Rig {
     fn drop(&mut self) {
         let _ = self.stop.send(true);
@@ -358,7 +372,7 @@ fn enter_reveals_the_pane_opens_a_terminal_and_the_escape_leaves_cleanly() {
         .expect("input");
     assert_eq!(finish(&rig, shown), TerminalEnd::UserLeft);
     rig.wait("no tmux client left", |r| r.clients().is_empty());
-    rig.wait("table empty", |r| r.server.terminals_open() == 0);
+    rig.wait("table empty", |r| r.terminals_open() == 0);
     rig.tmux
         .runner()
         .run(&["has-session", "-t", "=work"])
@@ -416,7 +430,7 @@ fn the_escape_works_while_the_users_terminal_accepts_nothing_and_memory_stays_bo
         .expect("input");
     assert_eq!(finish(&rig, shown), TerminalEnd::UserLeft);
     rig.wait("no tmux client left", |r| r.clients().is_empty());
-    rig.wait("table empty", |r| r.server.terminals_open() == 0);
+    rig.wait("table empty", |r| r.terminals_open() == 0);
 }
 
 #[test]
@@ -436,7 +450,7 @@ fn a_remote_detach_ends_the_relay_with_the_reason() {
         TerminalEnd::Exited { reason, .. } => assert_eq!(reason, ExitReasonCode::ClientExited),
         other => panic!("{other:?}"),
     }
-    rig.wait("table empty", |r| r.server.terminals_open() == 0);
+    rig.wait("table empty", |r| r.terminals_open() == 0);
 }
 
 #[test]
@@ -452,7 +466,7 @@ fn a_pane_that_changed_since_it_was_listed_reveals_nothing_and_opens_nothing() {
     assert!(err.starts_with("could not select the pane"), "{err}");
     assert_eq!(rig.active_pane(), before, "nothing was revealed");
     assert!(rig.backend.handoff().take().is_none());
-    assert_eq!(rig.server.terminals_open(), 0);
+    assert_eq!(rig.terminals_open(), 0);
     assert!(rig.clients().is_empty());
 }
 
@@ -468,7 +482,7 @@ fn a_node_that_does_not_offer_terminals_still_reveals_and_says_which_stage_faile
     assert!(err.contains("cannot open a terminal"), "{err}");
     assert_eq!(rig.active_pane(), rig.panes[1].0, "the reveal did happen");
     assert!(rig.backend.handoff().take().is_none());
-    assert_eq!(rig.server.terminals_open(), 0);
+    assert_eq!(rig.terminals_open(), 0);
 }
 
 #[test]
@@ -485,4 +499,62 @@ fn nothing_in_the_remote_path_needs_ssh() {
             Ok(vec![0; 16])
         }
     }
+}
+
+#[test]
+fn a_pane_id_reused_by_a_restarted_tmux_is_refused_even_though_the_node_has_not_noticed() {
+    if !tmux_available() {
+        return;
+    }
+    let mut rig = start("reuse", "cat", true);
+    let stale = rig.view(1, 0);
+    // tmux restarts and hands the same pane ids to new processes; the node's last observation
+    // (and so the dashboard's pid) is now a lie.
+    let _ = rig.tmux.runner().run(&["kill-server"]);
+    rig.tmux
+        .runner()
+        .run(&[
+            "new-session",
+            "-d",
+            "-s",
+            "work",
+            "-x",
+            "100",
+            "-y",
+            "30",
+            "cat",
+        ])
+        .expect("session");
+    rig.tmux
+        .runner()
+        .run(&["split-window", "-d", "-t", "work:", "cat"])
+        .expect("split");
+    let err = rig.backend.switch_to(&stale).expect_err("stale");
+    assert!(err.contains("changed"), "{err}");
+    assert!(rig.backend.handoff().take().is_none());
+    assert_eq!(rig.terminals_open(), 0);
+    assert!(rig.clients().is_empty());
+}
+
+#[test]
+fn losing_the_orchestrator_mid_session_ends_the_relay_and_hangs_the_node_up() {
+    if !tmux_available() {
+        return;
+    }
+    let mut rig = start("orchgone", "cat", true);
+    let id = rig.enter(0);
+    let shown = rig.show(&id);
+    rig.wait("tmux client attached", |r| r.clients().len() == 1);
+    rig.stop_orchestrator();
+    match finish(&rig, shown) {
+        TerminalEnd::Lost(_) | TerminalEnd::Exited { .. } => {}
+        other => panic!("{other:?}"),
+    }
+    rig.wait("the node hung its tmux client up", |r| {
+        r.clients().is_empty()
+    });
+    rig.tmux
+        .runner()
+        .run(&["has-session", "-t", "=work"])
+        .expect("the session is untouched");
 }

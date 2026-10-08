@@ -405,6 +405,7 @@ dependencies = [
  "flight-transport",
  "flight-trust",
  "flight-ui",
+ "portable-pty",
  "tokio",
 ]
 

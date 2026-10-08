@@ -236,3 +236,81 @@ fn routing_follows_the_node_id_not_the_display_name() {
     assert_eq!(w.forwarded.len(), 1);
     assert_eq!(w.forwarded[0].0, "node-b");
 }
+
+fn forwarded_request(w: &World) -> Request {
+    let Some(orchestrator_body::Body::Request(r)) =
+        w.forwarded.last().expect("forwarded").1.body.clone()
+    else {
+        panic!("not a request")
+    };
+    r
+}
+
+fn node_error(request_id: u64, kind: ErrorKindCode) -> NodeFrame {
+    NodeFrame {
+        body: Some(node_body::Body::Response(Response {
+            request_id,
+            result: Some(response_result::Result::Error(flight_proto::ErrorInfo {
+                kind: kind as i32,
+                message: "remote".into(),
+            })),
+        })),
+    }
+}
+
+#[test]
+fn a_reveal_reaches_the_node_with_the_callers_pid_untouched() {
+    let mut w = ready();
+    // The pane the orchestrator knows has pid 1; the caller saw 100. The orchestrator
+    // must not repair, compare or rewrite it: the node is the authority.
+    send(&mut w, reveal(7, "node-a", "%1", 100));
+    let sent = forwarded_request(&w);
+    let Some(ck::Kind::RevealPane(r)) = sent.command.and_then(|c| c.kind) else {
+        panic!("not a reveal")
+    };
+    assert_eq!(r.expected_pid, 100);
+    assert_eq!(r.pane_ref, Some(pane_ref("node-a", "%1")));
+}
+
+#[test]
+fn the_nodes_pane_changed_answer_reaches_the_ui_as_pane_changed() {
+    let mut w = ready();
+    send(&mut w, reveal(7, "node-a", "%1", 100));
+    let conn = w.nodes[0].conn.expect("conn");
+    let id = forwarded_request(&w).request_id;
+    w.send_to_orch(conn, node_error(id, ErrorKindCode::PaneChanged));
+    assert_eq!(error_kinds(&w), vec![ErrorKindCode::PaneChanged as i32]);
+}
+
+#[test]
+fn a_reveal_in_flight_fails_on_disconnect_and_a_late_answer_is_ignored() {
+    let mut w = ready();
+    send(&mut w, reveal(7, "node-a", "%1", 1));
+    let old = w.nodes[0].conn.expect("conn");
+    let id = forwarded_request(&w).request_id;
+    w.disconnect(0);
+    assert_eq!(error_kinds(&w), vec![ErrorKindCode::NodeUnreachable as i32]);
+    // The node comes back; a response from the dead connection must not complete anything.
+    w.connect(0);
+    let before = w.responses.len();
+    w.send_to_orch(
+        old,
+        NodeFrame {
+            body: Some(node_body::Body::Response(Response {
+                request_id: id,
+                result: Some(response_result::Result::Done(response_result::Done {})),
+            })),
+        },
+    );
+    assert_eq!(w.responses.len(), before);
+}
+
+#[test]
+fn a_reveal_the_node_never_answers_times_out_with_a_typed_error() {
+    let mut w = ready();
+    send(&mut w, reveal(7, "node-a", "%1", 1));
+    for _ in 0..3 {
+        w.advance(5);
+    }
+    assert_eq!(error_kinds(&w), vec![ErrorKindCode::NodeUnreachable as i32]);
+}

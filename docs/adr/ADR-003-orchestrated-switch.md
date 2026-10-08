@@ -2,7 +2,7 @@
 
 # ADR-003: Switching to a pane through the orchestrator
 
-Status: Accepted. Slice 2 (protocol and node-side reveal) implemented; slices 3 to 5 not yet.
+Status: Accepted. Slices 2 (protocol and node-side reveal) and 3 (orchestrator routing) implemented; slices 4 and 5 not yet.
 
 ## Problem
 
@@ -71,7 +71,7 @@ Names that a node supplies (its display name, session and window names) are data
 |---|---|
 | Node unknown, disconnected or without `switch` | Immediate typed error from the orchestrator; message names the node and the cause. |
 | Pane replaced or gone | `PaneChanged` / `UnknownPane`; nothing is changed. |
-| No answer in 5 s, or the orchestrator link drops mid-request | "no confirmation"; the reveal may or may not have happened (harmless); no attach is started. |
+| No answer within the orchestrator's request timeout (10 s default, reported as `NodeUnreachable` "request timed out"; there is no separate timeout code), or the node or orchestrator link drops mid-request | "no confirmation"; the reveal may or may not have happened (harmless); no attach is started. |
 | Attach fails after a successful reveal | The attach program's exit is reported; the UI stays open. |
 
 The dashboard exits only after `SwitchClient` succeeds or when it hands the terminal to an attach.
@@ -86,6 +86,6 @@ The dashboard exits only after `SwitchClient` succeeds or when it hands the term
 
 1. This note.
 2. **Done.** Protocol (`PaneState.pid`, `RevealPane.expected_pid`, `PaneChanged`, `guarded_reveal_v1`) and the node-side reveal with the pid guard, against real tmux (selects window and pane, touches no client, refuses a replaced pane and a pane id reused by a new server). The popup experiment is recorded above.
-3. Orchestrator routing: the `switch` capability offered by nodes, typed immediate failures, request timeout.
+3. **Done.** Orchestrator routing: the existing control path already checks node, liveness and `guarded_reveal_v1` and forwards the command unchanged; tests pin that `expected_pid` is never touched, the node's `PaneChanged` reaches the UI, and a disconnect or timeout fails the request while a late answer from the dead connection is ignored.
 4. UI: `plan_switch` (pure, table-driven tests), executors (`switch-client`, attach by exec), the Enter path and its messages.
 5. End to end: local selected pane, remote selected pane, pane replaced before the request, no suitable client, node disconnect mid-request.

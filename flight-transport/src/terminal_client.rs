@@ -94,6 +94,24 @@ impl TerminalClient {
             .map_err(|_| TransportError::Protocol("the terminal stream is closed".to_owned()))
     }
 
+    /// Separate the two directions so one task can send while another receives.
+    pub fn split(self) -> (TerminalSender, TerminalReceiver) {
+        let peer = match self.me {
+            Origin::Ui => Origin::Node,
+            Origin::Node => Origin::Ui,
+        };
+        (
+            TerminalSender {
+                tx: self.tx,
+                me: self.me,
+            },
+            TerminalReceiver {
+                frames: self.frames,
+                peer,
+            },
+        )
+    }
+
     /// Say goodbye properly: stop sending, then wait (briefly) for the other end to finish
     /// reading what was sent. Dropping a client with a final frame still queued can lose it.
     pub async fn finish(self, wait: Duration) {
@@ -116,6 +134,46 @@ impl TerminalClient {
             Some(frame) => {
                 frame
                     .validate_from(peer)
+                    .map_err(|e| TransportError::Protocol(e.to_string()))?;
+                Ok(Some(frame))
+            }
+            None => Ok(None),
+        }
+    }
+}
+
+/// The sending half of a [`TerminalClient`].
+pub struct TerminalSender {
+    tx: Sender<TerminalFrame>,
+    me: Origin,
+}
+
+impl TerminalSender {
+    /// Send a frame, waiting for room. Refuses a frame this end may not send.
+    pub async fn send(&self, frame: TerminalFrame) -> Result<(), TransportError> {
+        frame
+            .validate_from(self.me)
+            .map_err(|e| TransportError::Protocol(e.to_string()))?;
+        self.tx
+            .send(frame)
+            .await
+            .map_err(|_| TransportError::Protocol("the terminal stream is closed".to_owned()))
+    }
+}
+
+/// The receiving half of a [`TerminalClient`].
+pub struct TerminalReceiver {
+    frames: Streaming<TerminalFrame>,
+    peer: Origin,
+}
+
+impl TerminalReceiver {
+    /// The next frame from the other end, or `None` when the stream ended.
+    pub async fn next(&mut self) -> Result<Option<TerminalFrame>, TransportError> {
+        match self.frames.message().await? {
+            Some(frame) => {
+                frame
+                    .validate_from(self.peer)
                     .map_err(|e| TransportError::Protocol(e.to_string()))?;
                 Ok(Some(frame))
             }

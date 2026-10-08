@@ -9,10 +9,14 @@
 mod orchestrated;
 mod snapshot_view;
 mod switch;
+mod terminal;
 
 pub use orchestrated::{ClientConfig, OrchestratedBackend};
 pub use snapshot_view::ui_snapshot;
 pub use switch::{
-    detect_placement, plan_switch, Handoff, HandoffSlot, Presented, Refusal, SwitchError,
-    SwitchPlan, SwitchTarget, Switcher, TmuxEnv, UiContext, UiPlacement,
+    detect_placement, plan_switch, AttachCommand, Handoff, HandoffSlot, Presented, Refusal,
+    RemoteOps, SwitchError, SwitchPlan, SwitchTarget, Switcher, TmuxEnv, UiContext, UiPlacement,
+};
+pub use terminal::{
+    relay, run_terminal, terminal_request_shape, EscapeAction, EscapeFilter, TerminalEnd,
 };

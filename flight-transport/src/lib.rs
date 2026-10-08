@@ -39,5 +39,5 @@ pub use link_end::LinkEnd;
 pub use node_link::{LinkLog, NodeLink, NodeLinkConfig};
 pub use observe::run_observer;
 pub use orchestrator_server::{serve, ServerConfig, ServerControl, ServerHandle};
-pub use terminal_client::TerminalClient;
+pub use terminal_client::{TerminalClient, TerminalReceiver, TerminalSender};
 pub use ui_client::UiClient;

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use crate::snapshot_view::ui_snapshot;
-use crate::switch::{HandoffSlot, Presented, SwitchTarget, Switcher, TmuxEnv};
+use crate::switch::{Handoff, HandoffSlot, Presented, RemoteOps, SwitchTarget, Switcher, TmuxEnv};
+use crate::terminal::terminal_request_shape;
 use flight_proto::{
     command_kind as ck, response_result, ui_event_body, ui_request_body, Command, ErrorKindCode,
     FleetImage, PaneRefMsg, Request, Step, Subscribe, UiEvent, UiRequest,
@@ -59,10 +60,17 @@ fn lock(state: &Shared) -> MutexGuard<'_, LinkState> {
     state.lock().unwrap_or_else(|p| p.into_inner())
 }
 
+/// What a control command's answer carried.
+enum Answer {
+    Done,
+    Text(String),
+    Terminal(Vec<u8>),
+}
+
 /// One control command to send over the link, and where its answer goes.
 struct ControlRequest {
     kind: ck::Kind,
-    reply: oneshot::Sender<Result<String, String>>,
+    reply: oneshot::Sender<Result<Answer, String>>,
 }
 
 /// The dashboard's backend over an orchestrator. A background task keeps the link up and a
@@ -138,7 +146,11 @@ impl Backend for OrchestratedBackend {
         });
         let content = self
             .runtime
-            .block_on(call(&self.requests, kind, PREVIEW_TIMEOUT));
+            .block_on(call(&self.requests, kind, PREVIEW_TIMEOUT))
+            .and_then(|answer| match answer {
+                Answer::Text(text) => Ok(text),
+                _ => Err("unexpected response".to_owned()),
+            });
         PanePreview {
             pane: pane.clone(),
             content: content.map(|text| text.lines().map(str::to_owned).collect()),
@@ -147,27 +159,61 @@ impl Backend for OrchestratedBackend {
 
     fn switch_to(&mut self, pane: &PaneView) -> Result<(), String> {
         let target = SwitchTarget::from(pane);
-        let (runtime, requests) = (&self.runtime, &self.requests);
-        let mut reveal = |pane: &PaneRef, pid: u32| {
-            let kind = ck::Kind::RevealPane(ck::RevealPane {
-                pane_ref: Some(PaneRefMsg::from(pane)),
-                expected_pid: pid,
-            });
-            runtime
-                .block_on(call(requests, kind, REVEAL_TIMEOUT))
-                .map(drop)
+        let mut remote = LinkOps {
+            runtime: &self.runtime,
+            requests: &self.requests,
         };
         match self
             .switcher
-            .switch(&target, &TmuxEnv::from_process(), &mut reveal)
+            .switch(&target, &TmuxEnv::from_process(), &mut remote)
         {
             Ok(Presented::ClientMoved) => Ok(()),
-            Ok(Presented::Attach(handoff)) => {
-                self.handoff.put(handoff);
+            Ok(Presented::Attach(command)) => {
+                self.handoff.put(Handoff::Attach(command));
+                Ok(())
+            }
+            Ok(Presented::Terminal(id)) => {
+                self.handoff.put(Handoff::Terminal(id));
                 Ok(())
             }
             Err(e) => Err(e.to_string()),
         }
+    }
+}
+
+/// A switch's requests to the orchestrator, over the dashboard's own link.
+struct LinkOps<'a> {
+    runtime: &'a Runtime,
+    requests: &'a mpsc::Sender<ControlRequest>,
+}
+
+impl RemoteOps for LinkOps<'_> {
+    fn reveal(&mut self, pane: &PaneRef, pid: u32) -> Result<(), String> {
+        let kind = ck::Kind::RevealPane(ck::RevealPane {
+            pane_ref: Some(PaneRefMsg::from(pane)),
+            expected_pid: pid,
+        });
+        self.runtime
+            .block_on(call(self.requests, kind, REVEAL_TIMEOUT))
+            .map(drop)
+    }
+
+    fn open_terminal(&mut self, pane: &PaneRef, pid: u32) -> Result<Vec<u8>, String> {
+        let (cols, rows, term) = terminal_request_shape();
+        let kind = ck::Kind::OpenTerminal(ck::OpenTerminal {
+            pane_ref: Some(PaneRefMsg::from(pane)),
+            expected_pid: pid,
+            cols: u32::from(cols),
+            rows: u32::from(rows),
+            term,
+            terminal_id: Vec::new(),
+        });
+        self.runtime
+            .block_on(call(self.requests, kind, REVEAL_TIMEOUT))
+            .and_then(|answer| match answer {
+                Answer::Terminal(id) => Ok(id),
+                _ => Err("the orchestrator answered without a terminal".to_owned()),
+            })
     }
 }
 
@@ -176,7 +222,7 @@ async fn call(
     requests: &mpsc::Sender<ControlRequest>,
     kind: ck::Kind,
     timeout: Duration,
-) -> Result<String, String> {
+) -> Result<Answer, String> {
     let (reply, answer) = oneshot::channel();
     if requests.send(ControlRequest { kind, reply }).await.is_err() {
         return Err("not connected to the orchestrator".to_owned());
@@ -246,7 +292,7 @@ async fn serve_link(
         return "cannot subscribe".to_owned();
     }
     let mut next_id = 0u64;
-    let mut waiting: HashMap<u64, oneshot::Sender<Result<String, String>>> = HashMap::new();
+    let mut waiting: HashMap<u64, oneshot::Sender<Result<Answer, String>>> = HashMap::new();
     loop {
         tokio::select! {
             event = client.next_event() => match event {
@@ -273,13 +319,16 @@ async fn serve_link(
 fn apply(
     state: &Shared,
     event: &UiEvent,
-    waiting: &mut HashMap<u64, oneshot::Sender<Result<String, String>>>,
+    waiting: &mut HashMap<u64, oneshot::Sender<Result<Answer, String>>>,
 ) -> Step {
     if let Some(ui_event_body::Body::Response(r)) = event.body.as_ref() {
         if let Some(reply) = waiting.remove(&r.request_id) {
             let _ = reply.send(match r.result.as_ref() {
-                Some(response_result::Result::Preview(p)) => Ok(p.text.clone()),
-                Some(response_result::Result::Done(_)) => Ok(String::new()),
+                Some(response_result::Result::Preview(p)) => Ok(Answer::Text(p.text.clone())),
+                Some(response_result::Result::Terminal(t)) => {
+                    Ok(Answer::Terminal(t.terminal_id.clone()))
+                }
+                Some(response_result::Result::Done(_)) => Ok(Answer::Done),
                 Some(response_result::Result::Error(e)) => Err(describe(e)),
                 _ => Err("unexpected response".to_owned()),
             });

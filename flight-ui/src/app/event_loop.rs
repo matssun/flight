@@ -35,12 +35,21 @@ impl Drop for TerminalGuard {
 
 /// The terminal loop: owns the terminal and the worker; everything else is pure.
 pub fn run(backend: impl Backend + 'static, refresh_every: Duration) -> io::Result<Exit> {
+    run_with_notice(backend, refresh_every, None)
+}
+
+/// [`run`], with a line to show in the dashboard at first (for example why a terminal ended).
+pub fn run_with_notice(
+    backend: impl Backend + 'static,
+    refresh_every: Duration,
+    notice: Option<String>,
+) -> io::Result<Exit> {
     enable_raw_mode()?;
     let _guard = TerminalGuard;
     execute!(io::stdout(), EnterAlternateScreen)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
     let mut worker = Worker::spawn(Box::new(backend), refresh_every);
-    let exit = event_loop(&mut terminal, &mut worker);
+    let exit = event_loop(&mut terminal, &mut worker, notice);
     worker.shutdown();
     exit
 }
@@ -48,8 +57,10 @@ pub fn run(backend: impl Backend + 'static, refresh_every: Duration) -> io::Resu
 fn event_loop(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     worker: &mut Worker,
+    notice: Option<String>,
 ) -> io::Result<Exit> {
     let mut vm = ViewModel::new();
+    vm.set_message(notice);
     loop {
         terminal.draw(|f| render(f, &vm))?;
         if event::poll(Duration::from_millis(100))? {

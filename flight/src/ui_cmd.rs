@@ -3,10 +3,10 @@
 use crate::args::{config_dir, now, Args};
 use crate::join_cmd::join_command;
 use crate::roles::{node_dir, ui_dir};
-use flight_client::{ClientConfig, OrchestratedBackend, Switcher};
+use flight_client::{run_terminal, ClientConfig, Handoff, OrchestratedBackend, Switcher};
 use flight_proto::RoleCode;
 use flight_state::HostId;
-use flight_ui::{render_to_string, run, Backend, Exit, ViewModel};
+use flight_ui::{render_to_string, run_with_notice, Backend, Exit, ViewModel};
 use std::time::Duration;
 
 pub const USAGE: &str = "usage: flight ui <command>
@@ -15,10 +15,11 @@ pub const USAGE: &str = "usage: flight ui <command>
         enroll this machine's UI with an orchestrator
   [run] [--refresh SECS] [--once] [--config-dir DIR] [--node-dir DIR]
         the dashboard, reading from the orchestrator this UI joined.
-        Enter on a pane selects it and shows it: a pane of the node on this machine
-        (its identity is read from --node-dir, default <config-dir>/node) through tmux,
-        any other pane is not yet shown by this dashboard (ADR-003: it will be a terminal
-        session over Flight itself, never ssh).";
+        Enter on a pane selects it and shows it. A pane of the node on this machine (its
+        identity is read from --node-dir, default <config-dir>/node) is shown through tmux. A
+        pane of any other node is shown in a terminal carried over Flight's own connections
+        (no ssh, no direct path to the node): Ctrl-] q leaves, Ctrl-] Ctrl-] sends a literal
+        Ctrl-], and the dashboard comes back when the terminal ends.";
 
 pub fn run_ui(args: &[String]) -> Result<(), String> {
     if args.iter().any(|a| a == "--help" || a == "-h") {
@@ -54,24 +55,41 @@ fn dashboard(args: &[String]) -> Result<(), String> {
         Some(s) => Duration::from_secs(s.parse().map_err(|_| format!("bad --refresh {s:?}"))?),
         None => Duration::from_secs(1),
     };
-    let mut backend = OrchestratedBackend::start(config).map_err(|e| e.to_string())?;
     let node = args
         .value("--node-dir")
         .map_or_else(|| node_dir(&base), std::path::PathBuf::from);
-    backend.set_switching(Switcher::new(local_host(&node)));
-    let handoff = backend.handoff();
+    let switcher = Switcher::new(local_host(&node));
+    let start = |config: ClientConfig| -> Result<OrchestratedBackend, String> {
+        let mut backend = OrchestratedBackend::start(config).map_err(|e| e.to_string())?;
+        backend.set_switching(switcher.clone());
+        Ok(backend)
+    };
     if args.switch("--once") {
-        return once(backend);
+        return once(start(config)?);
     }
-    let exit = run(backend, refresh).map_err(|e| e.to_string())?;
-    if exit == Exit::Switched {
-        if let Some(attach) = handoff.take() {
-            // Only returns if the program could not be started: the pane is already selected.
-            let why = attach.exec();
-            return Err(format!("pane selected, but cannot attach: {why}"));
+    // A remote pane is shown in a terminal over Flight; when it ends the dashboard comes
+    // back, with the reason on its status line.
+    let mut notice = None;
+    loop {
+        let backend = start(config.clone())?;
+        let handoff = backend.handoff();
+        let exit = run_with_notice(backend, refresh, notice.take()).map_err(|e| e.to_string())?;
+        if exit != Exit::Switched {
+            return Ok(());
+        }
+        match handoff.take() {
+            Some(Handoff::Attach(attach)) => {
+                // Only returns if the program could not be started: the pane is already selected.
+                let why = attach.exec();
+                return Err(format!("pane selected, but cannot attach: {why}"));
+            }
+            Some(Handoff::Terminal(id)) => {
+                let end = run_terminal(&config, &id);
+                notice = Some(format!("terminal: {end}"));
+            }
+            None => return Ok(()),
         }
     }
-    Ok(())
 }
 
 /// The identity of the node role on this machine, if it has one.

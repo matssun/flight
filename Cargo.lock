@@ -420,6 +420,7 @@ dependencies = [
 name = "flight-client"
 version = "0.0.1"
 dependencies = [
+ "crossterm",
  "flight-classify",
  "flight-control",
  "flight-node",
@@ -430,6 +431,7 @@ dependencies = [
  "flight-transport",
  "flight-trust",
  "flight-ui",
+ "rustix",
  "tokio",
 ]
 

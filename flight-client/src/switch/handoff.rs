@@ -1,18 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-use std::os::unix::process::CommandExt;
-use std::process::Command;
+use crate::switch::AttachCommand;
 
-/// A program that takes over the terminal once the dashboard has exited: an attach.
+/// What takes over the terminal once the dashboard has exited.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Handoff {
-    pub program: String,
-    pub args: Vec<String>,
-}
-
-impl Handoff {
-    /// Replace this process. Returns only if that failed.
-    pub fn exec(self) -> std::io::Error {
-        Command::new(&self.program).args(&self.args).exec()
-    }
+pub enum Handoff {
+    /// Replace this process with a local tmux attach.
+    Attach(AttachCommand),
+    /// Show a remote pane through the terminal stream with this id, then come back.
+    Terminal(Vec<u8>),
 }

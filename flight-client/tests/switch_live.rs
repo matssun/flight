@@ -4,7 +4,8 @@
 //! with terminals attached through a pty (skipped without tmux and python3).
 
 use flight_client::{
-    detect_placement, Presented, SwitchError, SwitchTarget, Switcher, TmuxEnv, UiPlacement,
+    detect_placement, Presented, RemoteOps, SwitchError, SwitchTarget, Switcher, TmuxEnv,
+    UiPlacement,
 };
 use flight_state::{HostId, PaneId, PaneRef, ServerId};
 use flight_tmux::{Tmux, TmuxEndpoint, TmuxRunner};
@@ -235,8 +236,16 @@ fn this_machine() -> Switcher {
     Switcher::new(Some(HostId::new("this-node")))
 }
 
-fn never_remote(_: &PaneRef, _: u32) -> Result<(), String> {
-    panic!("a local pane must not go through the orchestrator");
+struct NeverRemote;
+
+impl RemoteOps for NeverRemote {
+    fn reveal(&mut self, _: &PaneRef, _: u32) -> Result<(), String> {
+        panic!("a local pane must not go through the orchestrator");
+    }
+
+    fn open_terminal(&mut self, _: &PaneRef, _: u32) -> Result<Vec<u8>, String> {
+        panic!("a local pane must not go through the orchestrator");
+    }
 }
 
 fn client_session(live: &Live) -> String {
@@ -268,7 +277,7 @@ fn enter_moves_the_one_terminal_to_the_pane_it_still_runs() {
     assert_eq!(client_session(&live), "ui");
 
     let env = live.env_of(&ui_pane, true);
-    let outcome = this_machine().switch(&target(&live, pane, pid, "work"), &env, &mut never_remote);
+    let outcome = this_machine().switch(&target(&live, pane, pid, "work"), &env, &mut NeverRemote);
     assert_eq!(outcome, Ok(Presented::ClientMoved));
     assert_eq!(client_session(&live), "work");
     let active = live.raw(&["display-message", "-p", "-t", "=work:", "#{pane_id}"]);
@@ -289,7 +298,7 @@ fn a_replaced_pane_changes_nothing_and_is_a_reveal_failure() {
     let outcome = this_machine().switch(
         &target(&live, &pane, pid + 1, "work"),
         &env,
-        &mut never_remote,
+        &mut NeverRemote,
     );
     assert!(
         matches!(outcome, Err(SwitchError::Reveal(_))),
@@ -310,8 +319,7 @@ fn two_terminals_refuse_and_nothing_moves() {
     let (ui_pane, _) = live.pane_of("ui");
     let (pane, pid) = live.pane_of("work");
     let env = live.env_of(&ui_pane, true);
-    let outcome =
-        this_machine().switch(&target(&live, &pane, pid, "work"), &env, &mut never_remote);
+    let outcome = this_machine().switch(&target(&live, &pane, pid, "work"), &env, &mut NeverRemote);
     assert!(
         matches!(outcome, Err(SwitchError::Refused(_))),
         "{outcome:?}"
@@ -332,14 +340,14 @@ fn outside_tmux_the_dashboard_hands_over_to_a_local_attach() {
     let outcome = this_machine().switch(
         &target(&live, &pane, pid, "work"),
         &TmuxEnv::default(),
-        &mut never_remote,
+        &mut NeverRemote,
     );
-    let Ok(Presented::Attach(handoff)) = outcome else {
+    let Ok(Presented::Attach(command)) = outcome else {
         panic!("{outcome:?}")
     };
-    assert_eq!(handoff.program, "tmux");
+    assert_eq!(command.program, "tmux");
     assert_eq!(
-        handoff.args,
+        command.args,
         [
             "-u",
             "-L",
@@ -348,26 +356,5 @@ fn outside_tmux_the_dashboard_hands_over_to_a_local_attach() {
             "-t",
             "=work"
         ]
-    );
-}
-
-#[test]
-fn a_remote_pane_is_refused_before_anything_is_revealed_until_terminals_exist() {
-    let outcome = Switcher::new(Some(HostId::new("this-node"))).switch(
-        &SwitchTarget {
-            pane: PaneRef {
-                host: HostId::new("another-node"),
-                server: ServerId::new("flight"),
-                pane: PaneId::new("%1"),
-            },
-            pid: 5,
-            session: "api".to_owned(),
-        },
-        &TmuxEnv::default(),
-        &mut |_, _| panic!("nothing may be revealed for a pane that cannot be shown"),
-    );
-    assert!(
-        matches!(outcome, Err(SwitchError::Refused(_))),
-        "{outcome:?}"
     );
 }

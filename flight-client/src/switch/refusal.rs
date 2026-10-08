@@ -16,9 +16,6 @@ pub enum Refusal {
     NoClient,
     /// Several terminals show the dashboard's session; tmux cannot say which one is this.
     AmbiguousClients(usize),
-    /// Remote panes are shown through a terminal session over Flight (ADR-003), which the
-    /// dashboard does not have yet.
-    RemoteTerminalUnavailable,
 }
 
 impl fmt::Display for Refusal {
@@ -40,9 +37,6 @@ impl fmt::Display for Refusal {
             Self::AmbiguousClients(n) => write!(
                 f,
                 "cannot tell which of {n} tmux clients shows this dashboard; attach manually"
-            ),
-            Self::RemoteTerminalUnavailable => f.write_str(
-                "showing a pane of another machine is not available yet in this dashboard",
             ),
         }
     }

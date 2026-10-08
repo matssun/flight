@@ -12,7 +12,7 @@ mod render;
 mod snapshot;
 mod view;
 
-pub use app::{run, Exit};
+pub use app::{run, run_with_notice, Exit};
 pub use collect::{Backend, Collector};
 pub use render::{render, render_to_string};
 pub use snapshot::{HostHealth, HostView, PanePreview, PaneView, UiSnapshot};

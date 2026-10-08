@@ -16,12 +16,13 @@ pub struct Preview {
 pub struct Response {
     #[prost(uint64, tag = "1")]
     pub request_id: u64,
-    #[prost(oneof = "response_result::Result", tags = "2, 3, 4")]
+    #[prost(oneof = "response_result::Result", tags = "2, 3, 4, 5")]
     pub result: Option<response_result::Result>,
 }
 
 pub mod response_result {
     use super::{ErrorInfo, Preview};
+    use crate::TerminalOpened;
 
     /// The request succeeded and has no payload.
     #[derive(Clone, Copy, PartialEq, Eq, prost::Message)]
@@ -35,6 +36,8 @@ pub mod response_result {
         Preview(Preview),
         #[prost(message, tag = "4")]
         Error(ErrorInfo),
+        #[prost(message, tag = "5")]
+        Terminal(TerminalOpened),
     }
 }
 
@@ -46,6 +49,13 @@ impl Validate for Response {
             .ok_or(Reject::Missing("response.result"))?
         {
             response_result::Result::Error(e) => e.validate(),
+            response_result::Result::Terminal(t) => {
+                if t.terminal_id.len() == crate::TERMINAL_ID_LEN {
+                    Ok(())
+                } else {
+                    Err(Reject::OutOfRange("terminal_opened.terminal_id"))
+                }
+            }
             response_result::Result::Done(_) | response_result::Result::Preview(_) => Ok(()),
         }
     }

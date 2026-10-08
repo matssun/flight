@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::collect::Backend;
-use crate::snapshot::{PanePreview, UiSnapshot};
+use crate::snapshot::{PanePreview, PaneView, UiSnapshot};
 use flight_state::PaneRef;
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::thread::{self, JoinHandle};
@@ -10,7 +10,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 pub enum Cmd {
     Refresh,
     Select(Option<PaneRef>),
-    Switch(PaneRef),
+    Switch(PaneView),
     Shutdown,
 }
 

@@ -34,7 +34,7 @@ impl Validate for UiRequest {
             .ok_or(Reject::Missing("ui_request.body"))?
         {
             ui_request_body::Body::Subscribe(_) => Ok(()),
-            ui_request_body::Body::Command(r) => r.validate(),
+            ui_request_body::Body::Command(r) => r.validate_from_ui(),
         }
     }
 }

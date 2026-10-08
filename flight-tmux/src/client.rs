@@ -64,6 +64,23 @@ impl<R: TmuxRunner> Tmux<R> {
         self.runner.run(&["switch-client", "-t", target]).map(drop)
     }
 
+    /// Make `pane` the active pane of its window and that window the current window of its
+    /// session, in one tmux invocation. Touches no client: what a client shows is unchanged
+    /// until it attaches or switches.
+    pub fn reveal_pane(&self, window: &str, pane: &str) -> Result<(), TmuxError> {
+        self.runner
+            .run(&[
+                "select-window",
+                "-t",
+                window,
+                ";",
+                "select-pane",
+                "-t",
+                pane,
+            ])
+            .map(drop)
+    }
+
     pub fn kill_pane(&self, pane: &str) -> Result<(), TmuxError> {
         self.runner.run(&["kill-pane", "-t", pane]).map(drop)
     }

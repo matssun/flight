@@ -2,7 +2,7 @@
 
 use super::lists::section_panes;
 use super::{Action, Effect, Section};
-use crate::snapshot::{PanePreview, UiSnapshot};
+use crate::snapshot::{PanePreview, PaneView, UiSnapshot};
 use flight_state::PaneRef;
 
 /// Presentation state: the latest snapshot plus what the user is pointing at. Selection is
@@ -45,6 +45,15 @@ impl ViewModel {
 
     pub fn selected(&self) -> Option<&PaneRef> {
         self.selected.as_ref()
+    }
+
+    fn selected_view(&self) -> Option<&PaneView> {
+        let want = self.selected.as_ref()?;
+        self.snapshot
+            .hosts
+            .iter()
+            .flat_map(|h| h.panes.iter())
+            .find(|p| &p.pane_ref == want)
     }
 
     pub fn focus(&self) -> Section {
@@ -90,7 +99,10 @@ impl ViewModel {
             Action::Up => self.step(-1),
             Action::Down => self.step(1),
             Action::ToggleFocus => self.toggle_focus(),
-            Action::Switch => self.selected.clone().map_or(Effect::None, Effect::Switch),
+            Action::Switch => self
+                .selected_view()
+                .cloned()
+                .map_or(Effect::None, Effect::Switch),
         }
     }
 

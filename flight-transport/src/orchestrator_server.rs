@@ -123,6 +123,23 @@ impl ServerControl {
         lock(&self.state).max_backlog()
     }
 
+    /// Terminals open right now (any state).
+    pub fn terminals_open(&self) -> usize {
+        lock(&self.state).terminals_open()
+    }
+
+    /// The most frames ever queued in one terminal direction inside the orchestrator. Bounded
+    /// by design; exposed so a test can assert it.
+    pub fn terminal_queue_peak(&self) -> usize {
+        lock(&self.state).terminal_queue_peak()
+    }
+
+    /// How long a terminal side may be unable to move a frame before the terminal ends
+    /// (default 30 s).
+    pub fn set_terminal_stall(&self, stall: Duration) {
+        lock(&self.state).set_terminal_stall(stall);
+    }
+
     pub fn trust(&self) -> TrustStore {
         lock(&self.state).trust.clone()
     }

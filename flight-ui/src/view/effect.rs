@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use crate::PaneView;
 use flight_state::PaneRef;
 
 /// What the terminal loop must do after the view model handled an action. The view model
@@ -11,5 +12,6 @@ pub enum Effect {
     Refresh,
     /// The selection changed: tell the collector which pane to preview.
     Select(Option<PaneRef>),
-    Switch(PaneRef),
+    /// Take the user to this pane, exactly as it looked when they asked.
+    Switch(PaneView),
 }

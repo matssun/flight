@@ -2,8 +2,11 @@
 
 use crate::node_link::LinkLog;
 use crate::outbox::{Outbox, PushError};
-use flight_orchestrator::{ConnId, Effects, OrchestratorCore, UiId};
-use flight_proto::{orchestrator_body, ui_event_body, NodeFrame, OrchestratorFrame, UiEvent};
+use crate::terminal_relay::{Ends, Relay};
+use flight_orchestrator::{ConnId, Effects, OrchestratorCore, Side, TerminalId, UiId};
+use flight_proto::{
+    orchestrator_body, ui_event_body, ExitReasonCode, NodeFrame, OrchestratorFrame, UiEvent,
+};
 use flight_state::HostId;
 use flight_trust::{EnrollmentTokens, Fingerprint, Role, TrustStore};
 use std::collections::HashMap;
@@ -18,6 +21,9 @@ pub(crate) const OUTBOX_CAPACITY: usize = 256;
 /// Outbox classes for orchestrator -> node frames.
 const HEARTBEAT: u8 = 0;
 const RESYNC: u8 = 1;
+
+/// A terminal side that cannot move a frame for this long ends the terminal.
+pub(crate) const DEFAULT_TERMINAL_STALL: std::time::Duration = std::time::Duration::from_secs(30);
 
 pub(crate) fn now() -> u64 {
     SystemTime::now()
@@ -39,6 +45,8 @@ pub(crate) struct Shared {
     ui_peer: HashMap<UiId, Fingerprint>,
     next_id: u64,
     log: Option<LinkLog>,
+    relays: HashMap<TerminalId, Relay>,
+    terminal_stall: std::time::Duration,
 }
 
 pub(crate) type SharedState = Arc<Mutex<Shared>>;
@@ -68,6 +76,8 @@ impl Shared {
             ui_peer: HashMap::new(),
             next_id: 0,
             log: None,
+            relays: HashMap::new(),
+            terminal_stall: DEFAULT_TERMINAL_STALL,
         }
     }
 
@@ -115,6 +125,7 @@ impl Shared {
     pub(crate) fn open_ui(&mut self, peer: Fingerprint) -> (UiId, Arc<Outbox<UiEvent>>) {
         let ui = UiId(self.id());
         let outbox = Arc::new(Outbox::new(OUTBOX_CAPACITY));
+        self.core.ui_identified(ui, peer.as_str());
         self.ui_out.insert(ui, outbox.clone());
         self.ui_peer.insert(ui, peer);
         (ui, outbox)
@@ -154,6 +165,15 @@ impl Shared {
     pub(crate) fn dispatch(&mut self, fx: Effects) {
         for note in fx.notes {
             self.say(note);
+        }
+        for (id, reason) in &fx.terminals_ended {
+            if let Some(relay) = self.relays.remove(id) {
+                relay.abort(*reason);
+                self.say(format!(
+                    "terminal closed: {reason:?} after {}s",
+                    relay.started.elapsed().as_secs()
+                ));
+            }
         }
         let mut slow_nodes = Vec::new();
         let mut slow_uis = Vec::new();
@@ -202,6 +222,52 @@ impl Shared {
         self.dispatch(fx);
     }
 
+    pub(crate) fn terminal_stall(&self) -> std::time::Duration {
+        self.terminal_stall
+    }
+
+    pub(crate) fn set_terminal_stall(&mut self, stall: std::time::Duration) {
+        self.terminal_stall = stall;
+    }
+
+    /// The largest number of frames ever queued in any terminal direction.
+    pub(crate) fn terminal_queue_peak(&self) -> usize {
+        self.relays.values().map(Relay::peak).max().unwrap_or(0)
+    }
+
+    pub(crate) fn terminals_open(&self) -> usize {
+        self.core.terminal_count()
+    }
+
+    /// A terminal stream arrived: the core decides whether it may attach, and the relay hands
+    /// it its half.
+    pub(crate) fn attach_terminal(
+        &mut self,
+        side: Side,
+        id: &[u8],
+        identity: &str,
+    ) -> Option<(TerminalId, Ends)> {
+        let (id, _) = self.core.terminal_attach(side, id, identity).ok()?;
+        let ends = self
+            .relays
+            .entry(id)
+            .or_insert_with(Relay::new)
+            .claim(side)?;
+        Some((id, ends))
+    }
+
+    /// One side's stream ended: the id is dead and the relay is gone.
+    pub(crate) fn finish_terminal(&mut self, id: TerminalId, side: Side, reason: ExitReasonCode) {
+        self.core.terminal_ended(&id);
+        if let Some(relay) = self.relays.remove(&id) {
+            relay.abort(reason);
+            self.say(format!(
+                "terminal closed: {reason:?} (ended by the {side:?} side) after {}s",
+                relay.started.elapsed().as_secs()
+            ));
+        }
+    }
+
     /// Drop every connection whose identity is no longer authorized (revocation).
     pub(crate) fn enforce_trust(&mut self) {
         let revoked_nodes: Vec<ConnId> = self
@@ -211,6 +277,8 @@ impl Shared {
             .map(|(c, _)| *c)
             .collect();
         for conn in revoked_nodes {
+            let fx = self.core.end_node_terminals(conn, ExitReasonCode::Revoked);
+            self.dispatch(fx);
             self.close_node(conn);
         }
         let revoked_uis: Vec<UiId> = self
@@ -220,6 +288,12 @@ impl Shared {
             .map(|(u, _)| *u)
             .collect();
         for ui in revoked_uis {
+            if let Some(identity) = self.ui_peer.get(&ui).cloned() {
+                let fx = self
+                    .core
+                    .end_ui_terminals(identity.as_str(), ExitReasonCode::Revoked);
+                self.dispatch(fx);
+            }
             self.close_ui(ui);
         }
     }
@@ -233,6 +307,8 @@ impl Shared {
 
     /// End every stream (used at shutdown, so graceful close cannot wait on idle peers).
     pub(crate) fn close_all(&mut self) {
+        let fx = self.core.end_all_terminals(ExitReasonCode::Shutdown);
+        self.dispatch(fx);
         let conns: Vec<ConnId> = self.node_out.keys().copied().collect();
         for conn in conns {
             self.close_node(conn);

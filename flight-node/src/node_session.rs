@@ -1,18 +1,20 @@
 // SPDX-License-Identifier: MIT
 
 use crate::control::response_frame;
-use crate::{ControlError, ControlJob, NodeCore, Round};
+use crate::{ControlError, ControlJob, NodeCore, Round, TerminalSpec};
 use flight_proto::{
     capability, command_kind::Kind, node_body, orchestrator_body, Command, ErrorKindCode,
     Heartbeat, NodeFrame, NodeHello, OrchestratorFrame, PaneRefMsg, ProtocolVersion, Request,
-    Validate, CURRENT_VERSION,
+    Validate, CURRENT_VERSION, TERMINAL_ID_LEN,
 };
 use flight_state::PaneRef;
 
-/// What this node can do. `send_input` and `switch` are not offered: the node has no client
-/// to switch and no input path yet.
-pub const ADVERTISED_CAPABILITIES: [&str; 3] = [
+/// What this node can do. `send_input` is not offered: there is no input path yet. A node
+/// never switches a client (it has none): it reveals a pane in its own tmux hierarchy.
+pub const ADVERTISED_CAPABILITIES: [&str; 5] = [
     capability::PREVIEW,
+    capability::GUARDED_REVEAL,
+    capability::TERMINAL,
     capability::KILL,
     capability::CREATE_SESSION,
 ];
@@ -58,6 +60,8 @@ pub struct NodeSession {
     display_name: String,
     /// `Some` once the orchestrator's hello was accepted: the capabilities it accepted.
     accepted: Option<Vec<String>>,
+    /// What this node offers: everything this build can do, less what the operator switched off.
+    offered: Vec<&'static str>,
 }
 
 fn frame(body: node_body::Body) -> NodeFrame {
@@ -70,7 +74,14 @@ impl NodeSession {
             core,
             display_name: display_name.into(),
             accepted: None,
+            offered: ADVERTISED_CAPABILITIES.to_vec(),
         }
+    }
+
+    /// Do not offer interactive terminals (`--no-terminal`): a read-only fleet.
+    pub fn without_terminal(mut self) -> Self {
+        self.offered.retain(|c| *c != capability::TERMINAL);
+        self
     }
 
     pub fn core(&self) -> &NodeCore {
@@ -84,7 +95,7 @@ impl NodeSession {
             version: Some(CURRENT_VERSION),
             node_id: self.core.host().as_str().to_owned(),
             display_name: self.display_name.clone(),
-            capabilities: ADVERTISED_CAPABILITIES.map(str::to_owned).to_vec(),
+            capabilities: self.offered.iter().map(|c| (*c).to_owned()).collect(),
             servers,
         }))
     }
@@ -144,7 +155,7 @@ impl NodeSession {
         }
         self.accepted = Some(capability::negotiate(
             &hello.accepted_capabilities,
-            &ADVERTISED_CAPABILITIES,
+            &self.offered,
         ));
         SessionOutput::frames(vec![self.snapshot_frame()])
     }
@@ -207,10 +218,49 @@ impl NodeSession {
                     c.command.clone(),
                 ))
             }
-            Some(Kind::SwitchPane(_)) => Err(ControlError::new(
-                ErrorKindCode::Unsupported,
-                "switching is not available on a node",
-            )),
+            Some(Kind::RevealPane(c)) => {
+                need(capability::GUARDED_REVEAL)?;
+                let (pane, published) = self.own_pane(c.pane_ref.as_ref())?;
+                // The caller was looking at one process; the node publishes another.
+                if published != c.expected_pid {
+                    return Err(ControlError::new(
+                        ErrorKindCode::PaneChanged,
+                        format!(
+                            "pane {} is no longer the process you were looking at",
+                            pane.pane
+                        ),
+                    ));
+                }
+                Ok(ControlJob::reveal(id, pane.server, pane.pane, published))
+            }
+            Some(Kind::OpenTerminal(c)) => {
+                need(capability::TERMINAL)?;
+                let (pane, published) = self.own_pane(c.pane_ref.as_ref())?;
+                if published != c.expected_pid {
+                    return Err(ControlError::new(
+                        ErrorKindCode::PaneChanged,
+                        format!(
+                            "pane {} is no longer the process you were looking at",
+                            pane.pane
+                        ),
+                    ));
+                }
+                let invalid =
+                    |m: &str| ControlError::new(ErrorKindCode::InvalidRequest, m.to_owned());
+                let terminal_id = <[u8; TERMINAL_ID_LEN]>::try_from(c.terminal_id.as_slice())
+                    .map_err(|_| invalid("no terminal id"))?;
+                let dim = |v: u32| u16::try_from(v).map_err(|_| invalid("terminal size"));
+                Ok(ControlJob::open_terminal(TerminalSpec {
+                    request_id: id,
+                    terminal_id,
+                    server: pane.server,
+                    pane: pane.pane,
+                    pid: published,
+                    cols: dim(c.cols)?,
+                    rows: dim(c.rows)?,
+                    term: c.term.clone(),
+                }))
+            }
             Some(Kind::SendInput(_)) => Err(ControlError::new(
                 ErrorKindCode::Unsupported,
                 "input is not available yet",

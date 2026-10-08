@@ -35,6 +35,7 @@ mod replication;
 mod response;
 mod server_status;
 mod snapshot;
+mod terminal;
 mod ui_frame;
 mod validate;
 mod version;
@@ -42,7 +43,9 @@ mod version;
 pub mod capability;
 pub mod codec;
 
-pub use codes::{AgentKindCode, ErrorKindCode, NodeStatusCode, RoleCode, SourceCode, StateCode};
+pub use codes::{
+    AgentKindCode, ErrorKindCode, ExitReasonCode, NodeStatusCode, RoleCode, SourceCode, StateCode,
+};
 pub use command::{command_kind, Command, Request, MAX_PREVIEW_LINES};
 pub use delta::{delta_change, Delta};
 pub use enroll::{EnrollRequest, EnrollResponse};
@@ -64,6 +67,11 @@ pub use replication::{ReplicationCursor, Step};
 pub use response::{response_result, Preview, Response};
 pub use server_status::{AvailabilityCode, ServerStatus};
 pub use snapshot::Snapshot;
+pub use terminal::{
+    terminal_body, valid_term, Origin, TerminalAttach, TerminalClose, TerminalData, TerminalExit,
+    TerminalFrame, TerminalOpened, TerminalResize, MAX_TERMINAL_DATA, MAX_TERMINAL_DIM,
+    MAX_TERM_LEN, TERMINAL_ID_LEN,
+};
 pub use ui_frame::{ui_event_body, ui_request_body, Subscribe, UiEvent, UiRequest};
 pub use validate::Validate;
 pub use version::{ProtocolVersion, CURRENT_VERSION};

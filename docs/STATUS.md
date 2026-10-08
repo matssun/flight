@@ -88,7 +88,28 @@ Choose on correctness and complexity as well as CPU.
 `ctl/skip` is the node's default observer and `seq/all` stays as the fallback and reference. The capture observer
 PR is next.
 
+## Current branch: orchestrated-switch (ADR-003)
+
+Enter on a pane in the orchestrated dashboard. Invariant (ADR-003): normal distributed operation needs no SSH
+configuration and no direct UI-to-node path; everything travels over the authenticated UI/orchestrator/node connections.
+
+- A pane of the node on this machine is shown through tmux (the one attached terminal is moved, or the dashboard is
+  replaced by an attach). Client identification is conservative: exactly one attached terminal on the dashboard's
+  session (control clients excluded, popups handled), otherwise the switch is refused.
+- A pane of any other node: a guarded `RevealPane` (`expected_pid`, `PaneChanged`, `guarded_reveal_v1`), then a guarded
+  `OpenTerminal` (`terminal_v1`, on unless the node runs with `--no-terminal`). The node runs a real tmux client in a
+  PTY it owns (the pid is checked again inside the tmux command that attaches), and the terminal bytes travel
+  node -> orchestrator -> UI on their own streams. The orchestrator mints single-use ids bound to the asking identity and
+  the node connection, enforces limits (4 per node, 2 per UI, 32 total), and copies the bytes without interpreting them.
+  `Ctrl-]` `q` leaves, `Ctrl-]` `Ctrl-]` sends a literal `Ctrl-]`; the dashboard returns with the reason.
+- Output is bounded and lossy under sustained backpressure (the node keeps draining tmux, discards, then asks tmux to
+  repaint); input is never dropped. Measured: without this a wedged UI grew the tmux server by about 23 MB a second.
+- Verified with real tmux, real mutual TLS and the real binaries (a dashboard in a pty, a fake `ssh` that records any
+  call and is never run). Known gaps: a wedged UI on an idle pane is not detected until the UI goes away; the orchestrator
+  did not notice by itself a vanished node while blocked sending to a wedged UI (its stall limit is the backstop).
+- `KillPane` is under-guarded and must adopt `expected_pid` before any kill action exists in a UI.
+
 ## Open limitations
 
-Third-machine UI test, orchestrated Enter/switch, hooks and process-table discovery, key rotation,
+Third-machine UI test, hooks and process-table discovery, key rotation,
 branch protection on main (require the four CI checks; not yet confirmed), site-to-site VPN path MTU (1419).

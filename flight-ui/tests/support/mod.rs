@@ -23,6 +23,7 @@ pub fn pane(host: &str, session: &str, id: &str, state: AgentState) -> PaneView 
         state,
         why: "test".to_owned(),
         title: String::new(),
+        pid: 1,
     }
 }
 

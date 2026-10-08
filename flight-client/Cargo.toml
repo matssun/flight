@@ -11,13 +11,15 @@ repository.workspace = true
 flight-classify = { path = "../flight-classify" }
 flight-proto = { path = "../flight-proto" }
 flight-state = { path = "../flight-state" }
+flight-tmux = { path = "../flight-tmux" }
 flight-transport = { path = "../flight-transport" }
 flight-trust = { path = "../flight-trust" }
 flight-ui = { path = "../flight-ui" }
+crossterm = { workspace = true }
+rustix = { version = "0.38", features = ["event", "stdio", "fs"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 
 [dev-dependencies]
 flight-control = { path = "../flight-control" }
 flight-orchestrator = { path = "../flight-orchestrator" }
 flight-node = { path = "../flight-node" }
-flight-tmux = { path = "../flight-tmux" }

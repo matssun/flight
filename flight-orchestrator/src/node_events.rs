@@ -118,6 +118,10 @@ impl OrchestratorCore {
                 message: "empty response".to_owned(),
             })
         });
+        let result = match req.terminal {
+            Some(id) => self.terminal_answer(&id, result, fx),
+            None => result,
+        };
         fx.to_ui.push(ui_result(req.ui, req.ui_request_id, result));
     }
 }

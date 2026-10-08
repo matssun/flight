@@ -106,6 +106,7 @@ fn pane_view(key: &PaneRef, p: &PaneState) -> Option<PaneView> {
         why: p.why.clone(),
         // The title changes on every poll and is not replicated.
         title: String::new(),
+        pid: p.pid,
     })
 }
 

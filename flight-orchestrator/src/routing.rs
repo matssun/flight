@@ -10,7 +10,8 @@ use flight_state::HostId;
 fn required_capability(kind: &Kind) -> &'static str {
     match kind {
         Kind::GetPreview(_) => capability::PREVIEW,
-        Kind::SwitchPane(_) => capability::SWITCH,
+        Kind::RevealPane(_) => capability::GUARDED_REVEAL,
+        Kind::OpenTerminal(_) => capability::TERMINAL,
         Kind::SendInput(_) => capability::SEND_INPUT,
         Kind::KillPane(_) => capability::KILL,
         Kind::CreateSession(_) => capability::CREATE_SESSION,
@@ -23,9 +24,9 @@ impl OrchestratorCore {
     /// no longer mean what it meant when the user issued them.
     pub(crate) fn route(&mut self, ui: UiId, request: Request, now: u64) -> Effects {
         let mut fx = Effects::default();
+        let request_id = request.request_id;
         let fail = |fx: &mut Effects, kind, msg: &str| {
-            fx.to_ui
-                .push(Self::ui_error(ui, request.request_id, kind, msg));
+            fx.to_ui.push(Self::ui_error(ui, request_id, kind, msg));
         };
         let Some(command) = request.command.as_ref() else {
             fail(&mut fx, ErrorKindCode::InvalidRequest, "no command");
@@ -62,11 +63,30 @@ impl OrchestratorCore {
             );
             return fx;
         }
+        // A terminal gets its identity here: the id is minted by this side, bound to the
+        // asking UI, this node connection, the pane and the pid, and written into the
+        // command the node sees. Nothing else is touched.
+        let mut terminal = None;
+        let opens_terminal = matches!(kind, Kind::OpenTerminal(_));
+        let mut request = request;
+        if opens_terminal {
+            match self.admit_terminal(ui, &target, conn, &request, now, &mut fx) {
+                Ok((id, forwarded)) => {
+                    terminal = Some(id);
+                    request = forwarded;
+                }
+                Err((kind, message)) => {
+                    fail(&mut fx, kind, message);
+                    return fx;
+                }
+            }
+        }
         let node_request_id = self.pending.add(PendingRequest {
             conn,
             ui,
             ui_request_id: request.request_id,
             deadline: now.saturating_add(self.config.request_timeout_secs),
+            terminal,
         });
         fx.to_nodes.push((
             conn,

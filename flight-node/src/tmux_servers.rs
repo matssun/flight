@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: MIT
 
-use crate::{Control, ControlError, PaneObservation, Round, ServerOutcome, Unavailable};
+use crate::{
+    tmux_attach_command, Control, ControlError, OpenedTerminal, PaneObservation, Round,
+    ServerOutcome, TerminalProcess, TerminalSpec, Unavailable,
+};
 use flight_classify::detect_agent;
 use flight_proto::ErrorKindCode;
 use flight_state::{PaneId, ServerId};
-use flight_tmux::{Tmux, TmuxError, TmuxRunner};
+use flight_tmux::{Tmux, TmuxEndpoint, TmuxError, TmuxRunner};
 use std::collections::BTreeMap;
 use std::io::ErrorKind;
 
@@ -22,6 +25,8 @@ const NO_SERVER_MARKERS: [&str; 3] = [
 #[derive(Default)]
 pub struct TmuxServers {
     servers: BTreeMap<ServerId, Tmux<Box<dyn TmuxRunner + Send + Sync>>>,
+    /// Servers a terminal may be opened on, with the endpoint its tmux client connects to.
+    terminals: BTreeMap<ServerId, TmuxEndpoint>,
 }
 
 impl TmuxServers {
@@ -31,6 +36,12 @@ impl TmuxServers {
 
     pub fn add(&mut self, server: ServerId, runner: Box<dyn TmuxRunner + Send + Sync>) {
         self.servers.insert(server, Tmux::with_runner(runner));
+    }
+
+    /// Allow terminals on `server`, whose tmux client connects to `endpoint`. A server not
+    /// registered here refuses to open one.
+    pub fn allow_terminal(&mut self, server: ServerId, endpoint: TmuxEndpoint) {
+        self.terminals.insert(server, endpoint);
     }
 
     pub fn server_ids(&self) -> Vec<ServerId> {
@@ -159,6 +170,77 @@ impl Control for TmuxServers {
         }
     }
 
+    fn reveal_pane(
+        &self,
+        server: &ServerId,
+        pane: &PaneId,
+        expected_pid: u32,
+    ) -> Result<(), ControlError> {
+        let tmux = self.tmux(server)?;
+        let current = tmux
+            .list_panes()
+            .map_err(failed)?
+            .into_iter()
+            .find(|p| p.pane_id == pane.as_str())
+            .ok_or_else(|| {
+                ControlError::new(ErrorKindCode::UnknownPane, format!("no pane {pane}"))
+            })?;
+        // The request was issued against one process; only act if tmux still shows it.
+        if current.pane_pid != expected_pid {
+            return Err(ControlError::new(
+                ErrorKindCode::PaneChanged,
+                format!("pane {pane} is no longer the process this request targeted"),
+            ));
+        }
+        tmux.reveal_pane(&current.window_id, pane.as_str())
+            .map_err(failed)
+    }
+
+    fn open_terminal(&self, spec: &TerminalSpec) -> Result<OpenedTerminal, ControlError> {
+        let endpoint = self.terminals.get(&spec.server).ok_or_else(|| {
+            ControlError::new(
+                ErrorKindCode::Unsupported,
+                format!("terminals are not enabled for server {}", spec.server),
+            )
+        })?;
+        // The same check as a reveal, before any PTY exists.
+        let tmux = self.tmux(&spec.server)?;
+        let current = tmux
+            .list_panes()
+            .map_err(failed)?
+            .into_iter()
+            .find(|p| p.pane_id == spec.pane.as_str())
+            .ok_or_else(|| {
+                ControlError::new(ErrorKindCode::UnknownPane, format!("no pane {}", spec.pane))
+            })?;
+        if current.pane_pid != spec.pid {
+            return Err(ControlError::new(
+                ErrorKindCode::PaneChanged,
+                format!(
+                    "pane {} is no longer the process this request targeted",
+                    spec.pane
+                ),
+            ));
+        }
+        // tmux repeats the check inside the command that attaches.
+        let args = tmux_attach_command(endpoint, spec.pane.as_str(), spec.pid);
+        let env = terminal_env(&spec.term);
+        let mut opened = TerminalProcess::spawn("tmux", &args, &env, spec.cols, spec.rows)
+            .map_err(|e| {
+                ControlError::new(
+                    ErrorKindCode::RemoteCommandFailed,
+                    format!("cannot start a terminal: {e}"),
+                )
+            })?;
+        if let Some(client_pid) = opened.process.process_id() {
+            let tmux = Tmux::new(endpoint.clone());
+            opened.redraw = Box::new(move || {
+                let _ = tmux.refresh_client_of_pid(client_pid);
+            });
+        }
+        Ok(opened)
+    }
+
     fn create_session(
         &self,
         server: &ServerId,
@@ -174,4 +256,24 @@ impl Control for TmuxServers {
         };
         result.map_err(failed)
     }
+}
+
+/// The whole environment of a terminal's tmux client: nothing is inherited but where to find
+/// programs and the home directory. In particular no `TMUX` or `TMUX_PANE`.
+fn terminal_env(term: &str) -> Vec<(String, String)> {
+    let var = |name: &str, default: &str| {
+        std::env::var(name)
+            .ok()
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| default.to_owned())
+    };
+    vec![
+        (
+            "PATH".to_owned(),
+            var("PATH", "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin"),
+        ),
+        ("HOME".to_owned(), var("HOME", "/")),
+        ("TERM".to_owned(), term.to_owned()),
+        ("LANG".to_owned(), "en_US.UTF-8".to_owned()),
+    ]
 }

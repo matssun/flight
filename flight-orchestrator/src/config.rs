@@ -10,6 +10,28 @@ pub struct OrchestratorConfig {
     pub disconnect_after_intervals: u32,
     /// A routed request with no response by then fails with `NodeUnreachable`.
     pub request_timeout_secs: u64,
+    pub terminal_limits: TerminalLimits,
+    /// After a node answered an open, how long both ends have to attach their streams.
+    pub terminal_attach_window_secs: u64,
+}
+
+/// How many terminals may be open at once. Beyond a limit an open fails at once with `Busy`
+/// and nothing is created.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TerminalLimits {
+    pub per_node: usize,
+    pub per_ui: usize,
+    pub total: usize,
+}
+
+impl Default for TerminalLimits {
+    fn default() -> Self {
+        Self {
+            per_node: 4,
+            per_ui: 2,
+            total: 32,
+        }
+    }
 }
 
 impl Default for OrchestratorConfig {
@@ -19,6 +41,8 @@ impl Default for OrchestratorConfig {
             stale_after_intervals: 3,
             disconnect_after_intervals: 6,
             request_timeout_secs: 10,
+            terminal_limits: TerminalLimits::default(),
+            terminal_attach_window_secs: 10,
         }
     }
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::{Effects, OrchestratorCore, UiId};
-use flight_proto::{ui_request_body, ErrorKindCode, UiRequest, Validate};
+use flight_proto::{ui_request_body, ErrorKindCode, UiRequest};
 
 impl OrchestratorCore {
     /// Start (or restart) a UI's stream: a fresh `FleetSnapshot`, then deltas from sequence 1.
@@ -19,7 +19,7 @@ impl OrchestratorCore {
     pub fn ui_request(&mut self, ui: UiId, request: UiRequest, now: u64) -> Effects {
         match request.body {
             Some(ui_request_body::Body::Subscribe(_)) => self.subscribe(ui),
-            Some(ui_request_body::Body::Command(r)) => match r.validate() {
+            Some(ui_request_body::Body::Command(r)) => match r.validate_from_ui() {
                 Ok(()) => self.route(ui, r, now),
                 Err(e) => {
                     let mut fx = Effects::default();

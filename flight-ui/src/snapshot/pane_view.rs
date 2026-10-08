@@ -14,4 +14,7 @@ pub struct PaneView {
     /// Short provenance, e.g. `permit.yn` or `finished while away`.
     pub why: String,
     pub title: String,
+    /// The pane's process id as last observed. A switch request carries it so the node can
+    /// refuse if the pane was replaced since (0: the node predates the field, or not known).
+    pub pid: u32,
 }

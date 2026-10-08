@@ -74,6 +74,22 @@ enum ErrorKindCode {
   ERROR_KIND_CODE_UNKNOWN_PANE = 7;
   ERROR_KIND_CODE_INVALID_REQUEST = 8;
   ERROR_KIND_CODE_NODE_UNREACHABLE = 9;
+  // The pane id exists but is no longer the process the request was about.
+  ERROR_KIND_CODE_PANE_CHANGED = 10;
+  // A limit was reached (for example too many open terminals); nothing was created.
+  ERROR_KIND_CODE_BUSY = 11;
+}
+
+// Why a terminal session ended (ADR-003).
+enum ExitReasonCode {
+  EXIT_REASON_CODE_UNSPECIFIED = 0;
+  EXIT_REASON_CODE_CLIENT_EXITED = 1;
+  EXIT_REASON_CODE_START_FAILED = 2;
+  EXIT_REASON_CODE_CLOSED_BY_UI = 3;
+  EXIT_REASON_CODE_NODE_LOST = 4;
+  EXIT_REASON_CODE_STALLED = 5;
+  EXIT_REASON_CODE_REVOKED = 6;
+  EXIT_REASON_CODE_SHUTDOWN = 7;
 }
 
 enum NodeStatusCode {
@@ -115,6 +131,9 @@ message PaneState {
   string window = 10;
   string path = 11;
   string command = 12;
+  // The pane's process id: the pane incarnation a control action must name. 0 from a node
+  // that predates it.
+  uint32 pid = 14;
 }
 
 message ServerStatus {
@@ -176,8 +195,25 @@ message Command {
     PaneRefMsg pane_ref = 1;
     uint32 lines = 2;
   }
-  message SwitchPane {
+  // Make the pane the active pane of its window and its window the current one of its
+  // session, on the node's own tmux server; never touches a tmux client (ADR-003).
+  // Tag 2 was an unguarded SwitchPane that no node offered; it is retired.
+  message RevealPane {
     PaneRefMsg pane_ref = 1;
+    // The pane process the caller was looking at; the node refuses if it changed.
+    uint32 expected_pid = 2;
+  }
+  // Open an interactive terminal onto the pane: the node runs a tmux client in a PTY it owns,
+  // guarded by expected_pid (ADR-003). The caller never chooses terminal_id: the orchestrator
+  // mints it and hands it to the node (empty from a UI, 16 bytes toward a node).
+  message OpenTerminal {
+    PaneRefMsg pane_ref = 1;
+    uint32 expected_pid = 2;
+    uint32 cols = 3;
+    uint32 rows = 4;
+    // The user's TERM: 1 to 32 bytes of [A-Za-z0-9._-].
+    string term = 5;
+    bytes terminal_id = 6;
   }
   message SendInput {
     PaneRefMsg pane_ref = 1;
@@ -195,12 +231,14 @@ message Command {
     // Empty means the shell.
     string command = 5;
   }
+  reserved 2;
   oneof kind {
     GetPreview get_preview = 1;
-    SwitchPane switch_pane = 2;
     SendInput send_input = 3;
     KillPane kill_pane = 4;
     CreateSession create_session = 5;
+    RevealPane reveal_pane = 6;
+    OpenTerminal open_terminal = 7;
   }
 }
 
@@ -223,7 +261,13 @@ message Response {
     Done done = 2;
     Preview preview = 3;
     ErrorInfo error = 4;
+    TerminalOpened terminal = 5;
   }
+}
+
+// The answer to a successful OpenTerminal: the id both ends attach with.
+message TerminalOpened {
+  bytes terminal_id = 1;
 }
 
 message NodeFrame {
@@ -336,10 +380,41 @@ message EnrollResponse {
   string orchestrator_id = 2;
 }
 
+// The two ends of a terminal stream (ADR-003). Each dials the orchestrator on its own
+// connection; the orchestrator splices them and never interprets `payload`.
+message TerminalAttach {
+  bytes terminal_id = 1;
+}
+message TerminalData {
+  bytes payload = 1;
+}
+message TerminalResize {
+  uint32 cols = 1;
+  uint32 rows = 2;
+}
+message TerminalExit {
+  ExitReasonCode reason = 1;
+  int32 status = 2;
+}
+message TerminalClose {}
+message TerminalFrame {
+  oneof body {
+    TerminalAttach attach = 1;
+    TerminalData data = 2;
+    TerminalResize resize = 3;
+    TerminalExit exit = 4;
+    TerminalClose close = 5;
+  }
+}
+
 service Flight {
   // A node's one long-lived stream, dialled by the node.
   rpc NodeConnect(stream NodeFrame) returns (stream OrchestratorFrame);
   // A UI's stream.
   rpc UiConnect(stream UiRequest) returns (stream UiEvent);
+  // A terminal's node end, dialled by the node after OpenTerminal.
+  rpc TerminalNode(stream TerminalFrame) returns (stream TerminalFrame);
+  // A terminal's UI end, dialled by the UI after TerminalOpened.
+  rpc TerminalUi(stream TerminalFrame) returns (stream TerminalFrame);
   rpc Enroll(EnrollRequest) returns (EnrollResponse);
 }

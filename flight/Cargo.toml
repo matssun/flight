@@ -19,3 +19,6 @@ flight-transport = { path = "../flight-transport" }
 flight-trust = { path = "../flight-trust" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }
 flight-orchestrator = { path = "../flight-orchestrator" }
+
+[dev-dependencies]
+portable-pty = "0.8"

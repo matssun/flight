@@ -3,6 +3,7 @@
 //! flight-tmux — thin, testable tmux IPC. See docs/adr/ADR-001-architecture.md.
 
 mod client;
+mod client_ops;
 mod control;
 mod endpoint;
 mod error;
@@ -11,6 +12,7 @@ mod parse;
 mod runner;
 
 pub use client::Tmux;
+pub use client_ops::ClientInfo;
 pub use control::{ControlConnection, ControlReply};
 pub use endpoint::TmuxEndpoint;
 pub use error::TmuxError;

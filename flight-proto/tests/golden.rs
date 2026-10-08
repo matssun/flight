@@ -109,6 +109,40 @@ fn orchestrator_request_v1() {
 }
 
 #[test]
+fn orchestrator_reveal_pane_v1() {
+    check(
+        "orchestrator_reveal_pane",
+        OrchestratorFrame {
+            body: Some(orchestrator_body::Body::Request(Request {
+                request_id: 12,
+                command: Some(Command {
+                    kind: Some(command_kind::Kind::RevealPane(command_kind::RevealPane {
+                        pane_ref: pane_state("%1", StateCode::Busy).pane_ref,
+                        expected_pid: 4242,
+                    })),
+                }),
+            })),
+        },
+    );
+}
+
+#[test]
+fn pane_state_with_a_pid_v1() {
+    let mut pane = pane_state("%1", StateCode::Permit);
+    pane.pid = 4242;
+    check(
+        "node_pane_with_pid",
+        NodeFrame {
+            body: Some(node_body::Body::Delta(Delta {
+                incarnation: inc(1).as_bytes().to_vec(),
+                sequence: 1,
+                change: Some(delta_change::Change::PaneUpsert(pane)),
+            })),
+        },
+    );
+}
+
+#[test]
 fn ui_fleet_snapshot_v1() {
     check(
         "ui_fleet_snapshot",
@@ -122,6 +156,89 @@ fn ui_fleet_snapshot_v1() {
                     servers: vec![],
                     panes: vec![pane_state("%1", StateCode::Permit)],
                 }],
+            })),
+        },
+    );
+}
+
+fn open_terminal(id: Vec<u8>) -> Command {
+    Command {
+        kind: Some(command_kind::Kind::OpenTerminal(
+            command_kind::OpenTerminal {
+                pane_ref: pane_state("%1", StateCode::Busy).pane_ref,
+                expected_pid: 4242,
+                cols: 120,
+                rows: 40,
+                term: "xterm-256color".to_owned(),
+                terminal_id: id,
+            },
+        )),
+    }
+}
+
+#[test]
+fn orchestrator_open_terminal_v1() {
+    check(
+        "orchestrator_open_terminal",
+        OrchestratorFrame {
+            body: Some(orchestrator_body::Body::Request(Request {
+                request_id: 13,
+                command: Some(open_terminal((1..=16).collect())),
+            })),
+        },
+    );
+}
+
+#[test]
+fn ui_open_terminal_v1() {
+    check(
+        "ui_open_terminal",
+        UiRequest {
+            body: Some(ui_request_body::Body::Command(Request {
+                request_id: 14,
+                command: Some(open_terminal(Vec::new())),
+            })),
+        },
+    );
+}
+
+#[test]
+fn terminal_opened_v1() {
+    check(
+        "ui_terminal_opened",
+        UiEvent {
+            body: Some(ui_event_body::Body::Response(Response {
+                request_id: 14,
+                result: Some(response_result::Result::Terminal(TerminalOpened {
+                    terminal_id: (1..=16).collect(),
+                })),
+            })),
+        },
+    );
+}
+
+#[test]
+fn terminal_frames_v1() {
+    check("terminal_attach", TerminalFrame::attach((1..=16).collect()));
+    check(
+        "terminal_data",
+        TerminalFrame::data(b"ls\r\x1b[0m".to_vec()),
+    );
+    check(
+        "terminal_resize",
+        TerminalFrame {
+            body: Some(terminal_body::Body::Resize(TerminalResize {
+                cols: 100,
+                rows: 30,
+            })),
+        },
+    );
+    check(
+        "terminal_exit",
+        TerminalFrame {
+            body: Some(terminal_body::Body::Exit(TerminalExit {
+                reason: ExitReasonCode::ClientExited as i32,
+                status: 0,
             })),
         },
     );

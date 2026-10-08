@@ -64,7 +64,7 @@ fn keys_move_the_cursor_between_panes_and_q_quits() {
     )
     .expect("start dashboard");
 
-    let first = wait_for(&ui, "ui:0", &["ATTENTION", "nga", "api", "waiting"]);
+    let first = wait_for(&ui, "ui:0", &["NEEDS YOU", "nga", "api", "waiting"]);
     assert!(
         first.contains("nga") && first.contains("api"),
         "both agents listed:\n{first}"
@@ -75,19 +75,19 @@ fn keys_move_the_cursor_between_panes_and_q_quits() {
     );
     let cursor = |s: &str| {
         s.lines()
-            .find(|l| l.contains("> ") && l.contains("Claude"))
+            .find(|l| l.contains('▌') && l.contains("claude"))
             .map(str::to_owned)
     };
     assert!(
-        cursor(&first).unwrap_or_default().contains("nga"),
-        "cursor starts on the first attention pane:\n{first}"
+        cursor(&first).unwrap_or_default().contains("api"),
+        "cursor starts on the first session that needs the user:\n{first}"
     );
 
     tmux(&ui, &["send-keys", "-t", "ui:0", "Down"]).unwrap();
-    let moved = wait_for(&ui, "ui:0", &["local / api", "Do you want to proceed?"]);
+    let moved = wait_for(&ui, "ui:0", &["nga  WAITING", "Do you want to proceed?"]);
     assert!(
-        cursor(&moved).unwrap_or_default().contains("api"),
-        "Down moved the cursor to api:\n{moved}"
+        cursor(&moved).unwrap_or_default().contains("nga"),
+        "Down moved the cursor to nga:\n{moved}"
     );
     assert!(
         moved.contains("Do you want to proceed?"),

@@ -3,8 +3,11 @@
 //! How states and health look. Presentation only: the meaning lives in `flight-state`.
 
 use crate::snapshot::HostHealth;
+use crate::view::Tier;
 use flight_state::AgentState;
-use ratatui::style::Color;
+use ratatui::style::{Color, Modifier, Style};
+
+const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 /// (icon, label, colour). Icons and labels follow Fleet.
 pub fn state_look(state: AgentState) -> (&'static str, &'static str, Color) {
@@ -19,16 +22,65 @@ pub fn state_look(state: AgentState) -> (&'static str, &'static str, Color) {
     }
 }
 
+/// The icon as shown now: only the working spinner moves.
+pub fn state_icon(state: AgentState, frame: u32) -> &'static str {
+    if state == AgentState::Busy {
+        let i = usize::try_from(frame).unwrap_or(0) % SPINNER.len();
+        return SPINNER.get(i).copied().unwrap_or("⠋");
+    }
+    state_look(state).0
+}
+
+/// What a state means, in words a first-time user can act on.
+pub fn state_meaning(state: AgentState) -> &'static str {
+    match state {
+        AgentState::Permit => "needs your approval",
+        AgentState::Question => "has a question for you",
+        AgentState::Done => "finished, your move",
+        AgentState::Busy => "thinking or running tools",
+        AgentState::Idle => "up, nothing happening",
+        AgentState::Shell => "a plain shell, no agent",
+        AgentState::Down => "no live process",
+    }
+}
+
+pub fn tier_colour(tier: Tier) -> Color {
+    match tier {
+        Tier::NeedsYou => Color::Red,
+        Tier::Working => Color::Yellow,
+        Tier::Quiet => Color::DarkGray,
+    }
+}
+
+pub fn dim() -> Style {
+    Style::default().fg(Color::DarkGray)
+}
+
+pub fn bold() -> Style {
+    Style::default().add_modifier(Modifier::BOLD)
+}
+
+/// The key in a hint: bright, so controls stand out from their labels.
+pub fn key() -> Style {
+    Style::default()
+        .fg(Color::Cyan)
+        .add_modifier(Modifier::BOLD)
+}
+
+pub fn selected_row() -> Style {
+    Style::default().bg(Color::Indexed(238))
+}
+
 /// (icon, text, colour) for a host row.
 pub fn health_look(h: &HostHealth) -> (&'static str, String, Color) {
     match h {
         HostHealth::Online => ("●", "online".to_owned(), Color::Green),
-        HostHealth::Stale => ("!", "stale (last known)".to_owned(), Color::Yellow),
+        HostHealth::Stale => ("!", "no news lately (last known)".to_owned(), Color::Yellow),
         HostHealth::Disconnected => ("!", "disconnected (last known)".to_owned(), Color::Red),
         HostHealth::NoServer => ("○", "no sessions yet".to_owned(), Color::DarkGray),
         HostHealth::Unreachable(_) => ("!", "unreachable".to_owned(), Color::Red),
         HostHealth::AuthFailed(_) => ("!", "authentication failed".to_owned(), Color::Red),
-        HostHealth::NoTmux => ("!", "session backend missing".to_owned(), Color::Red),
+        HostHealth::NoTmux => ("!", "cannot run sessions".to_owned(), Color::Red),
         HostHealth::Failed(_) => ("!", "error".to_owned(), Color::Red),
     }
 }

@@ -3,17 +3,24 @@
 use super::keys::action_for;
 use super::worker::{Cmd, Msg, Worker};
 use crate::collect::Backend;
-use crate::render::render;
-use crate::view::{Effect, ViewModel};
-use crossterm::event::{self, Event, KeyEventKind};
+use crate::render::{render, session_at};
+use crate::view::{Action, Effect, ViewModel};
+use crossterm::event::{
+    self, DisableMouseCapture, EnableMouseCapture, Event, KeyEventKind, MouseButton, MouseEvent,
+    MouseEventKind,
+};
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
 use ratatui::backend::CrosstermBackend;
+use ratatui::layout::Rect;
 use ratatui::Terminal;
 use std::io::{self, Stdout};
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+/// Two clicks on the same session this close together open it.
+const DOUBLE_CLICK: Duration = Duration::from_millis(400);
 
 /// How the dashboard ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,7 +36,7 @@ struct TerminalGuard;
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
         let _ = disable_raw_mode();
-        let _ = execute!(io::stdout(), LeaveAlternateScreen);
+        let _ = execute!(io::stdout(), DisableMouseCapture, LeaveAlternateScreen);
     }
 }
 
@@ -46,7 +53,7 @@ pub fn run_with_notice(
 ) -> io::Result<Exit> {
     enable_raw_mode()?;
     let _guard = TerminalGuard;
-    execute!(io::stdout(), EnterAlternateScreen)?;
+    execute!(io::stdout(), EnterAlternateScreen, EnableMouseCapture)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
     let mut worker = Worker::spawn(Box::new(backend), refresh_every);
     let exit = event_loop(&mut terminal, &mut worker, notice);
@@ -61,25 +68,66 @@ fn event_loop(
 ) -> io::Result<Exit> {
     let mut vm = ViewModel::new();
     vm.set_message(notice);
+    let mut last_click: Option<(flight_state::PaneRef, Instant)> = None;
     loop {
         terminal.draw(|f| render(f, &vm))?;
         if event::poll(Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    if let Some(action) = action_for(key, vm.form().is_some()) {
-                        let effect = vm_apply(&mut vm, action);
-                        if let Some(exit) = handle(worker, effect) {
-                            return Ok(exit);
-                        }
-                    }
+            let action = match event::read()? {
+                Event::Key(key) if key.kind == KeyEventKind::Press => {
+                    action_for(key, vm.input_mode())
+                }
+                Event::Mouse(m) => {
+                    let size = terminal.size()?;
+                    mouse_action(
+                        &vm,
+                        Rect::new(0, 0, size.width, size.height),
+                        m,
+                        &mut last_click,
+                    )
+                }
+                _ => None,
+            };
+            if let Some(action) = action {
+                let effect = vm_apply(&mut vm, action);
+                if let Some(exit) = handle(worker, effect) {
+                    return Ok(exit);
                 }
             }
+        } else {
+            vm.tick();
         }
         while let Ok(msg) = worker.rx.try_recv() {
             if let Some(exit) = on_message(&mut vm, worker, msg) {
                 return Ok(exit);
             }
         }
+    }
+}
+
+/// A click selects the session under it; a second click on the same one opens it; the wheel
+/// moves the selection.
+fn mouse_action(
+    vm: &ViewModel,
+    area: Rect,
+    m: MouseEvent,
+    last_click: &mut Option<(flight_state::PaneRef, Instant)>,
+) -> Option<Action> {
+    match m.kind {
+        MouseEventKind::ScrollUp => Some(Action::Up),
+        MouseEventKind::ScrollDown => Some(Action::Down),
+        MouseEventKind::Down(MouseButton::Left) => {
+            let pane = session_at(vm, area, m.column, m.row)?;
+            let again =
+                matches!(last_click, Some((p, at)) if *p == pane && at.elapsed() < DOUBLE_CLICK);
+            if again {
+                *last_click = None;
+                Some(Action::Switch)
+            } else {
+                *last_click = Some((pane.clone(), Instant::now()));
+                Some(Action::Select(pane))
+            }
+        }
+        _ => None,
     }
 }
 

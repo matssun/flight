@@ -14,9 +14,9 @@ mod view;
 
 pub use app::{run, run_with_notice, Exit};
 pub use collect::{Backend, Collector, CreateFailure};
-pub use render::{render, render_to_string};
+pub use render::{layout_kind, render, render_to_string, session_at, LayoutKind};
 pub use snapshot::{HostHealth, HostView, PanePreview, PaneView, UiSnapshot};
 pub use view::{
-    attention_panes, section_panes, tree_panes, Action, Effect, Field, FormInput, FormOutcome,
-    HostChoice, NewSessionForm, NewSessionRequest, Program, Section, ViewModel,
+    sessions, Action, Effect, Field, FilterInput, FormInput, FormOutcome, HostChoice, InputMode,
+    NewSessionForm, NewSessionRequest, Program, Summary, Tier, ViewModel,
 };

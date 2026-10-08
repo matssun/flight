@@ -182,9 +182,16 @@ fn a_pane_id_reused_by_a_new_server_is_not_the_pane_the_caller_saw() {
     let seen = live.pid_of(&id);
 
     live.tmux.kill_server().unwrap();
-    live.tmux
+    // A server started the instant after the old one was killed can exit at once; ask again.
+    let started = std::time::Instant::now();
+    while live
+        .tmux
         .new_session_running("a", "/tmp", "sleep 602")
-        .unwrap();
+        .is_err()
+    {
+        assert!(started.elapsed().as_secs() < 5, "tmux would not restart");
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
     assert_eq!(
         live.raw(&["list-panes", "-a", "-F", "#{pane_id}"]).trim(),
         id,

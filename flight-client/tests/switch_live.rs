@@ -4,8 +4,7 @@
 //! with terminals attached through a pty (skipped without tmux and python3).
 
 use flight_client::{
-    detect_placement, Presented, SshDestinations, SwitchError, SwitchTarget, Switcher, TmuxEnv,
-    UiPlacement,
+    detect_placement, Presented, SwitchError, SwitchTarget, Switcher, TmuxEnv, UiPlacement,
 };
 use flight_state::{HostId, PaneId, PaneRef, ServerId};
 use flight_tmux::{Tmux, TmuxEndpoint, TmuxRunner};
@@ -233,7 +232,7 @@ fn target(live: &Live, pane: &str, pid: u32, session: &str) -> SwitchTarget {
 }
 
 fn this_machine() -> Switcher {
-    Switcher::new(Some(HostId::new("this-node")), SshDestinations::default())
+    Switcher::new(Some(HostId::new("this-node")))
 }
 
 fn never_remote(_: &PaneRef, _: u32) -> Result<(), String> {
@@ -349,5 +348,26 @@ fn outside_tmux_the_dashboard_hands_over_to_a_local_attach() {
             "-t",
             "=work"
         ]
+    );
+}
+
+#[test]
+fn a_remote_pane_is_refused_before_anything_is_revealed_until_terminals_exist() {
+    let outcome = Switcher::new(Some(HostId::new("this-node"))).switch(
+        &SwitchTarget {
+            pane: PaneRef {
+                host: HostId::new("another-node"),
+                server: ServerId::new("flight"),
+                pane: PaneId::new("%1"),
+            },
+            pid: 5,
+            session: "api".to_owned(),
+        },
+        &TmuxEnv::default(),
+        &mut |_, _| panic!("nothing may be revealed for a pane that cannot be shown"),
+    );
+    assert!(
+        matches!(outcome, Err(SwitchError::Refused(_))),
+        "{outcome:?}"
     );
 }

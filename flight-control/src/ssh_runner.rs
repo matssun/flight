@@ -43,22 +43,6 @@ impl SshRunner {
         Ok(())
     }
 
-    /// The `ssh` arguments (without the program name) that attach the user's terminal to
-    /// `session`. Interactive, so no `BatchMode` (a passphrase prompt is the user's to answer);
-    /// `-t` allocates the terminal tmux needs. The session is matched exactly (`=`).
-    pub fn attach_args(&self, session: &str) -> Vec<String> {
-        let target = format!("={session}");
-        let mut args = vec![
-            "-t".to_owned(),
-            "-o".to_owned(),
-            format!("ConnectTimeout={}", self.connect_timeout_secs),
-            "--".to_owned(),
-            self.alias.clone(),
-        ];
-        args.push(self.remote_command(&["attach-session", "-t", &target]));
-        args
-    }
-
     fn remote_command(&self, tmux_args: &[&str]) -> String {
         std::iter::once("tmux".to_owned())
             .chain(flight_tmux::tmux_args(&self.endpoint, tmux_args))
@@ -142,16 +126,5 @@ mod tests {
         for bad in ["", "-oProxyCommand=x", "a b", "a\tb", "a\nb", "a\u{7}b"] {
             assert!(SshRunner::new(bad, ep()).is_err(), "{bad:?}");
         }
-    }
-
-    #[test]
-    fn attach_is_interactive_quoted_and_matches_the_session_exactly() {
-        let args = runner().attach_args("it's api");
-        assert_eq!(args[..5], ["-t", "-o", "ConnectTimeout=5", "--", "mini-2"]);
-        assert_eq!(
-            args[5],
-            r"'tmux' '-u' '-L' 'flight' 'attach-session' '-t' '=it'\''s api'"
-        );
-        assert!(!args.iter().any(|a| a.contains("BatchMode")));
     }
 }

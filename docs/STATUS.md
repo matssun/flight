@@ -97,7 +97,7 @@ configuration and no direct UI-to-node path; everything travels over the authent
   (an older node is refused, never given an unguarded fallback), orchestrator routing, pure `plan_switch` for local
   panes, conservative client identification (exactly one attached terminal on the dashboard's session, control clients
   excluded, popups handled).
-- Superseded: slice 4's remote presentation via `ssh -t` and `ui/ssh.toml` (commit 85246b3). To be removed (slice 4b).
+- Removed (slice 4b): the earlier remote presentation via `ssh -t` and `ui/ssh.toml`. A remote pane is refused with "not available yet" until the terminal session lands.
 - Design revised, not implemented: remote presentation as a Flight-native terminal session (node PTY running a guarded
   `tmux attach`, relayed node -> orchestrator -> UI on its own streams, bounded and backpressured, with explicit
   lifecycle and limits). Pending review of the revised ADR-003.

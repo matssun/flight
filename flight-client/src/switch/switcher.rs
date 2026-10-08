@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 use crate::switch::{
-    detect_placement, plan_switch, Handoff, SshDestinations, SwitchError, SwitchPlan, SwitchTarget,
-    TmuxEnv, UiContext,
+    detect_placement, plan_switch, Handoff, SwitchError, SwitchPlan, SwitchTarget, TmuxEnv,
+    UiContext,
 };
-use flight_control::SshRunner;
 use flight_state::{HostId, PaneRef};
 use flight_tmux::{Tmux, TmuxEndpoint};
 
@@ -22,22 +21,11 @@ pub enum Presented {
 #[derive(Debug, Clone, Default)]
 pub struct Switcher {
     local_host: Option<HostId>,
-    ssh: SshDestinations,
-}
-
-fn on_path(program: &str) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    std::env::var_os("PATH").is_some_and(|paths| {
-        std::env::split_paths(&paths).any(|dir| {
-            std::fs::metadata(dir.join(program))
-                .is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
-        })
-    })
 }
 
 impl Switcher {
-    pub fn new(local_host: Option<HostId>, ssh: SshDestinations) -> Self {
-        Self { local_host, ssh }
+    pub fn new(local_host: Option<HostId>) -> Self {
+        Self { local_host }
     }
 
     /// `reveal_remote` asks the pane's node, through the orchestrator, to select the pane
@@ -53,7 +41,6 @@ impl Switcher {
         let ctx = UiContext {
             local_host: self.local_host.as_ref(),
             placement: &placement,
-            ssh: &self.ssh,
         };
         match plan_switch(target, &ctx)? {
             SwitchPlan::LocalClient { client, target } => {
@@ -75,24 +62,11 @@ impl Switcher {
                     args,
                 }))
             }
-            SwitchPlan::RemoteAttach {
-                ssh_alias,
-                server,
-                target,
-                ..
-            } => {
-                if !on_path("ssh") {
-                    return Err(crate::switch::Refusal::MissingProgram("ssh").into());
-                }
-                let endpoint = TmuxEndpoint::named(&server)
-                    .map_err(|e| SwitchError::Present(e.to_string()))?;
-                let runner = SshRunner::new(&ssh_alias, endpoint)
-                    .map_err(|e| SwitchError::Present(e.to_string()))?;
-                reveal_remote(&target.pane, target.pid).map_err(SwitchError::Reveal)?;
-                Ok(Presented::Attach(Handoff {
-                    program: "ssh".to_owned(),
-                    args: runner.attach_args(&target.session),
-                }))
+            SwitchPlan::RemoteTerminal { .. } => {
+                // Refused before anything is revealed: until the terminal session exists
+                // there is nothing to show the pane with.
+                let _ = reveal_remote;
+                Err(crate::switch::Refusal::RemoteTerminalUnavailable.into())
             }
         }
     }

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-use flight_state::HostId;
 use std::fmt;
 
 /// Why a switch was not attempted. Nothing has been changed when one of these is returned.
@@ -17,12 +16,9 @@ pub enum Refusal {
     NoClient,
     /// Several terminals show the dashboard's session; tmux cannot say which one is this.
     AmbiguousClients(usize),
-    /// A remote node with no entry in `ui/ssh.toml`.
-    NoSshDestination(HostId),
-    /// The configured ssh destination could be read as an option or contains whitespace.
-    UnsafeSshDestination(HostId),
-    /// A program needed to present the pane is not installed.
-    MissingProgram(&'static str),
+    /// Remote panes are shown through a terminal session over Flight (ADR-003), which the
+    /// dashboard does not have yet.
+    RemoteTerminalUnavailable,
 }
 
 impl fmt::Display for Refusal {
@@ -45,18 +41,9 @@ impl fmt::Display for Refusal {
                 f,
                 "cannot tell which of {n} tmux clients shows this dashboard; attach manually"
             ),
-            Self::NoSshDestination(host) => write!(
-                f,
-                "no ssh destination for node {host}; add [nodes.\"{host}\"] ssh = \"...\" \
-                 to ui/ssh.toml"
+            Self::RemoteTerminalUnavailable => f.write_str(
+                "showing a pane of another machine is not available yet in this dashboard",
             ),
-            Self::UnsafeSshDestination(host) => {
-                write!(
-                    f,
-                    "the ssh destination configured for node {host} is not usable"
-                )
-            }
-            Self::MissingProgram(p) => write!(f, "{p} is not installed"),
         }
     }
 }

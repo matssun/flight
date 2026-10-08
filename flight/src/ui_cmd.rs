@@ -3,7 +3,7 @@
 use crate::args::{config_dir, now, Args};
 use crate::join_cmd::join_command;
 use crate::roles::{node_dir, ui_dir};
-use flight_client::{ClientConfig, OrchestratedBackend, SshDestinations, Switcher};
+use flight_client::{ClientConfig, OrchestratedBackend, Switcher};
 use flight_proto::RoleCode;
 use flight_state::HostId;
 use flight_ui::{render_to_string, run, Backend, Exit, ViewModel};
@@ -17,9 +17,8 @@ pub const USAGE: &str = "usage: flight ui <command>
         the dashboard, reading from the orchestrator this UI joined.
         Enter on a pane selects it and shows it: a pane of the node on this machine
         (its identity is read from --node-dir, default <config-dir>/node) through tmux,
-        any other through `ssh -t` to the destination in <config-dir>/ui/ssh.toml:
-          [nodes.\"<node id>\"]
-          ssh = \"host-alias\"";
+        any other pane is not yet shown by this dashboard (ADR-003: it will be a terminal
+        session over Flight itself, never ssh).";
 
 pub fn run_ui(args: &[String]) -> Result<(), String> {
     if args.iter().any(|a| a == "--help" || a == "-h") {
@@ -56,11 +55,10 @@ fn dashboard(args: &[String]) -> Result<(), String> {
         None => Duration::from_secs(1),
     };
     let mut backend = OrchestratedBackend::start(config).map_err(|e| e.to_string())?;
-    let ssh = SshDestinations::load(&SshDestinations::path_in(&dir)).map_err(|e| e.to_string())?;
     let node = args
         .value("--node-dir")
         .map_or_else(|| node_dir(&base), std::path::PathBuf::from);
-    backend.set_switching(Switcher::new(local_host(&node), ssh));
+    backend.set_switching(Switcher::new(local_host(&node)));
     let handoff = backend.handoff();
     if args.switch("--once") {
         return once(backend);

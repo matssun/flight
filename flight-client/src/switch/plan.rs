@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use crate::switch::{Refusal, SshDestinations, UiPlacement};
-use flight_control::SshRunner;
+use crate::switch::{Refusal, UiPlacement};
 use flight_state::{HostId, PaneRef};
 use flight_tmux::TmuxEndpoint;
 use flight_ui::PaneView;
@@ -31,7 +30,6 @@ pub struct UiContext<'a> {
     /// The node role on this machine, if any. A pane is local only if its node *is* this one.
     pub local_host: Option<&'a HostId>,
     pub placement: &'a UiPlacement,
-    pub ssh: &'a SshDestinations,
 }
 
 /// What to do. Planning decides; it touches nothing.
@@ -47,10 +45,10 @@ pub enum SwitchPlan {
         server: String,
         target: SwitchTarget,
     },
-    /// Reveal through the orchestrator, then replace the dashboard with an ssh attach.
-    RemoteAttach {
+    /// Reveal through the orchestrator, then show the node's terminal session over Flight's
+    /// own connections (no ssh, no direct path to the node).
+    RemoteTerminal {
         host: HostId,
-        ssh_alias: String,
         server: String,
         target: SwitchTarget,
     },
@@ -78,15 +76,8 @@ pub fn plan_switch(target: &SwitchTarget, ctx: &UiContext<'_>) -> Result<SwitchP
     let server = server.to_owned();
     let target = target.clone();
     if ctx.local_host != Some(&target.pane.host) {
-        let host = target.pane.host.clone();
-        let alias = ctx
-            .ssh
-            .get(&host)
-            .ok_or_else(|| Refusal::NoSshDestination(host.clone()))?;
-        SshRunner::check_alias(alias).map_err(|_| Refusal::UnsafeSshDestination(host.clone()))?;
-        return Ok(SwitchPlan::RemoteAttach {
-            host,
-            ssh_alias: alias.to_owned(),
+        return Ok(SwitchPlan::RemoteTerminal {
+            host: target.pane.host.clone(),
             server,
             target,
         });

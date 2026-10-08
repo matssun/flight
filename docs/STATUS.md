@@ -90,16 +90,20 @@ PR is next.
 
 ## Current branch: orchestrated-switch (ADR-003)
 
-Enter on a pane in the orchestrated dashboard. Slice 1 (design) and slice 2 (protocol and node-side guarded reveal)
-are done: `RevealPane { pane_ref, expected_pid }`, `PaneState.pid`, `PaneChanged`, capability `guarded_reveal_v1`
-(an older node is refused, never given an unguarded fallback), tested against real tmux (selects window and pane,
-touches no client, refuses a replaced pane and a pane id reused by a new server). Slice 3 (orchestrator routing: forwards the reveal unchanged, node's typed errors pass through, disconnect/timeout
-fail it, late answers ignored) is done. Slice 4 (UI) is done: pure `plan_switch`, `Switcher` (reveal then present, failures say which), `ui/ssh.toml` keyed by
-node id, client identification (exactly one attached terminal on the dashboard's session, control clients excluded,
-popups handled), local node identity from `--node-dir`. Next: slice 5 (end-to-end, including the pane-replaced race). `KillPane` is under-guarded and must adopt
-`expected_pid` before any kill action exists in a UI.
+Enter on a pane in the orchestrated dashboard. Invariant (ADR-003): normal distributed operation needs no SSH
+configuration and no direct UI-to-node path; everything travels over the authenticated UI/orchestrator/node connections.
+
+- Done and kept: guarded `RevealPane { pane_ref, expected_pid }`, `PaneState.pid`, `PaneChanged`, `guarded_reveal_v1`
+  (an older node is refused, never given an unguarded fallback), orchestrator routing, pure `plan_switch` for local
+  panes, conservative client identification (exactly one attached terminal on the dashboard's session, control clients
+  excluded, popups handled).
+- Superseded: slice 4's remote presentation via `ssh -t` and `ui/ssh.toml` (commit 85246b3). To be removed (slice 4b).
+- Design revised, not implemented: remote presentation as a Flight-native terminal session (node PTY running a guarded
+  `tmux attach`, relayed node -> orchestrator -> UI on its own streams, bounded and backpressured, with explicit
+  lifecycle and limits). Pending review of the revised ADR-003.
+- `KillPane` is under-guarded and must adopt `expected_pid` before any kill action exists in a UI.
 
 ## Open limitations
 
-Third-machine UI test, orchestrated Enter/switch, hooks and process-table discovery, key rotation,
+Third-machine UI test, remote Enter (terminal session, ADR-003), hooks and process-table discovery, key rotation,
 branch protection on main (require the four CI checks; not yet confirmed), site-to-site VPN path MTU (1419).

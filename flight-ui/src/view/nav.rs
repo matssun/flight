@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-//! Selection movement and reconciliation, kept apart from the model's data.
+//! Selection movement, search and reconciliation, kept apart from the model's data.
 
-use super::{Effect, Section, ViewModel};
+use super::{Effect, FilterInput, ViewModel};
 use flight_state::PaneRef;
 
 fn position(list: &[PaneRef], sel: Option<&PaneRef>) -> Option<usize> {
@@ -10,36 +10,16 @@ fn position(list: &[PaneRef], sel: Option<&PaneRef>) -> Option<usize> {
 }
 
 impl ViewModel {
-    /// Make the selection valid for the new snapshot without moving it onto another agent
-    /// unless its pane is gone.
+    /// Make the selection valid for the new snapshot or filter without moving it onto another
+    /// session unless its pane is gone from the list.
     pub(super) fn reconcile(&mut self) {
-        let in_focus = self.refs(self.focus);
-        if let Some(i) = position(&in_focus, self.selected.as_ref()) {
+        let list = self.refs();
+        if let Some(i) = position(&list, self.selected.as_ref()) {
             self.hint = i;
             return;
         }
-        // The pane left this list but may still exist (e.g. it no longer needs attention):
-        // follow it to the section that has it instead of jumping to a neighbour.
-        let other = self.focus.other();
-        let other_list = self.refs(other);
-        if let Some(i) = position(&other_list, self.selected.as_ref()) {
-            self.focus = other;
-            self.hint = i;
-            return;
-        }
-        // Gone entirely: take the neighbour at the same position, else fall back a section.
-        self.pick_neighbour(in_focus, other_list);
-    }
-
-    fn pick_neighbour(&mut self, in_focus: Vec<PaneRef>, other_list: Vec<PaneRef>) {
-        let (list, section) = if in_focus.is_empty() {
-            (other_list, self.focus.other())
-        } else {
-            (in_focus, self.focus)
-        };
         let idx = self.hint.min(list.len().saturating_sub(1));
         self.selected = list.get(idx).cloned();
-        self.focus = section;
         self.hint = idx;
     }
 
@@ -58,10 +38,14 @@ impl ViewModel {
             .find(|p| p.session == pending.session)
             .map(|p| p.pane_ref.clone());
         if let Some(pane) = found {
+            // The new session must be visible: a search that hides it is dropped.
+            if !self.refs().contains(&pane) {
+                self.filter.clear();
+                self.searching = false;
+            }
             self.selected = Some(pane);
-            self.focus = Section::Tree;
             self.hint = self
-                .refs(Section::Tree)
+                .refs()
                 .iter()
                 .position(|p| Some(p) == self.selected.as_ref())
                 .unwrap_or(0);
@@ -77,7 +61,7 @@ impl ViewModel {
     pub(super) fn step(&mut self, delta: isize) -> Effect {
         self.pending = None;
         let before = self.selected.clone();
-        let list = self.refs(self.focus);
+        let list = self.refs();
         let next = match position(&list, self.selected.as_ref()) {
             Some(i) => i
                 .saturating_add_signed(delta)
@@ -89,18 +73,36 @@ impl ViewModel {
         self.select_effect(before)
     }
 
-    pub(super) fn toggle_focus(&mut self) -> Effect {
+    /// Point at a listed session (a click). Anything not listed is ignored.
+    pub(super) fn select(&mut self, pane: PaneRef) -> Effect {
         self.pending = None;
-        let before = self.selected.clone();
-        let target = self.focus.other();
-        let list = self.refs(target);
-        if list.is_empty() {
+        let list = self.refs();
+        let Some(i) = position(&list, Some(&pane)) else {
             return Effect::None;
+        };
+        let before = self.selected.clone();
+        self.selected = Some(pane);
+        self.hint = i;
+        self.select_effect(before)
+    }
+
+    pub(super) fn filter_input(&mut self, input: FilterInput) -> Effect {
+        match input {
+            FilterInput::Char(c) => self.filter.push(c),
+            FilterInput::Backspace => {
+                self.filter.pop();
+            }
+            FilterInput::Accept => {
+                self.searching = false;
+                return Effect::None;
+            }
+            FilterInput::Clear => {
+                self.filter.clear();
+                self.searching = false;
+            }
         }
-        let idx = position(&list, self.selected.as_ref()).unwrap_or(0);
-        self.selected = list.get(idx).cloned();
-        self.focus = target;
-        self.hint = idx;
+        let before = self.selected.clone();
+        self.reconcile();
         self.select_effect(before)
     }
 }

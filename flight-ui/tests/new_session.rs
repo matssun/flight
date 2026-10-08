@@ -395,13 +395,17 @@ fn moving_the_cursor_cancels_the_pending_selection() {
 fn the_dashboard_says_how_to_open_the_form() {
     let mut vm = ViewModel::new();
     vm.apply_snapshot(fleet());
-    assert!(render_to_string(&vm, 100, 24).contains("n New session"));
+    let text = render_to_string(&vm, 100, 24);
+    assert!(text.contains("n New") && text.contains("? Help"), "{text}");
     let empty = {
         let mut vm = ViewModel::new();
         vm.apply_snapshot(snap(vec![online("mac-local", vec![])]));
         render_to_string(&vm, 100, 24)
     };
-    assert!(empty.contains("Press n to create one"), "{empty}");
+    assert!(
+        empty.contains("No Flight sessions yet") && empty.contains("Press n to start"),
+        "{empty}"
+    );
 }
 
 #[test]
@@ -411,29 +415,29 @@ fn the_rendered_form_shows_fields_focus_and_buttons() {
     let text = render_to_string(&vm, 100, 30);
     for want in [
         "New session",
-        "Host:",
+        "Host",
         "mac-local",
-        "▸ Name:",
-        "[api▏]",
-        "Directory:",
-        "[~]",
+        "▌ Name",
+        "[api▏",
+        "Directory",
+        "[~",
         "(•) Claude",
         "( ) Shell",
-        "[ Create ]",
-        "[ Cancel ]",
+        "Create",
+        "Cancel",
         "Esc cancel",
     ] {
         assert!(text.contains(want), "missing {want:?} in\n{text}");
     }
     input(&mut vm, FormInput::Next);
     let text = render_to_string(&vm, 100, 30);
-    assert!(text.contains("▸ Directory:"), "{text}");
-    assert!(!text.contains("▸ Name:"));
+    assert!(text.contains("▌ Directory"), "{text}");
+    assert!(!text.contains("▌ Name"));
 }
 
 #[test]
 fn the_form_fits_a_small_terminal() {
     let vm = open();
     let text = render_to_string(&vm, 60, 16);
-    assert!(text.contains("[ Create ]"), "{text}");
+    assert!(text.contains("Create"), "{text}");
 }

@@ -10,7 +10,7 @@ Status: v0. A ratatui dashboard over one or more tmux servers (local, and remote
     flight --ssh mini-2            # also watch a remote host via an ssh alias
     flight --once                  # print one frame as text and exit
 
-Create sessions from the dashboard: press `n`, choose the machine and directory, pick Claude or Shell, Create. Enter opens a session; `Ctrl-]` then `q` returns to the dashboard and the session keeps running. Flight uses its own private tmux server and never touches your default one. Keys: arrows or j/k, Enter, n, Tab, r, q.
+Create sessions from the dashboard: press `n`, choose the machine and directory, pick Claude or Shell, Create. Enter opens a session; `Ctrl-]` then `q` returns to the dashboard and the session keeps running. Flight uses its own private tmux server and never touches your default one. Keys: arrows or j/k, Enter open, n new, / search, ? help, r refresh, q quit; the mouse selects (second click opens) and scrolls.
 
 ## Distributed mode
 

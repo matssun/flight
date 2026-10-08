@@ -3,7 +3,7 @@
 # Status
 
 Short and factual. Design decisions live in the ADRs; this file says where the work stands.
-Last updated: 2026-10-07.
+Last updated: 2026-10-08.
 
 ## Merged baseline (main)
 
@@ -109,10 +109,18 @@ configuration and no direct UI-to-node path; everything travels over the authent
   did not notice by itself a vanished node while blocked sending to a wedged UI (its stall limit is the backstop).
 - `KillPane` is under-guarded and must adopt `expected_pid` before any kill action exists in a UI.
 
-## Current branch: create-session (ADR-005)
+## Current branch: fleet-ui (ADR-005, ADR-006)
 
-`n` in the dashboard opens "New session" (host, name, directory, Claude or Shell); the node creates it on its own tmux
-server, all or nothing, and it shows up like any other session. See ADR-005. Results of the two-machine run are in the PR.
+Usable now, from the dashboard alone, with no tmux knowledge:
+
+- `n` opens New session (host, name, directory, Claude or Shell); the node creates it all or nothing and it appears selected.
+- The dashboard is one urgency-ordered session list with a live preview, a summary header, a legend and visible controls;
+  `/` searches, `?` explains the symbols, the mouse selects (second click opens) and scrolls; narrow terminals stack or use cards.
+- Enter opens a session, `Ctrl-]` then `q` returns to the dashboard, the session keeps running, Enter opens it again.
+
+Run for real against an orchestrator and two nodes on this machine (private sockets), driving the UI in a terminal.
+Not yet run on the two physical machines. Known gaps: a created shell session reads as `idle · other`; nothing on screen
+inside a session says how to leave it; Question was not exercised (no fixture produces it).
 
 ## Open limitations
 

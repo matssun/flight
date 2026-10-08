@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-use super::lists::section_panes;
-use super::{Action, Effect, FormOutcome, HostChoice, NewSessionForm, NewSessionRequest, Section};
+use super::lists::sessions;
+use super::{
+    Action, Effect, FilterInput, FormOutcome, HostChoice, InputMode, NewSessionForm,
+    NewSessionRequest,
+};
 use crate::collect::CreateFailure;
 use crate::snapshot::HostHealth;
 use crate::snapshot::{PanePreview, PaneView, UiSnapshot};
@@ -14,8 +17,7 @@ use flight_state::{HostId, PaneRef};
 pub struct ViewModel {
     pub(super) snapshot: UiSnapshot,
     pub(super) selected: Option<PaneRef>,
-    pub(super) focus: Section,
-    /// Index the selection had in the focused list, to pick a neighbour if it vanishes.
+    /// Index the selection had in the list, to pick a neighbour if it vanishes.
     pub(super) hint: usize,
     pub(super) preview: Option<PanePreview>,
     pub(super) message: Option<String>,
@@ -24,6 +26,13 @@ pub struct ViewModel {
     pub(super) form: Option<NewSessionForm>,
     /// A session just created: select its pane when it shows up in a snapshot.
     pub(super) pending: Option<Pending>,
+    /// The search text; only sessions matching it are listed.
+    pub(super) filter: String,
+    /// Keys are going into the search.
+    pub(super) searching: bool,
+    pub(super) help: bool,
+    /// Advances with the terminal loop; animates the working spinner.
+    pub(super) tick: u32,
 }
 
 /// How many snapshots to wait for a created session to show up before giving up on selecting it.
@@ -47,13 +56,16 @@ impl ViewModel {
         Self {
             snapshot: UiSnapshot::default(),
             selected: None,
-            focus: Section::Attention,
             hint: 0,
             preview: None,
             message: None,
             loaded: false,
             form: None,
             pending: None,
+            filter: String::new(),
+            searching: false,
+            help: false,
+            tick: 0,
         }
     }
 
@@ -65,6 +77,11 @@ impl ViewModel {
         self.selected.as_ref()
     }
 
+    /// The sessions on screen: most urgent first, narrowed by the search.
+    pub fn listed(&self) -> Vec<&PaneView> {
+        sessions(&self.snapshot, &self.filter)
+    }
+
     fn selected_view(&self) -> Option<&PaneView> {
         let want = self.selected.as_ref()?;
         self.snapshot
@@ -74,8 +91,38 @@ impl ViewModel {
             .find(|p| &p.pane_ref == want)
     }
 
-    pub fn focus(&self) -> Section {
-        self.focus
+    /// The search text (empty: no filter).
+    pub fn filter(&self) -> &str {
+        &self.filter
+    }
+
+    pub fn searching(&self) -> bool {
+        self.searching
+    }
+
+    pub fn help_open(&self) -> bool {
+        self.help
+    }
+
+    pub fn input_mode(&self) -> InputMode {
+        if self.form.is_some() {
+            InputMode::Form
+        } else if self.help {
+            InputMode::Help
+        } else if self.searching {
+            InputMode::Search
+        } else {
+            InputMode::Dashboard
+        }
+    }
+
+    /// Advance the animation one step.
+    pub fn tick(&mut self) {
+        self.tick = self.tick.wrapping_add(1);
+    }
+
+    pub fn spinner_frame(&self) -> u32 {
+        self.tick
     }
 
     pub fn message(&self) -> Option<&str> {
@@ -122,10 +169,25 @@ impl ViewModel {
         }
         match action {
             Action::Quit => Effect::Quit,
+            Action::Back if self.filter.is_empty() => Effect::Quit,
+            Action::Back => self.filter_input(FilterInput::Clear),
             Action::Refresh => Effect::Refresh,
             Action::Up => self.step(-1),
             Action::Down => self.step(1),
-            Action::ToggleFocus => self.toggle_focus(),
+            Action::Select(pane) => self.select(pane),
+            Action::Search => {
+                self.searching = true;
+                Effect::None
+            }
+            Action::Filter(input) => self.filter_input(input),
+            Action::Help => {
+                self.help = true;
+                Effect::None
+            }
+            Action::CloseHelp => {
+                self.help = false;
+                Effect::None
+            }
             Action::Switch => self
                 .selected_view()
                 .cloned()
@@ -212,8 +274,8 @@ impl ViewModel {
         }
     }
 
-    pub(super) fn refs(&self, section: Section) -> Vec<PaneRef> {
-        section_panes(&self.snapshot, section)
+    pub(super) fn refs(&self) -> Vec<PaneRef> {
+        sessions(&self.snapshot, &self.filter)
             .into_iter()
             .map(|p| p.pane_ref.clone())
             .collect()

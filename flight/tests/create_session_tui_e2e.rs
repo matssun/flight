@@ -104,13 +104,13 @@ fn n_opens_the_form_and_a_filled_form_creates_a_session_that_appears_selected() 
     };
 
     wait("the dashboard to show the node and the hint", || {
-        seen("mini-e2e") && seen("n New session")
+        seen("mini-e2e") && seen("n New")
     });
 
     // Open the form: the fields are labelled and the buttons are there.
     writer.write_all(b"n").expect("n");
     wait("the form", || {
-        seen("New session") && seen("Directory:") && seen("[ Create ]")
+        seen("New session") && seen("Directory") && seen(" Create ")
     });
 
     // An empty name is explained inside the form and does not close it.
@@ -157,7 +157,12 @@ fn n_opens_the_form_and_a_filled_form_creates_a_session_that_appears_selected() 
     );
     wait(
         "the dashboard to confirm, close the form and select the new session",
-        || seen("Created session quick on mini-e2e.") && !seen("[ Create ]") && seen("> quick"),
+        || {
+            let text = screen.lock().unwrap_or_else(|p| p.into_inner()).text();
+            text.contains("Created session quick on mini-e2e.")
+                && !text.contains("New session")
+                && text.lines().any(|l| l.contains('▌') && l.contains("quick"))
+        },
     );
 
     // Back on the dashboard: the form is gone and `q` quits again.

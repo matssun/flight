@@ -1,24 +1,46 @@
 // SPDX-License-Identifier: MIT
 
-use crate::view::{Action, FormInput};
+use crate::view::{Action, FilterInput, FormInput, InputMode};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-/// Terminal keys to actions. While the new-session form is open, keys type into it instead.
-pub fn action_for(key: KeyEvent, form_open: bool) -> Option<Action> {
+/// Terminal keys to actions, by where keys are going: while the new-session form is open or a
+/// search is being typed, letters type instead of acting.
+pub fn action_for(key: KeyEvent, mode: InputMode) -> Option<Action> {
     if key.modifiers.contains(KeyModifiers::CONTROL) {
         return matches!(key.code, KeyCode::Char('c')).then_some(Action::Quit);
     }
-    if form_open {
-        return form_action(key).map(Action::Form);
+    match mode {
+        InputMode::Form => form_action(key).map(Action::Form),
+        InputMode::Help => Some(Action::CloseHelp),
+        InputMode::Search => search_action(key),
+        InputMode::Dashboard => dashboard_action(key),
     }
+}
+
+fn dashboard_action(key: KeyEvent) -> Option<Action> {
     match key.code {
         KeyCode::Up | KeyCode::Char('k') => Some(Action::Up),
         KeyCode::Down | KeyCode::Char('j') => Some(Action::Down),
         KeyCode::Enter => Some(Action::Switch),
-        KeyCode::Tab => Some(Action::ToggleFocus),
         KeyCode::Char('r') => Some(Action::Refresh),
         KeyCode::Char('n') => Some(Action::NewSession),
-        KeyCode::Char('q') | KeyCode::Esc => Some(Action::Quit),
+        KeyCode::Char('/') => Some(Action::Search),
+        KeyCode::Char('?') => Some(Action::Help),
+        KeyCode::Char('q') => Some(Action::Quit),
+        // Esc leaves a search first; only with none does it quit.
+        KeyCode::Esc => Some(Action::Back),
+        _ => None,
+    }
+}
+
+fn search_action(key: KeyEvent) -> Option<Action> {
+    match key.code {
+        KeyCode::Esc => Some(Action::Filter(FilterInput::Clear)),
+        KeyCode::Enter => Some(Action::Filter(FilterInput::Accept)),
+        KeyCode::Backspace => Some(Action::Filter(FilterInput::Backspace)),
+        KeyCode::Up => Some(Action::Up),
+        KeyCode::Down => Some(Action::Down),
+        KeyCode::Char(c) => Some(Action::Filter(FilterInput::Char(c))),
         _ => None,
     }
 }
@@ -45,70 +67,69 @@ mod tests {
         KeyEvent::new(code, KeyModifiers::NONE)
     }
 
+    fn dash(code: KeyCode) -> Option<Action> {
+        action_for(k(code), InputMode::Dashboard)
+    }
+
     #[test]
-    fn the_v0_key_set() {
-        assert_eq!(action_for(k(KeyCode::Up), false), Some(Action::Up));
-        assert_eq!(action_for(k(KeyCode::Down), false), Some(Action::Down));
-        assert_eq!(action_for(k(KeyCode::Enter), false), Some(Action::Switch));
-        assert_eq!(
-            action_for(k(KeyCode::Tab), false),
-            Some(Action::ToggleFocus)
-        );
-        assert_eq!(
-            action_for(k(KeyCode::Char('r')), false),
-            Some(Action::Refresh)
-        );
-        assert_eq!(action_for(k(KeyCode::Char('q')), false), Some(Action::Quit));
-        assert_eq!(
-            action_for(k(KeyCode::Char('n')), false),
-            Some(Action::NewSession)
-        );
-        assert_eq!(action_for(k(KeyCode::Char('x')), false), None);
+    fn the_dashboard_key_set() {
+        assert_eq!(dash(KeyCode::Up), Some(Action::Up));
+        assert_eq!(dash(KeyCode::Char('j')), Some(Action::Down));
+        assert_eq!(dash(KeyCode::Enter), Some(Action::Switch));
+        assert_eq!(dash(KeyCode::Char('r')), Some(Action::Refresh));
+        assert_eq!(dash(KeyCode::Char('q')), Some(Action::Quit));
+        assert_eq!(dash(KeyCode::Char('n')), Some(Action::NewSession));
+        assert_eq!(dash(KeyCode::Char('/')), Some(Action::Search));
+        assert_eq!(dash(KeyCode::Char('?')), Some(Action::Help));
+        assert_eq!(dash(KeyCode::Esc), Some(Action::Back));
+        assert_eq!(dash(KeyCode::Char('x')), None);
     }
 
     #[test]
     fn ctrl_c_quits_and_other_ctrl_chords_do_nothing() {
-        assert_eq!(
-            action_for(
-                KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
-                false
-            ),
-            Some(Action::Quit)
-        );
-        assert_eq!(
-            action_for(
-                KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL),
-                false
-            ),
-            None
-        );
+        let ctrl = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL);
+        for mode in [InputMode::Dashboard, InputMode::Form, InputMode::Search] {
+            assert_eq!(action_for(ctrl('c'), mode), Some(Action::Quit));
+            assert_eq!(action_for(ctrl('r'), mode), None);
+        }
     }
 
     #[test]
     fn in_the_form_keys_type_instead_of_acting() {
-        let typed = |c| action_for(k(KeyCode::Char(c)), true);
+        let typed = |c| action_for(k(KeyCode::Char(c)), InputMode::Form);
         // `q` and `n` are letters in a name, not commands.
         assert_eq!(typed('q'), Some(Action::Form(FormInput::Char('q'))));
         assert_eq!(typed('n'), Some(Action::Form(FormInput::Char('n'))));
         assert_eq!(
-            action_for(k(KeyCode::Esc), true),
+            action_for(k(KeyCode::Esc), InputMode::Form),
             Some(Action::Form(FormInput::Cancel))
         );
         assert_eq!(
-            action_for(k(KeyCode::Tab), true),
-            Some(Action::Form(FormInput::Next))
-        );
-        assert_eq!(
-            action_for(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT), true),
+            action_for(
+                KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT),
+                InputMode::Form
+            ),
             Some(Action::Form(FormInput::Prev))
         );
-        // Ctrl-C still leaves the program.
+    }
+
+    #[test]
+    fn while_searching_letters_type_and_escape_clears() {
+        let s = |code| action_for(k(code), InputMode::Search);
         assert_eq!(
-            action_for(
-                KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
-                true
-            ),
-            Some(Action::Quit)
+            s(KeyCode::Char('q')),
+            Some(Action::Filter(FilterInput::Char('q')))
+        );
+        assert_eq!(s(KeyCode::Esc), Some(Action::Filter(FilterInput::Clear)));
+        assert_eq!(s(KeyCode::Enter), Some(Action::Filter(FilterInput::Accept)));
+        assert_eq!(s(KeyCode::Down), Some(Action::Down));
+    }
+
+    #[test]
+    fn any_key_closes_help() {
+        assert_eq!(
+            action_for(k(KeyCode::Char('x')), InputMode::Help),
+            Some(Action::CloseHelp)
         );
     }
 }

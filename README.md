@@ -4,11 +4,14 @@
 
 A session manager with an agent dashboard, in Rust. tmux is the internal backend that keeps sessions alive; you never operate it. Session sources and connect rules follow sesh; the agent-state dashboard follows Fleet.
 
-Status: v0. A ratatui dashboard over one or more tmux servers (local, and remote over SSH).
+## Try it
 
-    flight                         # watch the local tmux server on socket 'flight' (tmux -L flight)
-    flight --ssh mini-2            # also watch a remote host via an ssh alias
-    flight --once                  # print one frame as text and exit
+    cargo install --path flight    # or: cargo build, then target/debug/flight
+    flight
+
+That is all. The first run sets Flight up on this machine (about a second), then shows the dashboard; quitting stops what it started, and your sessions keep running and are there next time. Press `n` to start Claude or a shell.
+
+Older, tmux-reading mode (no creating sessions): `flight --once`, `flight --ssh ALIAS`, `flight --socket NAME`.
 
 Create sessions from the dashboard: press `n`, choose the machine and directory, pick Claude or Shell, Create. Enter opens a session; `Ctrl-]` then `q` returns to the dashboard and the session keeps running. Flight uses its own private tmux server and never touches your default one. Keys: arrows or j/k, Enter open, n new, / search, ? help, r refresh, q quit; the mouse selects (second click opens) and scrolls.
 

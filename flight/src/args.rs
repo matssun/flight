@@ -78,7 +78,8 @@ pub fn default_name() -> String {
         .output()
         .ok()
         .and_then(|o| String::from_utf8(o.stdout).ok())
-        .map(|s| s.trim().to_owned())
+        // The short name: `dev1`, not `dev1.example.net`.
+        .and_then(|s| s.trim().split('.').next().map(str::to_owned))
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "flight".to_owned())
 }

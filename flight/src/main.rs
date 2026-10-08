@@ -7,6 +7,7 @@ mod join_cmd;
 mod node_cmd;
 mod orchestrator_cmd;
 mod roles;
+mod solo;
 mod ui_cmd;
 
 use config::{Config, ROLES, USAGE};
@@ -33,6 +34,8 @@ fn real_main() -> Result<(), String> {
         Some("orchestrator") => return orchestrator_cmd::run(&args[1..]),
         Some("node") => return node_cmd::run(&args[1..]),
         Some("ui") => return ui_cmd::run_ui(&args[1..]),
+        Some("solo") => return solo::run(&args[1..]),
+        None => return solo::run(&[]),
         _ => {}
     }
     if args.iter().any(|a| a == "--help" || a == "-h") {

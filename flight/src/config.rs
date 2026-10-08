@@ -23,7 +23,8 @@ pub struct Config {
 }
 
 pub const USAGE: &str =
-    "usage: flight [--socket NAME] [--no-local] [--ssh ALIAS[:SOCKET]]... [--refresh SECS] [--once]
+    "usage: flight                  (no arguments: run Flight on this machine, see `flight solo --help`)
+       flight [--socket NAME] [--no-local] [--ssh ALIAS[:SOCKET]]... [--refresh SECS] [--once]
 
   --socket NAME        local tmux socket (tmux -L NAME); default 'flight'
   --no-local           do not watch a local tmux server

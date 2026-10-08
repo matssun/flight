@@ -51,6 +51,7 @@ impl OrchestratorCore {
             fx.close.push((conn, "heartbeat timeout".to_owned()));
             self.drop_conn(conn, &mut fx);
         }
+        self.expire_terminals(now, &mut fx);
         for req in self.pending.expired(now) {
             fx.to_ui.push(Self::ui_error(
                 req.ui,

@@ -39,12 +39,16 @@ mod node_image;
 mod orchestrator_core;
 mod pending;
 mod routing;
+mod terminal_events;
+mod terminals;
 mod tick;
 mod ui_events;
 
-pub use config::OrchestratorConfig;
+pub use config::{OrchestratorConfig, TerminalLimits};
 pub use effects::Effects;
 pub use forget::ForgetError;
 pub use ids::{ConnId, UiId};
 pub use liveness::Liveness;
 pub use orchestrator_core::OrchestratorCore;
+pub use terminal_events::{AttachRefused, Attached};
+pub use terminals::{Side, TerminalId};

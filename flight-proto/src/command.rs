@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use crate::command_kind::Kind;
 use crate::validate::non_empty;
 use crate::{PaneRefMsg, Reject, Validate};
 
@@ -186,6 +187,20 @@ pub struct Request {
     pub request_id: u64,
     #[prost(message, optional, tag = "2")]
     pub command: Option<Command>,
+}
+
+impl Request {
+    /// Validate a request that came from a UI: a UI never chooses a terminal id.
+    pub fn validate_from_ui(&self) -> Result<(), Reject> {
+        self.validate()?;
+        if let Some(Kind::OpenTerminal(open)) = self.command.as_ref().and_then(|c| c.kind.as_ref())
+        {
+            if !open.terminal_id.is_empty() {
+                return Err(Reject::Mismatch("open_terminal.terminal_id"));
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Validate for Request {

@@ -3,7 +3,7 @@
 use crate::conn_state::ConnState;
 use crate::liveness::status_change;
 use crate::{ConnId, Effects, Liveness, OrchestratorCore};
-use flight_proto::ErrorKindCode;
+use flight_proto::{ErrorKindCode, ExitReasonCode};
 use flight_state::HostId;
 
 impl OrchestratorCore {
@@ -49,6 +49,7 @@ impl OrchestratorCore {
             return;
         };
         self.fail_pending(conn, fx);
+        self.end_conn_terminals(conn, ExitReasonCode::NodeLost, fx);
         let Some(entry) = self.nodes.get_mut(&state.peer) else {
             return;
         };

@@ -8,6 +8,7 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
+getrandom = "0.2"
 flight-proto = { path = "../flight-proto" }
 flight-state = { path = "../flight-state" }
 

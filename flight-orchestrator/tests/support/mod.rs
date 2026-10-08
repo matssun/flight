@@ -99,12 +99,18 @@ pub struct World {
     pub responses: Vec<(UiId, UiEvent)>,
     /// Operator notes the orchestrator emitted, in order.
     pub notes: Vec<String>,
+    /// Terminals the orchestrator ended, with why.
+    pub ended: Vec<(
+        flight_orchestrator::TerminalId,
+        flight_proto::ExitReasonCode,
+    )>,
 }
 
 impl World {
     pub fn new(nodes: Vec<SimNode>) -> Self {
         Self {
-            orch: OrchestratorCore::new(OrchestratorConfig::default(), inc(200)),
+            orch: OrchestratorCore::new(OrchestratorConfig::default(), inc(200))
+                .with_terminal_ids(counting_ids()),
             nodes,
             uis: BTreeMap::new(),
             now: 1_000,
@@ -116,6 +122,7 @@ impl World {
             muted: Default::default(),
             responses: Vec::new(),
             notes: Vec::new(),
+            ended: Vec::new(),
         }
     }
 
@@ -227,6 +234,7 @@ impl World {
 
     pub fn deliver(&mut self, fx: Effects) {
         self.notes.extend(fx.notes.iter().cloned());
+        self.ended.extend(fx.terminals_ended.iter().copied());
         for (conn, why) in fx.close {
             for n in &mut self.nodes {
                 if n.conn == Some(conn) {
@@ -324,4 +332,13 @@ pub fn simple_world() -> World {
         SimNode::new("node-a", "mini-1", 1),
         SimNode::new("node-b", "mini-2", 1),
     ])
+}
+
+/// Terminal ids that are predictable in tests: 1, 2, 3, ... repeated across the id.
+pub fn counting_ids() -> impl FnMut() -> flight_orchestrator::TerminalId + Send + 'static {
+    let mut n = 0u8;
+    move || {
+        n += 1;
+        [n; 16]
+    }
 }

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use crate::{ConnId, UiId};
+use crate::{ConnId, TerminalId, UiId};
 use std::collections::BTreeMap;
 
 /// A routed request awaiting its node's response.
@@ -10,6 +10,8 @@ pub(crate) struct PendingRequest {
     pub(crate) ui: UiId,
     pub(crate) ui_request_id: u64,
     pub(crate) deadline: u64,
+    /// Set for an `OpenTerminal`: the id its answer must carry.
+    pub(crate) terminal: Option<TerminalId>,
 }
 
 /// Requests in flight. Never replayed: if the node goes away they fail, they are not queued.

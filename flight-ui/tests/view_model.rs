@@ -193,7 +193,7 @@ fn enter_asks_to_switch_to_the_selected_pane() {
     let mut vm = vm_with(fleet([Permit, Busy, Busy, Busy]));
     assert_eq!(
         vm.apply(Action::Switch),
-        Effect::Switch(pref("mini-1", "%1"))
+        Effect::Switch(vm.snapshot().hosts[0].panes[0].clone())
     );
 }
 

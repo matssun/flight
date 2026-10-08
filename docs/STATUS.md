@@ -94,8 +94,9 @@ Enter on a pane in the orchestrated dashboard. Slice 1 (design) and slice 2 (pro
 are done: `RevealPane { pane_ref, expected_pid }`, `PaneState.pid`, `PaneChanged`, capability `guarded_reveal_v1`
 (an older node is refused, never given an unguarded fallback), tested against real tmux (selects window and pane,
 touches no client, refuses a replaced pane and a pane id reused by a new server). Slice 3 (orchestrator routing: forwards the reveal unchanged, node's typed errors pass through, disconnect/timeout
-fail it, late answers ignored) is done. Next: slice 4 (UI `plan_switch` and executors, client identification: exactly one attached
-client on the UI's session, else refuse), slice 5 (end-to-end). `KillPane` is under-guarded and must adopt
+fail it, late answers ignored) is done. Slice 4 (UI) is done: pure `plan_switch`, `Switcher` (reveal then present, failures say which), `ui/ssh.toml` keyed by
+node id, client identification (exactly one attached terminal on the dashboard's session, control clients excluded,
+popups handled), local node identity from `--node-dir`. Next: slice 5 (end-to-end, including the pane-replaced race). `KillPane` is under-guarded and must adopt
 `expected_pid` before any kill action exists in a UI.
 
 ## Open limitations

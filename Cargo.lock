@@ -407,7 +407,9 @@ dependencies = [
  "flight-transport",
  "flight-trust",
  "flight-ui",
+ "serde",
  "tokio",
+ "toml",
 ]
 
 [[package]]

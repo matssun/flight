@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use crate::snapshot::{PanePreview, UiSnapshot};
+use crate::snapshot::{PanePreview, PaneView, UiSnapshot};
 use flight_state::PaneRef;
 
 /// Where the dashboard's data comes from. The UI neither knows nor cares whether it is
@@ -12,5 +12,5 @@ pub trait Backend: Send {
     /// The recent screen of one pane.
     fn preview(&mut self, pane: &PaneRef) -> PanePreview;
     /// Take the user to a pane. Backends that cannot say why not.
-    fn switch_to(&mut self, pane: &PaneRef) -> Result<(), String>;
+    fn switch_to(&mut self, pane: &PaneView) -> Result<(), String>;
 }

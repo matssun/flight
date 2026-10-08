@@ -23,9 +23,7 @@ impl SshRunner {
     /// `alias` must be non-empty, contain no whitespace, and not start with `-` (it would
     /// be read as an ssh option).
     pub fn new(alias: &str, endpoint: TmuxEndpoint) -> Result<Self, HostError> {
-        if alias.is_empty() || alias.starts_with('-') || alias.chars().any(char::is_whitespace) {
-            return Err(HostError::InvalidConfig(format!("ssh alias {alias:?}")));
-        }
+        Self::check_alias(alias)?;
         Ok(Self {
             alias: alias.to_owned(),
             endpoint,
@@ -33,14 +31,46 @@ impl SshRunner {
         })
     }
 
-    /// The full `ssh` argument list (without the program name) for a tmux invocation.
-    pub fn ssh_args(&self, tmux_args: &[&str]) -> Vec<String> {
-        // `-u`: a non-login ssh command has no UTF-8 locale; see `flight_tmux::tmux_args`.
-        let remote = std::iter::once("tmux".to_owned())
+    /// The one rule for what may stand where ssh expects a host: no option-looking, empty,
+    /// whitespace-containing or control-character strings. Used for every ssh destination.
+    pub fn check_alias(alias: &str) -> Result<(), HostError> {
+        if alias.is_empty()
+            || alias.starts_with('-')
+            || alias.chars().any(|c| c.is_whitespace() || c.is_control())
+        {
+            return Err(HostError::InvalidConfig(format!("ssh alias {alias:?}")));
+        }
+        Ok(())
+    }
+
+    /// The `ssh` arguments (without the program name) that attach the user's terminal to
+    /// `session`. Interactive, so no `BatchMode` (a passphrase prompt is the user's to answer);
+    /// `-t` allocates the terminal tmux needs. The session is matched exactly (`=`).
+    pub fn attach_args(&self, session: &str) -> Vec<String> {
+        let target = format!("={session}");
+        let mut args = vec![
+            "-t".to_owned(),
+            "-o".to_owned(),
+            format!("ConnectTimeout={}", self.connect_timeout_secs),
+            "--".to_owned(),
+            self.alias.clone(),
+        ];
+        args.push(self.remote_command(&["attach-session", "-t", &target]));
+        args
+    }
+
+    fn remote_command(&self, tmux_args: &[&str]) -> String {
+        std::iter::once("tmux".to_owned())
             .chain(flight_tmux::tmux_args(&self.endpoint, tmux_args))
             .map(|a| shell_quote(&a))
             .collect::<Vec<_>>()
-            .join(" ");
+            .join(" ")
+    }
+
+    /// The full `ssh` argument list (without the program name) for a tmux invocation.
+    pub fn ssh_args(&self, tmux_args: &[&str]) -> Vec<String> {
+        // `-u`: a non-login ssh command has no UTF-8 locale; see `flight_tmux::tmux_args`.
+        let remote = self.remote_command(tmux_args);
         vec![
             "-o".into(),
             "BatchMode=yes".into(),
@@ -109,8 +139,19 @@ mod tests {
     #[test]
     fn rejects_aliases_that_could_inject_options_or_commands() {
         let ep = || TmuxEndpoint::named("flight").unwrap();
-        for bad in ["", "-oProxyCommand=x", "a b", "a\tb"] {
+        for bad in ["", "-oProxyCommand=x", "a b", "a\tb", "a\nb", "a\u{7}b"] {
             assert!(SshRunner::new(bad, ep()).is_err(), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn attach_is_interactive_quoted_and_matches_the_session_exactly() {
+        let args = runner().attach_args("it's api");
+        assert_eq!(args[..5], ["-t", "-o", "ConnectTimeout=5", "--", "mini-2"]);
+        assert_eq!(
+            args[5],
+            r"'tmux' '-u' '-L' 'flight' 'attach-session' '-t' '=it'\''s api'"
+        );
+        assert!(!args.iter().any(|a| a.contains("BatchMode")));
     }
 }

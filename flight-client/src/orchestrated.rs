@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT
 
 use crate::snapshot_view::ui_snapshot;
+use crate::switch::{HandoffSlot, Presented, SwitchTarget, Switcher, TmuxEnv};
 use flight_proto::{
-    command_kind as ck, response_result, ui_event_body, ui_request_body, Command, FleetImage,
-    PaneRefMsg, Request, Step, Subscribe, UiEvent, UiRequest,
+    command_kind as ck, response_result, ui_event_body, ui_request_body, Command, ErrorKindCode,
+    FleetImage, PaneRefMsg, Request, Step, Subscribe, UiEvent, UiRequest,
 };
 use flight_state::PaneRef;
 use flight_transport::UiClient;
 use flight_trust::{ConnectionConfig, Fingerprint, Identity, TrustError};
-use flight_ui::{Backend, PanePreview, UiSnapshot};
+use flight_ui::{Backend, PanePreview, PaneView, UiSnapshot};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -19,6 +20,8 @@ use tokio::sync::{mpsc, oneshot, watch};
 /// Lines of a pane requested for the preview.
 const PREVIEW_LINES: u32 = 200;
 const PREVIEW_TIMEOUT: Duration = Duration::from_secs(5);
+/// The orchestrator gives up on a node after 10 s; wait a little longer for its answer.
+const REVEAL_TIMEOUT: Duration = Duration::from_secs(12);
 const RECONNECT_MIN: Duration = Duration::from_millis(250);
 const RECONNECT_MAX: Duration = Duration::from_secs(5);
 
@@ -56,8 +59,9 @@ fn lock(state: &Shared) -> MutexGuard<'_, LinkState> {
     state.lock().unwrap_or_else(|p| p.into_inner())
 }
 
-struct PreviewRequest {
-    pane: PaneRef,
+/// One control command to send over the link, and where its answer goes.
+struct ControlRequest {
+    kind: ck::Kind,
     reply: oneshot::Sender<Result<String, String>>,
 }
 
@@ -67,8 +71,10 @@ struct PreviewRequest {
 pub struct OrchestratedBackend {
     runtime: Runtime,
     state: Shared,
-    previews: mpsc::Sender<PreviewRequest>,
+    requests: mpsc::Sender<ControlRequest>,
     stop: watch::Sender<bool>,
+    switcher: Switcher,
+    handoff: HandoffSlot,
 }
 
 impl OrchestratedBackend {
@@ -78,15 +84,28 @@ impl OrchestratedBackend {
             .enable_all()
             .build()?;
         let state: Shared = Arc::default();
-        let (previews, rx) = mpsc::channel(16);
+        let (requests, rx) = mpsc::channel(16);
         let (stop, stop_rx) = watch::channel(false);
         runtime.spawn(link_loop(config, state.clone(), rx, stop_rx));
         Ok(Self {
             runtime,
             state,
-            previews,
+            requests,
             stop,
+            switcher: Switcher::default(),
+            handoff: HandoffSlot::default(),
         })
+    }
+
+    /// How Enter finds and shows a pane: which node is this machine, and where ssh goes.
+    /// Without it every pane is remote and none has a destination, so Enter explains why not.
+    pub fn set_switching(&mut self, switcher: Switcher) {
+        self.switcher = switcher;
+    }
+
+    /// Where an attach waits for the terminal after the dashboard exits.
+    pub fn handoff(&self) -> HandoffSlot {
+        self.handoff.clone()
     }
 
     /// Whether the stream to the orchestrator is up right now.
@@ -113,29 +132,59 @@ impl Backend for OrchestratedBackend {
     }
 
     fn preview(&mut self, pane: &PaneRef) -> PanePreview {
-        let (reply, answer) = oneshot::channel();
-        let request = PreviewRequest {
-            pane: pane.clone(),
-            reply,
-        };
-        let content = self.runtime.block_on(async {
-            if self.previews.send(request).await.is_err() {
-                return Err("not connected to the orchestrator".to_owned());
-            }
-            match tokio::time::timeout(PREVIEW_TIMEOUT, answer).await {
-                Ok(Ok(result)) => result,
-                Ok(Err(_)) => Err("connection to the orchestrator was lost".to_owned()),
-                Err(_) => Err("preview timed out".to_owned()),
-            }
+        let kind = ck::Kind::GetPreview(ck::GetPreview {
+            pane_ref: Some(PaneRefMsg::from(pane)),
+            lines: PREVIEW_LINES,
         });
+        let content = self
+            .runtime
+            .block_on(call(&self.requests, kind, PREVIEW_TIMEOUT));
         PanePreview {
             pane: pane.clone(),
             content: content.map(|text| text.lines().map(str::to_owned).collect()),
         }
     }
 
-    fn switch_to(&mut self, _pane: &PaneRef) -> Result<(), String> {
-        Err("switching to a pane through an orchestrator is not available yet".to_owned())
+    fn switch_to(&mut self, pane: &PaneView) -> Result<(), String> {
+        let target = SwitchTarget::from(pane);
+        let (runtime, requests) = (&self.runtime, &self.requests);
+        let mut reveal = |pane: &PaneRef, pid: u32| {
+            let kind = ck::Kind::RevealPane(ck::RevealPane {
+                pane_ref: Some(PaneRefMsg::from(pane)),
+                expected_pid: pid,
+            });
+            runtime
+                .block_on(call(requests, kind, REVEAL_TIMEOUT))
+                .map(drop)
+        };
+        match self
+            .switcher
+            .switch(&target, &TmuxEnv::from_process(), &mut reveal)
+        {
+            Ok(Presented::ClientMoved) => Ok(()),
+            Ok(Presented::Attach(handoff)) => {
+                self.handoff.put(handoff);
+                Ok(())
+            }
+            Err(e) => Err(e.to_string()),
+        }
+    }
+}
+
+/// Send one command and wait for its answer, bounded.
+async fn call(
+    requests: &mpsc::Sender<ControlRequest>,
+    kind: ck::Kind,
+    timeout: Duration,
+) -> Result<String, String> {
+    let (reply, answer) = oneshot::channel();
+    if requests.send(ControlRequest { kind, reply }).await.is_err() {
+        return Err("not connected to the orchestrator".to_owned());
+    }
+    match tokio::time::timeout(timeout, answer).await {
+        Ok(Ok(result)) => result,
+        Ok(Err(_)) => Err("connection to the orchestrator was lost".to_owned()),
+        Err(_) => Err("no confirmation from the orchestrator in time".to_owned()),
     }
 }
 
@@ -145,16 +194,11 @@ fn subscribe() -> UiRequest {
     }
 }
 
-fn preview_request(id: u64, pane: &PaneRef) -> UiRequest {
+fn command_request(id: u64, kind: ck::Kind) -> UiRequest {
     UiRequest {
         body: Some(ui_request_body::Body::Command(Request {
             request_id: id,
-            command: Some(Command {
-                kind: Some(ck::Kind::GetPreview(ck::GetPreview {
-                    pane_ref: Some(PaneRefMsg::from(pane)),
-                    lines: PREVIEW_LINES,
-                })),
-            }),
+            command: Some(Command { kind: Some(kind) }),
         })),
     }
 }
@@ -163,12 +207,12 @@ fn preview_request(id: u64, pane: &PaneRef) -> UiRequest {
 async fn link_loop(
     config: ClientConfig,
     state: Shared,
-    mut previews: mpsc::Receiver<PreviewRequest>,
+    mut requests: mpsc::Receiver<ControlRequest>,
     mut stop: watch::Receiver<bool>,
 ) {
     let mut delay = RECONNECT_MIN;
     loop {
-        let session = serve_link(&config, &state, &mut previews);
+        let session = serve_link(&config, &state, &mut requests);
         let outcome = tokio::select! {
             _ = stop.changed() => return,
             outcome = session => outcome,
@@ -191,7 +235,7 @@ async fn link_loop(
 async fn serve_link(
     config: &ClientConfig,
     state: &Shared,
-    previews: &mut mpsc::Receiver<PreviewRequest>,
+    requests: &mut mpsc::Receiver<ControlRequest>,
 ) -> String {
     let mut client =
         match UiClient::connect(&config.address, &config.identity, &config.orchestrator).await {
@@ -214,9 +258,9 @@ async fn serve_link(
                 Ok(None) => return "the orchestrator closed the connection".to_owned(),
                 Err(e) => return e.to_string(),
             },
-            Some(req) = previews.recv() => {
+            Some(req) = requests.recv() => {
                 next_id += 1;
-                if client.send(preview_request(next_id, &req.pane)).is_ok() {
+                if client.send(command_request(next_id, req.kind)).is_ok() {
                     waiting.insert(next_id, req.reply);
                 } else {
                     let _ = req.reply.send(Err("too many requests in flight".to_owned()));
@@ -235,7 +279,8 @@ fn apply(
         if let Some(reply) = waiting.remove(&r.request_id) {
             let _ = reply.send(match r.result.as_ref() {
                 Some(response_result::Result::Preview(p)) => Ok(p.text.clone()),
-                Some(response_result::Result::Error(e)) => Err(e.message.clone()),
+                Some(response_result::Result::Done(_)) => Ok(String::new()),
+                Some(response_result::Result::Error(e)) => Err(describe(e)),
                 _ => Err("unexpected response".to_owned()),
             });
         }
@@ -248,4 +293,14 @@ fn apply(
         s.last_error = None;
     }
     step
+}
+
+/// What the user is told about a node's refusal. A changed pane is not an error to retry but
+/// a prompt to look at the dashboard again.
+fn describe(e: &flight_proto::ErrorInfo) -> String {
+    if e.kind == ErrorKindCode::PaneChanged as i32 {
+        "the pane changed since it was listed; refresh".to_owned()
+    } else {
+        e.message.clone()
+    }
 }

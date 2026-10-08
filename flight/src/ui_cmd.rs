@@ -2,18 +2,24 @@
 
 use crate::args::{config_dir, now, Args};
 use crate::join_cmd::join_command;
-use crate::roles::ui_dir;
-use flight_client::{ClientConfig, OrchestratedBackend};
+use crate::roles::{node_dir, ui_dir};
+use flight_client::{ClientConfig, OrchestratedBackend, SshDestinations, Switcher};
 use flight_proto::RoleCode;
-use flight_ui::{render_to_string, run, Backend, ViewModel};
+use flight_state::HostId;
+use flight_ui::{render_to_string, run, Backend, Exit, ViewModel};
 use std::time::Duration;
 
 pub const USAGE: &str = "usage: flight ui <command>
 
   join <bundle> [--name NAME] [--bundle-file PATH] [--config-dir DIR]
         enroll this machine's UI with an orchestrator
-  [run] [--refresh SECS] [--once] [--config-dir DIR]
-        the dashboard, reading from the orchestrator this UI joined";
+  [run] [--refresh SECS] [--once] [--config-dir DIR] [--node-dir DIR]
+        the dashboard, reading from the orchestrator this UI joined.
+        Enter on a pane selects it and shows it: a pane of the node on this machine
+        (its identity is read from --node-dir, default <config-dir>/node) through tmux,
+        any other through `ssh -t` to the destination in <config-dir>/ui/ssh.toml:
+          [nodes.\"<node id>\"]
+          ssh = \"host-alias\"";
 
 pub fn run_ui(args: &[String]) -> Result<(), String> {
     if args.iter().any(|a| a == "--help" || a == "-h") {
@@ -35,8 +41,13 @@ pub fn run_ui(args: &[String]) -> Result<(), String> {
 }
 
 fn dashboard(args: &[String]) -> Result<(), String> {
-    let args = Args::parse(args, &["--refresh", "--config-dir"], &["--once"])?;
-    let dir = ui_dir(&config_dir(&args)?);
+    let args = Args::parse(
+        args,
+        &["--refresh", "--config-dir", "--node-dir"],
+        &["--once"],
+    )?;
+    let base = config_dir(&args)?;
+    let dir = ui_dir(&base);
     let config = ClientConfig::load(&dir).map_err(|e| {
         format!("this UI has not joined an orchestrator yet ({e}); run `flight ui join`")
     })?;
@@ -44,11 +55,32 @@ fn dashboard(args: &[String]) -> Result<(), String> {
         Some(s) => Duration::from_secs(s.parse().map_err(|_| format!("bad --refresh {s:?}"))?),
         None => Duration::from_secs(1),
     };
-    let backend = OrchestratedBackend::start(config).map_err(|e| e.to_string())?;
+    let mut backend = OrchestratedBackend::start(config).map_err(|e| e.to_string())?;
+    let ssh = SshDestinations::load(&SshDestinations::path_in(&dir)).map_err(|e| e.to_string())?;
+    let node = args
+        .value("--node-dir")
+        .map_or_else(|| node_dir(&base), std::path::PathBuf::from);
+    backend.set_switching(Switcher::new(local_host(&node), ssh));
+    let handoff = backend.handoff();
     if args.switch("--once") {
         return once(backend);
     }
-    run(backend, refresh).map(drop).map_err(|e| e.to_string())
+    let exit = run(backend, refresh).map_err(|e| e.to_string())?;
+    if exit == Exit::Switched {
+        if let Some(attach) = handoff.take() {
+            // Only returns if the program could not be started: the pane is already selected.
+            let why = attach.exec();
+            return Err(format!("pane selected, but cannot attach: {why}"));
+        }
+    }
+    Ok(())
+}
+
+/// The identity of the node role on this machine, if it has one.
+fn local_host(node_dir: &std::path::Path) -> Option<HostId> {
+    flight_trust::Identity::load(&flight_transport::identity_dir(node_dir))
+        .ok()
+        .map(|i| i.fingerprint().host_id())
 }
 
 /// Wait briefly for the orchestrator's snapshot, then print one frame as text.

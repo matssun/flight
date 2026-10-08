@@ -104,6 +104,7 @@ impl Collector {
             state: resolved.state,
             why: why(&resolved),
             title: p.info.pane_title.clone(),
+            pid: p.info.pane_pid,
         };
         self.resolved.insert(p.pane_ref.clone(), resolved);
         Some(view)
@@ -140,7 +141,7 @@ impl super::Backend for Collector {
         Collector::preview(self, pane)
     }
 
-    fn switch_to(&mut self, pane: &PaneRef) -> Result<(), String> {
-        Collector::switch_to(self, pane).map_err(|e| e.to_string())
+    fn switch_to(&mut self, pane: &PaneView) -> Result<(), String> {
+        Collector::switch_to(self, &pane.pane_ref).map_err(|e| e.to_string())
     }
 }

@@ -8,6 +8,12 @@
 
 mod orchestrated;
 mod snapshot_view;
+mod switch;
 
 pub use orchestrated::{ClientConfig, OrchestratedBackend};
 pub use snapshot_view::ui_snapshot;
+pub use switch::{
+    detect_placement, plan_switch, Handoff, HandoffSlot, Presented, Refusal, SshDestinations,
+    SshDestinationsError, SwitchError, SwitchPlan, SwitchTarget, Switcher, TmuxEnv, UiContext,
+    UiPlacement,
+};

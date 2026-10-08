@@ -2,7 +2,7 @@
 
 # ADR-003: Switching to a pane through the orchestrator
 
-Status: Accepted. Slices 2 (protocol and node-side reveal) and 3 (orchestrator routing) implemented; slices 4 and 5 not yet.
+Status: Accepted. Slices 2 (protocol and node-side reveal), 3 (orchestrator routing) and 4 (UI) implemented; slice 5 (end-to-end) not yet.
 
 ## Problem
 
@@ -87,5 +87,9 @@ The dashboard exits only after `SwitchClient` succeeds or when it hands the term
 1. This note.
 2. **Done.** Protocol (`PaneState.pid`, `RevealPane.expected_pid`, `PaneChanged`, `guarded_reveal_v1`) and the node-side reveal with the pid guard, against real tmux (selects window and pane, touches no client, refuses a replaced pane and a pane id reused by a new server). The popup experiment is recorded above.
 3. **Done.** Orchestrator routing: the existing control path already checks node, liveness and `guarded_reveal_v1` and forwards the command unchanged; tests pin that `expected_pid` is never touched, the node's `PaneChanged` reaches the UI, and a disconnect or timeout fails the request while a late answer from the dead connection is ignored.
-4. UI: `plan_switch` (pure, table-driven tests), executors (`switch-client`, attach by exec), the Enter path and its messages.
+4. **Done.** UI (`flight-client/src/switch`): `plan_switch` (pure, table-driven tests), `Switcher` (executes in two stages, reveal then present), `ssh.toml`, client identification, the Enter path.
+   - The plan names are `LocalClient`, `LocalAttach`, `RemoteAttach`; refusals are a typed `Refusal`, stage failures a `SwitchError { Refused, Reveal, Present }`. Planning happens before anything is revealed, so a missing `ssh.toml` entry changes nothing on the node.
+   - Clients exclude control-mode clients (Flight's own observer is one). Verified with pty-attached clients: one client, two clients, a real `display-popup` (empty `$TMUX_PANE`, session from `$TMUX`), and a control client that must not count.
+   - An attach cannot run while the dashboard owns the terminal, so `switch_to` leaves a `Handoff` in a slot and `flight ui run` execs it after the dashboard exits. If the exec fails the message says the pane was selected but not attached. `ssh` runs without `BatchMode` (a passphrase prompt is the user's), with `-t`, `ConnectTimeout`, `--` before the destination, and the one alias check `SshRunner` uses.
+   - The local node identity is read from `<config-dir>/node` (`--node-dir` overrides); none means every pane is remote.
 5. End to end: local selected pane, remote selected pane, pane replaced before the request, no suitable client, node disconnect mid-request.

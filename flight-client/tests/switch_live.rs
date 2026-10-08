@@ -16,6 +16,8 @@ const PTY_CLIENT: &str = r#"
 import os, pty, sys, time, fcntl, termios, struct
 pid, fd = pty.fork()
 if pid == 0:
+    # CI has no TERM; tmux refuses to attach a client without one.
+    os.environ.setdefault("TERM", "xterm-256color")
     os.execvp("tmux", ["tmux", "-L", sys.argv[1], "attach-session", "-t", sys.argv[2]])
 fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 120, 0, 0))
 while True:

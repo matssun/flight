@@ -7,7 +7,7 @@ mod support;
 use flight_orchestrator::UiId;
 use flight_proto::{
     command_kind as ck, node_body, orchestrator_body, response_result, ui_event_body,
-    ui_request_body, Command, ErrorKindCode, NodeFrame, Request, Response, UiRequest,
+    ui_request_body, Command, ErrorKindCode, NodeFrame, ProgramCode, Request, Response, UiRequest,
 };
 use support::*;
 
@@ -149,7 +149,7 @@ fn a_reveal_is_forwarded_to_a_node_that_offers_the_guarded_capability() {
 fn an_older_node_without_the_guarded_capability_is_never_sent_a_reveal() {
     let mut w = simple_world();
     w.subscribe(UiId(1));
-    w.connect_offering(0, &["preview", "kill", "create_session"]);
+    w.connect_offering(0, &["preview", "kill", "create_session_v1"]);
     w.observe(0, round(1, vec![obs("%1", 1, PERMIT_SCREEN)]));
     send(&mut w, reveal(1, "node-a", "%1", 1));
     assert_eq!(error_kinds(&w), vec![ErrorKindCode::Unsupported as i32]);
@@ -313,4 +313,149 @@ fn a_reveal_the_node_never_answers_times_out_with_a_typed_error() {
         w.advance(5);
     }
     assert_eq!(error_kinds(&w), vec![ErrorKindCode::NodeUnreachable as i32]);
+}
+
+fn create(id: u64, node: &str, name: &str, program: ProgramCode) -> UiRequest {
+    UiRequest {
+        body: Some(ui_request_body::Body::Command(Request {
+            request_id: id,
+            command: Some(Command {
+                kind: Some(ck::Kind::CreateSession(ck::CreateSession {
+                    host: node.into(),
+                    server: "flight".into(),
+                    name: name.into(),
+                    dir: "/work".into(),
+                    program: program as i32,
+                })),
+            }),
+        })),
+    }
+}
+
+fn two_nodes() -> World {
+    let mut w = ready();
+    w.connect(1);
+    w.forwarded.clear();
+    w
+}
+
+#[test]
+fn a_create_session_reaches_only_the_node_it_names_and_the_answer_comes_back() {
+    let mut w = two_nodes();
+    send(&mut w, create(5, "node-b", "api", ProgramCode::Claude));
+    assert!(error_kinds(&w).is_empty(), "{:?}", error_kinds(&w));
+    assert_eq!(w.forwarded.len(), 1);
+    let (node, frame) = w.forwarded[0].clone();
+    assert_eq!(node, "node-b", "sent to node-b, not node-a");
+    let conn = w.nodes[1].conn.expect("conn");
+    let Some(orchestrator_body::Body::Request(forwarded)) = frame.body else {
+        panic!("not a request")
+    };
+    // The typed request is forwarded as it was: host, name, directory, program.
+    let Some(ck::Kind::CreateSession(c)) = forwarded.command.and_then(|c| c.kind) else {
+        panic!("not a create")
+    };
+    assert_eq!(
+        (c.host.as_str(), c.name.as_str(), c.dir.as_str()),
+        ("node-b", "api", "/work")
+    );
+    assert_eq!(c.program, ProgramCode::Claude as i32);
+
+    w.send_to_orch(
+        conn,
+        NodeFrame {
+            body: Some(node_body::Body::Response(Response {
+                request_id: forwarded.request_id,
+                result: Some(response_result::Result::Done(response_result::Done {})),
+            })),
+        },
+    );
+    let (ui, event) = w.responses.last().expect("response").clone();
+    assert_eq!(ui, UiId(1));
+    assert!(matches!(
+        event.body,
+        Some(ui_event_body::Body::Response(Response {
+            request_id: 5,
+            result: Some(response_result::Result::Done(_)),
+        }))
+    ));
+}
+
+#[test]
+fn a_typed_refusal_from_the_node_reaches_the_ui_unchanged() {
+    let mut w = two_nodes();
+    send(&mut w, create(6, "node-a", "api", ProgramCode::Shell));
+    let (_, frame) = w.forwarded[0].clone();
+    let conn = w.nodes[0].conn.expect("conn");
+    let Some(orchestrator_body::Body::Request(forwarded)) = frame.body else {
+        panic!("not a request")
+    };
+    for kind in [
+        ErrorKindCode::AlreadyExists,
+        ErrorKindCode::InvalidDirectory,
+        ErrorKindCode::ProgramUnavailable,
+    ] {
+        let mut w = two_nodes();
+        send(&mut w, create(6, "node-a", "api", ProgramCode::Shell));
+        w.send_to_orch(
+            conn,
+            NodeFrame {
+                body: Some(node_body::Body::Response(Response {
+                    request_id: forwarded.request_id,
+                    result: Some(response_result::Result::Error(flight_proto::ErrorInfo {
+                        kind: kind as i32,
+                        message: "no".into(),
+                    })),
+                })),
+            },
+        );
+        assert_eq!(error_kinds(&w), vec![kind as i32]);
+    }
+}
+
+#[test]
+fn a_create_session_for_a_disconnected_node_is_a_typed_unreachable_and_never_queued() {
+    let mut w = two_nodes();
+    w.disconnect(1);
+    send(&mut w, create(7, "node-b", "api", ProgramCode::Shell));
+    assert_eq!(error_kinds(&w), vec![ErrorKindCode::NodeUnreachable as i32]);
+    assert!(w.forwarded.is_empty());
+    w.connect(1);
+    assert!(w.forwarded.is_empty(), "the old request is not delivered");
+}
+
+#[test]
+fn a_node_without_the_versioned_capability_is_never_sent_a_create() {
+    let mut w = simple_world();
+    w.subscribe(UiId(1));
+    // An older node: it offers the retired name, which carried a free-form command.
+    w.connect_offering(0, &["preview", "kill", "create_session"]);
+    send(&mut w, create(8, "node-a", "api", ProgramCode::Claude));
+    assert_eq!(error_kinds(&w), vec![ErrorKindCode::Unsupported as i32]);
+    assert!(w.forwarded.is_empty());
+}
+
+#[test]
+fn a_malformed_or_oversized_create_never_reaches_a_node() {
+    let mut w = two_nodes();
+    let long = "a".repeat(65);
+    for name in ["", "a b", "a;b", long.as_str()] {
+        send(&mut w, create(9, "node-a", name, ProgramCode::Shell));
+    }
+    let mut bad_dir = create(10, "node-a", "ok", ProgramCode::Shell);
+    if let Some(ui_request_body::Body::Command(Request {
+        command: Some(Command {
+            kind: Some(ck::Kind::CreateSession(c)),
+        }),
+        ..
+    })) = bad_dir.body.as_mut()
+    {
+        c.dir = "relative".into();
+    }
+    send(&mut w, bad_dir);
+    assert_eq!(
+        error_kinds(&w),
+        vec![ErrorKindCode::InvalidRequest as i32; 5]
+    );
+    assert!(w.forwarded.is_empty());
 }

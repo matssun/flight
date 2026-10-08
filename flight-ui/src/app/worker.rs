@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-use crate::collect::Backend;
+use crate::collect::{Backend, CreateFailure};
 use crate::snapshot::{PanePreview, PaneView, UiSnapshot};
+use crate::NewSessionRequest;
 use flight_state::PaneRef;
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::thread::{self, JoinHandle};
@@ -11,6 +12,7 @@ pub enum Cmd {
     Refresh,
     Select(Option<PaneRef>),
     Switch(PaneView),
+    Create(NewSessionRequest),
     Shutdown,
 }
 
@@ -18,6 +20,7 @@ pub enum Msg {
     Snapshot(UiSnapshot),
     Preview(Option<PanePreview>),
     Switched(Result<(), String>),
+    Created(NewSessionRequest, Result<(), CreateFailure>),
 }
 
 pub struct Worker {
@@ -51,6 +54,12 @@ impl Worker {
                     Ok(Cmd::Switch(p)) => {
                         let r = collector.switch_to(&p);
                         msg_tx.send(Msg::Switched(r)).is_ok()
+                    }
+                    Ok(Cmd::Create(request)) => {
+                        let r = collector.create_session(&request);
+                        // The new session shows up in the next snapshot: ask for it now.
+                        msg_tx.send(Msg::Created(request, r)).is_ok()
+                            && refresh(&mut *collector, &target, &msg_tx)
                     }
                     Ok(Cmd::Shutdown) | Err(RecvTimeoutError::Disconnected) => false,
                 };

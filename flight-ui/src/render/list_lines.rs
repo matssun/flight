@@ -48,6 +48,13 @@ pub fn list_lines(vm: &ViewModel) -> ListLines {
             push_pane(&mut out, p, marker, None);
         }
     }
+    if vm.loaded() && vm.snapshot().hosts.iter().all(|h| h.panes.is_empty()) {
+        out.lines.push(Line::raw(""));
+        out.lines.push(Line::styled(
+            "  No sessions yet. Press n to create one.",
+            Style::default().add_modifier(Modifier::DIM),
+        ));
+    }
     out
 }
 

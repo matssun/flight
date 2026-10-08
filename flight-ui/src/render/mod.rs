@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+mod form_lines;
 mod frame;
 mod list_lines;
 mod preview_lines;

@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 
+use crate::pane_agent;
+use crate::session_create::create;
 use crate::{
     tmux_attach_command, Control, ControlError, OpenedTerminal, PaneObservation, Round,
-    ServerOutcome, TerminalProcess, TerminalSpec, Unavailable,
+    ServerOutcome, SessionEnv, SessionRequest, TerminalProcess, TerminalSpec, Unavailable,
 };
-use flight_classify::detect_agent;
 use flight_proto::ErrorKindCode;
 use flight_state::{PaneId, ServerId};
 use flight_tmux::{Tmux, TmuxEndpoint, TmuxError, TmuxRunner};
@@ -27,6 +28,8 @@ pub struct TmuxServers {
     servers: BTreeMap<ServerId, Tmux<Box<dyn TmuxRunner + Send + Sync>>>,
     /// Servers a terminal may be opened on, with the endpoint its tmux client connects to.
     terminals: BTreeMap<ServerId, TmuxEndpoint>,
+    /// What a created session may start from: `PATH` and `~`.
+    session_env: SessionEnv,
 }
 
 impl TmuxServers {
@@ -42,6 +45,11 @@ impl TmuxServers {
     /// registered here refuses to open one.
     pub fn allow_terminal(&mut self, server: ServerId, endpoint: TmuxEndpoint) {
         self.terminals.insert(server, endpoint);
+    }
+
+    /// Replace the environment sessions are created from (the process's, by default).
+    pub fn set_session_env(&mut self, env: SessionEnv) {
+        self.session_env = env;
     }
 
     pub fn server_ids(&self) -> Vec<ServerId> {
@@ -89,7 +97,7 @@ fn observe_server(tmux: &Tmux<Box<dyn TmuxRunner + Send + Sync>>) -> ServerOutco
     let panes = infos
         .into_iter()
         .filter_map(|info| {
-            let agent = detect_agent(&info.current_command)?;
+            let agent = pane_agent(&info)?;
             // A failed capture classifies with no screen evidence rather than dropping the pane.
             let screen_lines = tmux
                 .capture_pane(&info.pane_id, true, Some(SCRAPE_LINES))
@@ -241,20 +249,9 @@ impl Control for TmuxServers {
         Ok(opened)
     }
 
-    fn create_session(
-        &self,
-        server: &ServerId,
-        name: &str,
-        dir: &str,
-        command: &str,
-    ) -> Result<(), ControlError> {
-        let tmux = self.tmux(server)?;
-        let result = if command.is_empty() {
-            tmux.new_session(name, dir)
-        } else {
-            tmux.new_session_running(name, dir, command)
-        };
-        result.map_err(failed)
+    fn create_session(&self, request: &SessionRequest) -> Result<(), ControlError> {
+        let tmux = self.tmux(&request.server)?;
+        create(tmux, request, &self.session_env, failed)
     }
 }
 

@@ -44,7 +44,8 @@ pub mod capability;
 pub mod codec;
 
 pub use codes::{
-    AgentKindCode, ErrorKindCode, ExitReasonCode, NodeStatusCode, RoleCode, SourceCode, StateCode,
+    AgentKindCode, ErrorKindCode, ExitReasonCode, NodeStatusCode, ProgramCode, RoleCode,
+    SourceCode, StateCode,
 };
 pub use command::{command_kind, Command, Request, MAX_PREVIEW_LINES};
 pub use delta::{delta_change, Delta};
@@ -55,6 +56,7 @@ pub use fleet::{
     NodeView,
 };
 pub use fleet_image::{FleetImage, FleetNode};
+pub use flight_state::{valid_dir, valid_session_name, MAX_DIR_LEN, MAX_SESSION_NAME_LEN};
 pub use heartbeat::Heartbeat;
 pub use hello::{NodeHello, OrchestratorHello};
 pub use incarnation::Incarnation;

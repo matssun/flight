@@ -78,6 +78,21 @@ enum ErrorKindCode {
   ERROR_KIND_CODE_PANE_CHANGED = 10;
   // A limit was reached (for example too many open terminals); nothing was created.
   ERROR_KIND_CODE_BUSY = 11;
+  // CreateSession: a session of that name already exists on the node; it was not touched.
+  ERROR_KIND_CODE_ALREADY_EXISTS = 12;
+  // CreateSession: the directory does not exist on the node or is not a directory.
+  ERROR_KIND_CODE_INVALID_DIRECTORY = 13;
+  // CreateSession: the program could not be found on the node, or ended as soon as it started.
+  ERROR_KIND_CODE_PROGRAM_UNAVAILABLE = 14;
+}
+
+// What a new session runs. A closed set: the wire never carries a command line.
+enum ProgramCode {
+  PROGRAM_CODE_UNSPECIFIED = 0;
+  // The `claude` found on the node's own PATH.
+  PROGRAM_CODE_CLAUDE = 1;
+  // The node's normal shell: what tmux starts for a session created by hand.
+  PROGRAM_CODE_SHELL = 2;
 }
 
 // Why a terminal session ended (ADR-003).
@@ -224,22 +239,25 @@ message Command {
   message KillPane {
     PaneRefMsg pane_ref = 1;
   }
+  // A detached session on the node's own tmux server (create_session_v1). `name` is 1 to 64
+  // bytes of [A-Za-z0-9_-] starting with a letter, digit or underscore; `dir` is an absolute
+  // path or `~`-relative (expanded on the node) of at most 4096 bytes. Tag 5 of this oneof was
+  // an earlier CreateSession that carried a free-form command line; it is retired.
   message CreateSession {
     string host = 1;
     string server = 2;
     string name = 3;
     string dir = 4;
-    // Empty means the shell.
-    string command = 5;
+    ProgramCode program = 5;
   }
-  reserved 2;
+  reserved 2, 5;
   oneof kind {
     GetPreview get_preview = 1;
     SendInput send_input = 3;
     KillPane kill_pane = 4;
-    CreateSession create_session = 5;
     RevealPane reveal_pane = 6;
     OpenTerminal open_terminal = 7;
+    CreateSession create_session = 8;
   }
 }
 

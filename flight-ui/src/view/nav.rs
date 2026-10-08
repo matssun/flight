@@ -2,7 +2,7 @@
 
 //! Selection movement and reconciliation, kept apart from the model's data.
 
-use super::{Effect, ViewModel};
+use super::{Effect, Section, ViewModel};
 use flight_state::PaneRef;
 
 fn position(list: &[PaneRef], sel: Option<&PaneRef>) -> Option<usize> {
@@ -43,7 +43,39 @@ impl ViewModel {
         self.hint = idx;
     }
 
+    /// Select the pane of a session just created, as soon as a snapshot has it. The wait ends
+    /// when it shows up, when the user moves the cursor, or after a while.
+    pub(super) fn select_created(&mut self) {
+        let Some(pending) = self.pending.as_mut() else {
+            return;
+        };
+        let found = self
+            .snapshot
+            .hosts
+            .iter()
+            .filter(|h| h.host == pending.host)
+            .flat_map(|h| h.panes.iter())
+            .find(|p| p.session == pending.session)
+            .map(|p| p.pane_ref.clone());
+        if let Some(pane) = found {
+            self.selected = Some(pane);
+            self.focus = Section::Tree;
+            self.hint = self
+                .refs(Section::Tree)
+                .iter()
+                .position(|p| Some(p) == self.selected.as_ref())
+                .unwrap_or(0);
+            self.pending = None;
+        } else {
+            pending.snapshots_left = pending.snapshots_left.saturating_sub(1);
+            if pending.snapshots_left == 0 {
+                self.pending = None;
+            }
+        }
+    }
+
     pub(super) fn step(&mut self, delta: isize) -> Effect {
+        self.pending = None;
         let before = self.selected.clone();
         let list = self.refs(self.focus);
         let next = match position(&list, self.selected.as_ref()) {
@@ -58,6 +90,7 @@ impl ViewModel {
     }
 
     pub(super) fn toggle_focus(&mut self) -> Effect {
+        self.pending = None;
         let before = self.selected.clone();
         let target = self.focus.other();
         let list = self.refs(target);

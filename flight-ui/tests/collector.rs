@@ -55,7 +55,7 @@ impl TmuxRunner for FakeTmux {
 
 fn pane_row(id: &str, session: &str, command: &str, focused: bool) -> String {
     let f = if focused { "1" } else { "0" };
-    format!("{id}\t{session}\tw\t@1\t0\t/tmp\t7\t{f}\t{f}\t{f}\t{command}\t1700\ttitle\n")
+    format!("{id}\t{session}\tw\t@1\t0\t/tmp\t7\t{f}\t{f}\t{f}\t{command}\t1700\t0\ttitle\n")
 }
 
 type Screens = Arc<Mutex<HashMap<String, String>>>;

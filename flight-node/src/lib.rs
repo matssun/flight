@@ -20,8 +20,10 @@ mod incarnation;
 mod node_core;
 mod node_session;
 mod observer;
+mod pane_agent;
 mod pane_resolve;
 mod round;
+mod session_create;
 mod terminal;
 mod tmux_servers;
 mod unavailable;
@@ -32,8 +34,11 @@ pub use node_core::NodeCore;
 pub use node_session::{NodeSession, SessionOutput, ADVERTISED_CAPABILITIES};
 pub use observer::{ControlLink, ControlSkipObserver, PaneObserver, SequentialObserver};
 pub use round::{PaneObservation, Round, ServerOutcome};
+pub use session_create::{Program, SessionEnv, SessionRequest};
 pub use terminal::{
     tmux_attach_command, HangUp, OpenedTerminal, Redraw, TerminalProcess, TerminalSpec,
 };
 pub use tmux_servers::TmuxServers;
 pub use unavailable::Unavailable;
+
+pub(crate) use pane_agent::pane_agent;

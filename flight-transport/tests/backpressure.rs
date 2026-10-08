@@ -4,7 +4,7 @@
 
 mod support;
 
-use flight_node::{Control, ControlError};
+use flight_node::{Control, ControlError, SessionRequest};
 use flight_proto::{
     command_kind as ck, fleet_change::Change, response_result, ui_event_body, ui_request_body,
     Command, ErrorKindCode, NodeStatusCode, ReplicationCursor, Request, Response, StateCode,
@@ -149,7 +149,7 @@ impl Control for SlowControl {
     fn kill_pane(&self, _: &ServerId, _: &PaneId, _: u32) -> Result<(), ControlError> {
         Ok(())
     }
-    fn create_session(&self, _: &ServerId, _: &str, _: &str, _: &str) -> Result<(), ControlError> {
+    fn create_session(&self, _: &SessionRequest) -> Result<(), ControlError> {
         Ok(())
     }
 }

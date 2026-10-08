@@ -5,12 +5,14 @@ use crate::switch::{Handoff, HandoffSlot, Presented, RemoteOps, SwitchTarget, Sw
 use crate::terminal::terminal_request_shape;
 use flight_proto::{
     command_kind as ck, response_result, ui_event_body, ui_request_body, Command, ErrorKindCode,
-    FleetImage, PaneRefMsg, Request, Step, Subscribe, UiEvent, UiRequest,
+    FleetImage, PaneRefMsg, ProgramCode, Request, Step, Subscribe, UiEvent, UiRequest,
 };
 use flight_state::PaneRef;
 use flight_transport::UiClient;
 use flight_trust::{ConnectionConfig, Fingerprint, Identity, TrustError};
-use flight_ui::{Backend, PanePreview, PaneView, UiSnapshot};
+use flight_ui::{
+    Backend, CreateFailure, NewSessionRequest, PanePreview, PaneView, Program, UiSnapshot,
+};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -23,6 +25,8 @@ const PREVIEW_LINES: u32 = 200;
 const PREVIEW_TIMEOUT: Duration = Duration::from_secs(5);
 /// The orchestrator gives up on a node after 10 s; wait a little longer for its answer.
 const REVEAL_TIMEOUT: Duration = Duration::from_secs(12);
+/// Creating a session waits for the node's launch check as well.
+const CREATE_TIMEOUT: Duration = Duration::from_secs(12);
 const RECONNECT_MIN: Duration = Duration::from_millis(250);
 const RECONNECT_MAX: Duration = Duration::from_secs(5);
 
@@ -67,10 +71,26 @@ enum Answer {
     Terminal(Vec<u8>),
 }
 
+/// Why a command did not succeed: the refusal's type when a node or the orchestrator gave one,
+/// and what to tell the user either way.
+struct Failure {
+    kind: Option<ErrorKindCode>,
+    message: String,
+}
+
+impl From<String> for Failure {
+    fn from(message: String) -> Self {
+        Self {
+            kind: None,
+            message,
+        }
+    }
+}
+
 /// One control command to send over the link, and where its answer goes.
 struct ControlRequest {
     kind: ck::Kind,
-    reply: oneshot::Sender<Result<Answer, String>>,
+    reply: oneshot::Sender<Result<Answer, Failure>>,
 }
 
 /// The dashboard's backend over an orchestrator. A background task keeps the link up and a
@@ -147,6 +167,7 @@ impl Backend for OrchestratedBackend {
         let content = self
             .runtime
             .block_on(call(&self.requests, kind, PREVIEW_TIMEOUT))
+            .map_err(|f| f.message)
             .and_then(|answer| match answer {
                 Answer::Text(text) => Ok(text),
                 _ => Err("unexpected response".to_owned()),
@@ -179,6 +200,37 @@ impl Backend for OrchestratedBackend {
             Err(e) => Err(e.to_string()),
         }
     }
+
+    fn create_session(&mut self, request: &NewSessionRequest) -> Result<(), CreateFailure> {
+        let kind = ck::Kind::CreateSession(ck::CreateSession {
+            host: request.host.as_str().to_owned(),
+            server: request.server.as_str().to_owned(),
+            name: request.name.clone(),
+            dir: request.dir.clone(),
+            program: match request.program {
+                Program::Claude => ProgramCode::Claude,
+                Program::Shell => ProgramCode::Shell,
+            } as i32,
+        });
+        self.runtime
+            .block_on(call(&self.requests, kind, CREATE_TIMEOUT))
+            .map(drop)
+            .map_err(create_failure)
+    }
+}
+
+/// A refusal of a create request, as the dashboard tells them apart.
+fn create_failure(f: Failure) -> CreateFailure {
+    match f.kind {
+        Some(ErrorKindCode::AlreadyExists) => CreateFailure::AlreadyExists,
+        Some(ErrorKindCode::InvalidDirectory) => CreateFailure::NoSuchDirectory(f.message),
+        Some(ErrorKindCode::ProgramUnavailable) => CreateFailure::ProgramUnavailable(f.message),
+        Some(ErrorKindCode::NodeUnreachable) => CreateFailure::Unreachable,
+        Some(ErrorKindCode::Unsupported) => CreateFailure::Other(
+            "That node is too old to create sessions. Update Flight on it.".to_owned(),
+        ),
+        _ => CreateFailure::Other(f.message),
+    }
 }
 
 /// A switch's requests to the orchestrator, over the dashboard's own link.
@@ -196,6 +248,7 @@ impl RemoteOps for LinkOps<'_> {
         self.runtime
             .block_on(call(self.requests, kind, REVEAL_TIMEOUT))
             .map(drop)
+            .map_err(|f| f.message)
     }
 
     fn open_terminal(&mut self, pane: &PaneRef, pid: u32) -> Result<Vec<u8>, String> {
@@ -210,6 +263,7 @@ impl RemoteOps for LinkOps<'_> {
         });
         self.runtime
             .block_on(call(self.requests, kind, REVEAL_TIMEOUT))
+            .map_err(|f| f.message)
             .and_then(|answer| match answer {
                 Answer::Terminal(id) => Ok(id),
                 _ => Err("the orchestrator answered without a terminal".to_owned()),
@@ -222,15 +276,17 @@ async fn call(
     requests: &mpsc::Sender<ControlRequest>,
     kind: ck::Kind,
     timeout: Duration,
-) -> Result<Answer, String> {
+) -> Result<Answer, Failure> {
     let (reply, answer) = oneshot::channel();
     if requests.send(ControlRequest { kind, reply }).await.is_err() {
-        return Err("not connected to the orchestrator".to_owned());
+        return Err("not connected to the orchestrator".to_owned().into());
     }
     match tokio::time::timeout(timeout, answer).await {
         Ok(Ok(result)) => result,
-        Ok(Err(_)) => Err("connection to the orchestrator was lost".to_owned()),
-        Err(_) => Err("no confirmation from the orchestrator in time".to_owned()),
+        Ok(Err(_)) => Err("connection to the orchestrator was lost".to_owned().into()),
+        Err(_) => Err("no confirmation from the orchestrator in time"
+            .to_owned()
+            .into()),
     }
 }
 
@@ -292,7 +348,7 @@ async fn serve_link(
         return "cannot subscribe".to_owned();
     }
     let mut next_id = 0u64;
-    let mut waiting: HashMap<u64, oneshot::Sender<Result<Answer, String>>> = HashMap::new();
+    let mut waiting: HashMap<u64, oneshot::Sender<Result<Answer, Failure>>> = HashMap::new();
     loop {
         tokio::select! {
             event = client.next_event() => match event {
@@ -309,7 +365,9 @@ async fn serve_link(
                 if client.send(command_request(next_id, req.kind)).is_ok() {
                     waiting.insert(next_id, req.reply);
                 } else {
-                    let _ = req.reply.send(Err("too many requests in flight".to_owned()));
+                    let _ = req
+                        .reply
+                        .send(Err("too many requests in flight".to_owned().into()));
                 }
             }
         }
@@ -319,7 +377,7 @@ async fn serve_link(
 fn apply(
     state: &Shared,
     event: &UiEvent,
-    waiting: &mut HashMap<u64, oneshot::Sender<Result<Answer, String>>>,
+    waiting: &mut HashMap<u64, oneshot::Sender<Result<Answer, Failure>>>,
 ) -> Step {
     if let Some(ui_event_body::Body::Response(r)) = event.body.as_ref() {
         if let Some(reply) = waiting.remove(&r.request_id) {
@@ -329,8 +387,11 @@ fn apply(
                     Ok(Answer::Terminal(t.terminal_id.clone()))
                 }
                 Some(response_result::Result::Done(_)) => Ok(Answer::Done),
-                Some(response_result::Result::Error(e)) => Err(describe(e)),
-                _ => Err("unexpected response".to_owned()),
+                Some(response_result::Result::Error(e)) => Err(Failure {
+                    kind: ErrorKindCode::try_from(e.kind).ok(),
+                    message: describe(e),
+                }),
+                _ => Err("unexpected response".to_owned().into()),
             });
         }
         return Step::Apply;

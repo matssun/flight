@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 
 use super::lists::section_panes;
-use super::{Action, Effect, Section};
+use super::{Action, Effect, FormOutcome, HostChoice, NewSessionForm, NewSessionRequest, Section};
+use crate::collect::CreateFailure;
+use crate::snapshot::HostHealth;
 use crate::snapshot::{PanePreview, PaneView, UiSnapshot};
-use flight_state::PaneRef;
+use flight_state::{HostId, PaneRef};
 
 /// Presentation state: the latest snapshot plus what the user is pointing at. Selection is
 /// the identity of a pane, never a row number, so reordering cannot move the cursor onto a
@@ -18,6 +20,20 @@ pub struct ViewModel {
     pub(super) preview: Option<PanePreview>,
     pub(super) message: Option<String>,
     pub(super) loaded: bool,
+    /// The new-session form, while it is open.
+    pub(super) form: Option<NewSessionForm>,
+    /// A session just created: select its pane when it shows up in a snapshot.
+    pub(super) pending: Option<Pending>,
+}
+
+/// How many snapshots to wait for a created session to show up before giving up on selecting it.
+const PENDING_SNAPSHOTS: u8 = 30;
+
+#[derive(Debug, Clone)]
+pub(super) struct Pending {
+    pub(super) host: HostId,
+    pub(super) session: String,
+    pub(super) snapshots_left: u8,
 }
 
 impl Default for ViewModel {
@@ -36,6 +52,8 @@ impl ViewModel {
             preview: None,
             message: None,
             loaded: false,
+            form: None,
+            pending: None,
         }
     }
 
@@ -68,6 +86,11 @@ impl ViewModel {
         self.loaded
     }
 
+    /// The new-session form, if it is open.
+    pub fn form(&self) -> Option<&NewSessionForm> {
+        self.form.as_ref()
+    }
+
     /// The preview, only if it is for the currently selected pane (never a stale one).
     pub fn preview(&self) -> Option<&PanePreview> {
         self.preview
@@ -89,10 +112,14 @@ impl ViewModel {
         self.loaded = true;
         let before = self.selected.clone();
         self.reconcile();
+        self.select_created();
         self.select_effect(before)
     }
 
     pub fn apply(&mut self, action: Action) -> Effect {
+        if let Action::Form(input) = action {
+            return self.apply_form(input);
+        }
         match action {
             Action::Quit => Effect::Quit,
             Action::Refresh => Effect::Refresh,
@@ -103,6 +130,75 @@ impl ViewModel {
                 .selected_view()
                 .cloned()
                 .map_or(Effect::None, Effect::Switch),
+            Action::NewSession => {
+                self.open_form();
+                Effect::None
+            }
+            Action::Form(_) => Effect::None,
+        }
+    }
+
+    fn open_form(&mut self) {
+        let prefer = self.selected.as_ref().map(|p| p.host.clone());
+        self.form = Some(NewSessionForm::new(self.connected_hosts(), prefer.as_ref()));
+    }
+
+    /// The nodes a session can be created on: those the orchestrator has a live link to.
+    /// A node with no tmux server yet is included, since creating a session starts one.
+    fn connected_hosts(&self) -> Vec<HostChoice> {
+        self.snapshot
+            .hosts
+            .iter()
+            .filter(|h| matches!(h.health, HostHealth::Online | HostHealth::NoServer))
+            .map(|h| HostChoice {
+                host: h.host.clone(),
+                server: h.server.clone(),
+                label: h.label.clone(),
+            })
+            .collect()
+    }
+
+    fn apply_form(&mut self, input: super::FormInput) -> Effect {
+        let Some(form) = self.form.as_mut() else {
+            return Effect::None;
+        };
+        match form.handle(input) {
+            FormOutcome::None => Effect::None,
+            FormOutcome::Cancel => {
+                self.form = None;
+                Effect::None
+            }
+            FormOutcome::Submit(request) => Effect::Create(request),
+        }
+    }
+
+    /// The answer to an [`Effect::Create`]. Success closes the form and aims the selection at
+    /// the new session; a refusal stays in the form, where it can be fixed.
+    pub fn apply_created(
+        &mut self,
+        request: &NewSessionRequest,
+        result: Result<(), CreateFailure>,
+    ) {
+        match result {
+            Ok(()) => {
+                self.form = None;
+                self.pending = Some(Pending {
+                    host: request.host.clone(),
+                    session: request.name.clone(),
+                    snapshots_left: PENDING_SNAPSHOTS,
+                });
+                self.message = Some(format!(
+                    "Created session {} on {}.",
+                    request.name, request.host_label
+                ));
+                self.select_created();
+            }
+            Err(failure) => match self.form.as_mut() {
+                Some(form) => form.fail(&failure),
+                None => {
+                    self.message = Some(format!("Could not create {}: {failure:?}", request.name))
+                }
+            },
         }
     }
 

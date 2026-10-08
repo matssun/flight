@@ -472,3 +472,114 @@ fn terminal_syntax_helpers_agree_with_the_rules() {
         assert!(!valid_term(bad), "{bad:?}");
     }
 }
+
+fn create(f: impl FnOnce(&mut command_kind::CreateSession)) -> Command {
+    let mut c = command_kind::CreateSession {
+        host: "mac-local".into(),
+        server: "flight".into(),
+        name: "api".into(),
+        dir: "/work".into(),
+        program: ProgramCode::Claude as i32,
+    };
+    f(&mut c);
+    Command {
+        kind: Some(command_kind::Kind::CreateSession(c)),
+    }
+}
+
+#[test]
+fn a_create_session_names_its_host_and_validates() {
+    let ok = create(|_| {});
+    assert_eq!(ok.validate(), Ok(()));
+    assert_eq!(ok.target_host(), Some("mac-local"));
+    assert_eq!(
+        create(|c| c.program = ProgramCode::Shell as i32).validate(),
+        Ok(())
+    );
+    assert_eq!(create(|c| c.dir = "~/dev".into()).validate(), Ok(()));
+}
+
+#[test]
+fn a_malformed_or_oversized_create_session_is_refused() {
+    type Mutation = Box<dyn FnOnce(&mut command_kind::CreateSession)>;
+    let cases: Vec<(&str, Mutation)> = vec![
+        ("create_session.name", Box::new(|c| c.name.clear())),
+        ("create_session.name", Box::new(|c| c.name = "a b".into())),
+        ("create_session.name", Box::new(|c| c.name = "a;b".into())),
+        ("create_session.name", Box::new(|c| c.name = "a.b".into())),
+        ("create_session.name", Box::new(|c| c.name = "-x".into())),
+        (
+            "create_session.name",
+            Box::new(|c| c.name = "a".repeat(MAX_SESSION_NAME_LEN + 1)),
+        ),
+        ("create_session.dir", Box::new(|c| c.dir.clear())),
+        (
+            "create_session.dir",
+            Box::new(|c| c.dir = "relative".into()),
+        ),
+        ("create_session.dir", Box::new(|c| c.dir = "/a\0b".into())),
+        (
+            "create_session.dir",
+            Box::new(|c| c.dir = format!("/{}", "a".repeat(MAX_DIR_LEN))),
+        ),
+    ];
+    for (field, mutate) in cases {
+        assert_eq!(create(mutate).validate(), Err(Reject::OutOfRange(field)));
+    }
+    assert_eq!(
+        create(|c| c.host.clear()).validate(),
+        Err(Reject::Empty("create_session.host"))
+    );
+    assert_eq!(
+        create(|c| c.server.clear()).validate(),
+        Err(Reject::Empty("create_session.server"))
+    );
+}
+
+#[test]
+fn an_unspecified_or_unknown_program_is_refused_not_guessed() {
+    for program in [0, 99] {
+        assert_eq!(
+            create(|c| c.program = program).validate(),
+            Err(Reject::UnknownEnum {
+                field: "create_session.program",
+                value: program
+            })
+        );
+    }
+}
+
+#[test]
+fn the_retired_free_form_create_session_is_not_reinterpreted() {
+    // What the earlier shape put on the wire: tag 5 of the command, { host, server, name,
+    // dir, command }. It must decode to no kind and be refused, never run as a shell session.
+    #[derive(Clone, PartialEq, prost::Message)]
+    struct Old {
+        #[prost(string, tag = "1")]
+        host: String,
+        #[prost(string, tag = "3")]
+        name: String,
+        #[prost(string, tag = "5")]
+        command: String,
+    }
+    let old = prost::Message::encode_to_vec(&Old {
+        host: "mac-local".into(),
+        name: "api".into(),
+        command: "rm -rf /".into(),
+    });
+    let mut bytes = vec![0x2a, u8::try_from(old.len()).unwrap_or(0)];
+    bytes.extend(&old);
+    let decoded: Result<Command, _> = decode(&bytes);
+    assert_eq!(decoded, Err(Reject::Missing("command.kind")));
+}
+
+#[test]
+fn the_create_session_capability_is_versioned_and_the_old_name_is_gone() {
+    assert_eq!(capability::CREATE_SESSION, "create_session_v1");
+    assert!(capability::KNOWN.contains(&"create_session_v1"));
+    let offered = vec!["create_session".to_owned(), "create_session_v1".to_owned()];
+    assert_eq!(
+        capability::negotiate(&offered, &capability::KNOWN),
+        ["create_session_v1"]
+    );
+}

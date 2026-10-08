@@ -2,7 +2,8 @@
 
 use crate::command_kind::Kind;
 use crate::validate::non_empty;
-use crate::{PaneRefMsg, Reject, Validate};
+use crate::{valid_dir, valid_session_name};
+use crate::{PaneRefMsg, ProgramCode, Reject, Validate};
 
 /// The most preview lines a single request may ask for.
 pub const MAX_PREVIEW_LINES: u32 = 2000;
@@ -11,12 +12,12 @@ pub const MAX_PREVIEW_LINES: u32 = 2000;
 /// `CreateSession` names the host explicitly.
 #[derive(Clone, PartialEq, Eq, prost::Message)]
 pub struct Command {
-    #[prost(oneof = "command_kind::Kind", tags = "1, 3, 4, 5, 6, 7")]
+    #[prost(oneof = "command_kind::Kind", tags = "1, 3, 4, 6, 7, 8")]
     pub kind: Option<command_kind::Kind>,
 }
 
 pub mod command_kind {
-    use crate::PaneRefMsg;
+    use crate::{PaneRefMsg, ProgramCode};
 
     #[derive(Clone, PartialEq, Eq, prost::Message)]
     pub struct GetPreview {
@@ -78,6 +79,9 @@ pub mod command_kind {
         pub pane_ref: Option<PaneRefMsg>,
     }
 
+    /// A detached session on the node's own tmux server. The program is a [`ProgramCode`],
+    /// never a command line. Tag 5 of [`Kind`] was an earlier `CreateSession` that carried
+    /// one; it is retired, not reused.
     #[derive(Clone, PartialEq, Eq, prost::Message)]
     pub struct CreateSession {
         #[prost(string, tag = "1")]
@@ -88,9 +92,8 @@ pub mod command_kind {
         pub name: String,
         #[prost(string, tag = "4")]
         pub dir: String,
-        /// Empty means the shell.
-        #[prost(string, tag = "5")]
-        pub command: String,
+        #[prost(enumeration = "ProgramCode", tag = "5")]
+        pub program: i32,
     }
 
     #[derive(Clone, PartialEq, Eq, prost::Oneof)]
@@ -101,12 +104,12 @@ pub mod command_kind {
         SendInput(SendInput),
         #[prost(message, tag = "4")]
         KillPane(KillPane),
-        #[prost(message, tag = "5")]
-        CreateSession(CreateSession),
         #[prost(message, tag = "6")]
         RevealPane(RevealPane),
         #[prost(message, tag = "7")]
         OpenTerminal(OpenTerminal),
+        #[prost(message, tag = "8")]
+        CreateSession(CreateSession),
     }
 }
 
@@ -174,7 +177,13 @@ impl Validate for Command {
             CreateSession(c) => {
                 non_empty(&c.host, "create_session.host")?;
                 non_empty(&c.server, "create_session.server")?;
-                non_empty(&c.name, "create_session.name")
+                if !valid_session_name(&c.name) {
+                    return Err(Reject::OutOfRange("create_session.name"));
+                }
+                if !valid_dir(&c.dir) {
+                    return Err(Reject::OutOfRange("create_session.dir"));
+                }
+                ProgramCode::decode(c.program, "create_session.program").map(|_| ())
             }
         }
     }

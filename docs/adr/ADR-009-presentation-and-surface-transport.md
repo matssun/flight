@@ -153,7 +153,9 @@ Still open: the dashboard's first open does a `RevealPane` before `OpenTerminal`
 
 A and C extend to N surfaces and to simultaneous presentation; B does not. Recommended first experiment: **A with a hidden mode**, measured against the current path with the existing driven end-to-end test (`flight/tests/workspace_shell_e2e.rs`). The orchestrator's per-UI and per-node terminal limits (2 and 4) are the first thing it hits and must become per-surface-aware.
 
-## Simultaneous presentation (deferred)
+## Simultaneous presentation (decided in ADR-011)
+
+The text below is the question as it stood before increment 6; ADR-011 records the investigation and the decision.
 
 Composing two interactive byte streams into one terminal needs a screen model per surface (a terminal emulator) and a compositor, or delegating to tmux splits, which makes surfaces panes of one layout and gives up independent presentation (ADR-007). That decision is deliberately last: it depends on measurements from the transport work and on whether a headless emulator crate meets the repository's dependency and licensing standards. The layout tree above is the only commitment.
 

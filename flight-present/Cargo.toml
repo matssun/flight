@@ -1,0 +1,13 @@
+[package]
+name = "flight-present"
+description = "Flight: composable presentation layouts over persistent surfaces (ADR-011); pure, no I/O"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+flight-state = { path = "../flight-state" }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"

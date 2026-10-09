@@ -132,6 +132,21 @@ fn execute(
                 Err(e) => RecoveryReport::refused(e),
             }
         }
+        Action::ResumeWorkspace { key } => {
+            let Some(def) = profile.get(key).cloned() else {
+                return Outcome::Refused("no longer saved".to_owned());
+            };
+            match executor.resume_workspace(&def) {
+                Ok(started) => {
+                    if let Some(w) = profile.get_mut(key) {
+                        w.last_workspace_id = Some(started.workspace_id);
+                        *changed = true;
+                    }
+                    Outcome::Resumed
+                }
+                Err(e) => RecoveryReport::refused(e),
+            }
+        }
         Action::StartSurface {
             key,
             surface,

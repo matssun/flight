@@ -175,13 +175,29 @@ fn claude_gets_the_skip_flag_only_when_that_program_is_chosen() {
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
-    let mut lines: Vec<String> = std::fs::read_to_string(&out)
+    let lines: Vec<String> = std::fs::read_to_string(&out)
         .unwrap()
         .lines()
         .map(str::to_owned)
         .collect();
-    lines.sort();
-    assert_eq!(lines, ["[--dangerously-skip-permissions]", "[]"]);
+    // Every agent is started with a session id of the node's choosing; only the chosen program
+    // adds the skip flag.
+    assert!(
+        lines.iter().all(|l| l.starts_with("[--session-id ")),
+        "{lines:?}"
+    );
+    assert_eq!(
+        lines
+            .iter()
+            .filter(|l| l.contains("--dangerously-skip-permissions"))
+            .count(),
+        1
+    );
+    let ids: Vec<&str> = lines
+        .iter()
+        .filter_map(|l| l.split_whitespace().nth(1))
+        .collect();
+    assert_ne!(ids[0], ids[1], "two agents never share a session");
 }
 
 #[test]

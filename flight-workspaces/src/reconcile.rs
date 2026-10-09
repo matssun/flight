@@ -93,7 +93,14 @@ fn item(
     let Some(live) = observed else {
         if root.usable() {
             let any_skip = def.surfaces.iter().any(|s| s.skip_permissions);
+            let resumes = def
+                .surfaces
+                .iter()
+                .any(|s| s.kind == SurfaceKind::Agent && policy.resumable.contains(&s.key));
             match gate(def, any_skip, &root, policy) {
+                Ok(()) if resumes => it.actions.push(Action::ResumeWorkspace {
+                    key: def.key.clone(),
+                }),
                 Ok(()) => it.actions.push(Action::StartWorkspace {
                     key: def.key.clone(),
                 }),
@@ -131,11 +138,7 @@ fn start_or_resume(
     live: &ObservedWorkspace,
     policy: &RecoveryPolicy,
 ) -> Action {
-    let resumable = spec.kind == SurfaceKind::Agent
-        && spec
-            .provider
-            .as_ref()
-            .is_some_and(|p| policy.resumable_providers.contains(p));
+    let resumable = spec.kind == SurfaceKind::Agent && policy.resumable.contains(&spec.key);
     if resumable {
         Action::ResumeAgent {
             key: def.key.clone(),

@@ -20,6 +20,9 @@ pub enum Action {
         kind: SurfaceKind,
         workspace_id: String,
     },
+    /// Start a workspace whose agent continues its earlier session. Never a replacement: if the
+    /// session cannot be continued this fails and the saved definition is left as it was.
+    ResumeWorkspace { key: ConfigKey },
     /// Continue an agent's earlier session where the provider supports it.
     ResumeAgent {
         key: ConfigKey,

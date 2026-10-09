@@ -43,13 +43,17 @@ impl Rig {
     }
 
     fn items(&self) -> Vec<Item> {
+        self.items_with(&go())
+    }
+
+    fn items_with(&self, policy: &RecoveryPolicy) -> Vec<Item> {
         plan(
             self.doc.active().unwrap(),
             &[("h".to_owned(), self.fake.observe("h"))]
                 .into_iter()
                 .collect(),
             &self.roots,
-            &go(),
+            policy,
         )
         .items
     }
@@ -396,8 +400,11 @@ fn resumption_is_distinct_from_replacement_and_only_for_capable_providers() {
     r.fake.0.borrow_mut().running.get_mut("h").unwrap()[0]
         .surfaces
         .remove(0);
+    let agent = r.doc.active().unwrap().workspaces[0].surfaces[0]
+        .key
+        .clone();
     let policy = RecoveryPolicy {
-        resumable_providers: vec!["claude".into()],
+        resumable: [agent].into_iter().collect(),
         ..go()
     };
     let item = &r.items();
@@ -452,4 +459,90 @@ fn a_hand_made_workspace_is_recorded_even_when_nothing_is_saved_yet() {
     let report = r.recover(&RecoveryPolicy::default());
     assert_eq!(report.recorded, vec!["w-hand"]);
     assert_eq!(r.doc.active().unwrap().workspaces.len(), 1);
+}
+
+fn resumable(r: &Rig) -> RecoveryPolicy {
+    let agent = r.doc.active().unwrap().workspaces[0].surfaces[0]
+        .key
+        .clone();
+    RecoveryPolicy {
+        resumable: [agent].into_iter().collect(),
+        ..go()
+    }
+}
+
+#[test]
+fn a_stopped_workspace_whose_agent_can_be_resumed_is_resumed_not_replaced() {
+    let mut r = rig(vec![def("a", "h", "/a")]);
+    let policy = resumable(&r);
+    let report = r.recover(&policy);
+    assert!(
+        matches!(report.done[0].1, Action::ResumeWorkspace { .. }),
+        "{:?}",
+        report.done
+    );
+    assert!(matches!(report.done[0].2, Outcome::Resumed));
+    assert_eq!(
+        r.fake.0.borrow().started,
+        vec!["a:resumed".to_owned(), "a".to_owned()]
+    );
+    // It is bound, so the next pass has nothing to do.
+    let again = r.recover(&policy);
+    assert!(
+        again
+            .done
+            .iter()
+            .all(|(_, _, o)| matches!(o, Outcome::Bound)),
+        "{:?}",
+        again.done
+    );
+    assert_eq!(r.fake.running("h"), 1);
+}
+
+#[test]
+fn a_resumption_that_cannot_happen_is_reported_and_replaces_nothing() {
+    let mut r = rig(vec![def("a", "h", "/a")]);
+    let before = r.doc.active().unwrap().workspaces[0].clone();
+    r.fake.0.borrow_mut().resume_fails = true;
+    let policy = resumable(&r);
+    let report = r.recover(&policy);
+    assert!(
+        matches!(&report.done[0].2, Outcome::Refused(why) if why.contains("no saved conversation")),
+        "{:?}",
+        report.done
+    );
+    assert_eq!(r.fake.running("h"), 0, "no replacement was started");
+    assert!(r.fake.0.borrow().started.is_empty());
+    assert_eq!(
+        r.doc.active().unwrap().workspaces[0],
+        before,
+        "the saved definition is untouched"
+    );
+    // Starting a replacement is a separate, explicit choice: without the resumable surface the
+    // same workspace is started.
+    let report = r.recover(&go());
+    assert!(matches!(report.done[0].1, Action::StartWorkspace { .. }));
+    assert_eq!(r.fake.running("h"), 1);
+}
+
+#[test]
+fn resuming_needs_every_permission_starting_needs() {
+    let mut imported = def("a", "h", "/a");
+    imported.origin = Origin::Imported;
+    let r = rig(vec![imported]);
+    let policy = resumable(&r);
+    let item = &r.items_with(&policy)[0];
+    assert!(item.actions.is_empty(), "{:?}", item.actions);
+    assert!(!item.refusals.is_empty());
+
+    let mut risky = def("b", "h", "/b");
+    risky.surfaces[0].skip_permissions = true;
+    let r = rig(vec![risky]);
+    let policy = resumable(&r);
+    let item = &r.items_with(&policy)[0];
+    assert!(
+        item.actions.is_empty(),
+        "a skip-permissions agent is not resumed unprompted"
+    );
+    assert!(item.refusals.contains(&Refusal::SkipPermissionsNotTrusted));
 }

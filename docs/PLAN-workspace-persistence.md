@@ -12,7 +12,7 @@ Each increment is independently testable and shippable; later ones need earlier 
 | 4a | Dashboard shows saved workspaces that are not running, with host, configured root and failure; selectable; details in the preview pane | view-model, render (every failure kind, narrow terminal, no backend words) | done, PR #16 (merge eca7e43) |
 | 4b-1 | Actions on the wire and node: retry, remove, restore, accept root, set root, trust; `saved_actions_v1`; client/Backend support | proto, orchestrator routing, node live (9 tests) | done, PR #17 (merge a3f26ca) |
 | 4b-2 | Dashboard keys and prompts for those actions | view-model, render, keys (12 tests) | done (this PR) |
-| 5 | Snapshots and profiles from the UI; export/import with the import trust prompt | | |
+| 5 | Snapshots, profiles, undo, export/import (`flight workspaces`); exclusive lock on the saved file; previous generation | library (8), node lock, CLI end to end with the real binary (8) | done (this PR) |
 | 6 | Persistent surface transport experiment (ADR-009) | keystroke-loss and latency measurement | |
 | 7 | Agent-session resumption for a provider that supports it | | |
 | 8 | Terminal emulation / composition for side by side | | |

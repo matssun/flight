@@ -29,6 +29,8 @@ pub struct WorkspacePersistence {
     host: String,
     probe: FsProbe,
     state: Mutex<State>,
+    /// Held for as long as this node runs: no other process edits the saved file meanwhile.
+    _lock: Option<flight_workspaces::StoreLock>,
 }
 
 impl WorkspacePersistence {
@@ -36,18 +38,27 @@ impl WorkspacePersistence {
     /// run (see [`Self::disabled_reason`]); it is never replaced by defaults.
     pub fn open(dir: &Path, host: impl Into<String>, home: Option<std::path::PathBuf>) -> Self {
         let store = Store::new(dir);
-        let _ = store.sweep_temporaries();
-        let state = match store.load() {
-            Ok((doc, _how)) => State::Active {
-                store,
-                doc: Box::new(doc),
-            },
-            Err(e) => State::Disabled(e.to_string()),
+        // One Flight process per saved file: a second node on the same directory would race
+        // the first, so it runs without persistence and says why.
+        let (lock, state) = match store.lock_waiting(std::time::Duration::from_secs(2)) {
+            Err(e) => (None, State::Disabled(e.to_string())),
+            Ok(lock) => {
+                let _ = store.sweep_temporaries();
+                let state = match store.load() {
+                    Ok((doc, _how)) => State::Active {
+                        store,
+                        doc: Box::new(doc),
+                    },
+                    Err(e) => State::Disabled(e.to_string()),
+                };
+                (Some(lock), state)
+            }
         };
         Self {
             host: host.into(),
             probe: FsProbe::new(home),
             state: Mutex::new(state),
+            _lock: lock,
         }
     }
 

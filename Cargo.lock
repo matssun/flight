@@ -561,6 +561,7 @@ dependencies = [
 name = "flight-workspaces"
 version = "0.0.1"
 dependencies = [
+ "flight-state",
  "getrandom",
  "serde",
  "toml",

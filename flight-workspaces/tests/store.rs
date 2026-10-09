@@ -48,8 +48,14 @@ fn saves_replace_whole_files_and_leave_no_temporaries() {
             .save(&doc_with(vec![def(&format!("w{n}"), "h", "/a")]))
             .unwrap();
     }
-    let names: Vec<_> = std::fs::read_dir(&dir).unwrap().flatten().collect();
-    assert_eq!(names.len(), 1, "{names:?}");
+    // The file, and the generation it replaced; no temporary left behind.
+    let mut names: Vec<String> = std::fs::read_dir(&dir)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    assert_eq!(names, vec!["workspaces.prev.toml", "workspaces.toml"]);
 }
 
 #[test]

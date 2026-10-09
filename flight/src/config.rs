@@ -37,6 +37,7 @@ pub const ROLES: &str = "distributed mode (an orchestrator, nodes that observe t
   flight orchestrator ...   run or administer the orchestrator
   flight node ...           join an orchestrator, observe local tmux and report
   flight ui ...             join an orchestrator and show the dashboard
+  flight workspaces ...     list, snapshot, share and take back saved workspaces
   (each prints its own usage)";
 
 impl Config {

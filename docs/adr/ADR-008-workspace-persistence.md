@@ -79,7 +79,7 @@ The `Action` enum has no filesystem member, and `RootProbe` only reads. Flight n
 | `NotADirectory` | | change root, remove |
 | `HostUnreachable` | the owning node cannot be asked | retry |
 
-`Present` is compared with the saved `RootIdentity` (device, inode) and the saved Git layout: a different directory at the same path, or a clone that became a pointer file, is `Changed`, which blocks starting until the user re-records it ("this is the workspace"). Device numbers can legitimately change across reboots on some systems, so a mismatch is never a rejection, only a question. `FirstSighting` (nothing recorded yet) is usable and is recorded.
+`Present` is compared with the saved `RootIdentity` (device, inode and, where the filesystem records it, creation time) and the saved Git layout. Inode numbers are reused, so device and inode alone cannot tell a directory from one deleted and made again at the same path (found on Linux CI, see STATUS); the creation time can, and where a filesystem has none the case is undetectable, which is why a verified root means "not contradicted", not "proven": a different directory at the same path, or a clone that became a pointer file, is `Changed`, which blocks starting until the user re-records it ("this is the workspace"). Device numbers can legitimately change across reboots on some systems, so a mismatch is never a rejection, only a question. `FirstSighting` (nothing recorded yet) is usable and is recorded.
 
 Retry, inspect, change root and remove are user actions on the saved definition (`Profile::set_root`, `Profile::remove`); removal forgets the reference and nothing else, and saved definitions are never expired or garbage-collected.
 

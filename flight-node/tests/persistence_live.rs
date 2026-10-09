@@ -476,8 +476,16 @@ fn the_report_tells_running_stopped_and_every_kind_of_unavailable_root_apart() {
         "still listed with everything needed to act on it"
     );
 
-    // The same path with another directory in it is a question for the user, not a match.
+    // The same path with another directory in it is a question for the user, not a match. A
+    // directory deleted and made again is often given the same inode number, so this is told
+    // apart by creation time, which not every filesystem records; without it there is nothing
+    // to detect, and the rest of the test stands.
     std::fs::create_dir(&dir).unwrap();
+    if std::fs::metadata(&dir).and_then(|m| m.created()).is_err() {
+        eprintln!("no creation time on this filesystem: skipping the recreated-directory check");
+        return;
+    }
+    // Creation times can be as coarse as the filesystem's clock: make sure they differ.
     let r = reported(&live);
     assert_eq!(
         (r[0].health, r[0].root_state),

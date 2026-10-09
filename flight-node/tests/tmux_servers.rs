@@ -238,3 +238,28 @@ fn control_errors_are_typed() {
         .unwrap_err();
     assert_eq!(err.kind, ErrorKindCode::RemoteCommandFailed);
 }
+
+#[test]
+fn a_server_that_exits_while_being_listed_is_no_server_not_a_failure() {
+    let mut t = TmuxServers::new();
+    t.add(
+        ServerId::new("work"),
+        fake(
+            String::new(),
+            &[],
+            Some(TmuxError::Failed {
+                code: Some(1),
+                stderr: "server exited unexpectedly".into(),
+            }),
+        ),
+    );
+    let rounds = t.observe(1);
+    assert!(
+        matches!(
+            rounds[0].outcome,
+            ServerOutcome::Unavailable(Unavailable::NoServer)
+        ),
+        "{:?}",
+        rounds[0].outcome
+    );
+}

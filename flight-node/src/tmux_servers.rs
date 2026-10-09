@@ -23,10 +23,12 @@ use std::sync::Mutex;
 /// Lines captured per agent pane for classification (Fleet's scrape window).
 pub(crate) const SCRAPE_LINES: u32 = 50;
 
-const NO_SERVER_MARKERS: [&str; 3] = [
+const NO_SERVER_MARKERS: [&str; 4] = [
     "no server running",
     "error connecting to",
     "failed to connect to server",
+    // The server went away while the client was talking to it: the same fact, a moment later.
+    "server exited unexpectedly",
 ];
 
 /// The node's tmux servers, each behind an explicit endpoint. This is the adapter that feeds

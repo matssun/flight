@@ -44,7 +44,11 @@ pub fn doc_with(defs: Vec<WorkspaceDefinition>) -> Document {
 
 pub fn present(ino: u64) -> RootState {
     RootState::Present {
-        identity: RootIdentity { dev: 1, ino },
+        identity: RootIdentity {
+            dev: 1,
+            ino,
+            birth_ns: None,
+        },
         git: GitMarker::Absent,
     }
 }

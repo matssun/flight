@@ -108,6 +108,10 @@ Boundary with future worktree management: **Flight's recovery responsibility end
 - The node re-reads its report every 5 s (a stat per saved root and one pane listing), and sends a delta only when it changed. Reporting is read-only: it plans with the default policy and never starts, binds or saves.
 - A saved file that cannot be used reports nothing (persistence is disabled and the file is left alone); surfacing that condition to the dashboard is part of increment 4.
 
+## Dashboard (increment 4a)
+
+Saved workspaces that are not running are listed under **SAVED · NOT RUNNING**, after the live ones, in the same list and with the same cursor (the key of a saved entry is its `c-…` identity, which can never equal a running workspace's `w-…`). Blocked ones come first. Each row says the host and the reason in the user's words; the selected one opens out to host (with its connection), configured root and the node's failure text, and says that Flight does not create or repair directories. The reason names an unreachable or quiet host before anything about the root, because nothing about a root can be known when its host cannot be asked. The header counts "saved unavailable" (a problem) apart from "saved stopped" (nothing wrong). A running saved workspace is not listed twice. Opening one only explains.
+
 ## Deferred, with reasons
 
 - Wire protocol: publishing saved-but-not-running workspaces to the dashboard, and the user actions, are the next increment (`SavedWorkspace` messages with capability negotiation, so an older node simply publishes none).

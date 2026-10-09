@@ -6,6 +6,7 @@
 //! `UiSnapshot` -> `flight-ui`. The dashboard is configured with an orchestrator endpoint and a
 //! pinned identity; it cannot tell a local orchestrator from a LAN one or a hosted one.
 
+mod layout_store;
 mod link_host;
 mod orchestrated;
 mod presentation;
@@ -15,10 +16,12 @@ mod snapshot_view;
 mod switch;
 mod terminal;
 
+pub use layout_store::LayoutStore;
 pub use link_host::LinkHost;
 pub use orchestrated::{ClientConfig, OrchestratedBackend};
 pub use presentation::{
-    Command, Key, KeyFilter, PresentationConfig, PresentationOutcome, PresentationSession, Shown,
+    remember, side_by_side, starting_layout, Command, Key, KeyFilter, PresentationConfig,
+    PresentationOutcome, PresentationSession, Shown,
 };
 pub use screens::{paint, CellView, Colour, Modes, MouseMode, Painted, ScreenModel, Theme};
 pub use session::{
@@ -32,6 +35,6 @@ pub use switch::{
     UiPlacement,
 };
 pub use terminal::{
-    run_session, terminal_request_shape, EscapeFilter, LocalTerminal, SessionRequest, TerminalEnd,
-    LEASE_PERIOD,
+    run_presentation, run_session, terminal_request_shape, EscapeFilter, LocalTerminal,
+    SessionRequest, TerminalEnd, LEASE_PERIOD,
 };

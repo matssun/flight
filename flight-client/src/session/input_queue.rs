@@ -75,9 +75,10 @@ impl InputQueue {
                     self.events.push_back(InputEvent::Hint);
                 }
             }
-            InputEvent::Leave => {
+            InputEvent::Leave | InputEvent::Present => {
+                // Nothing typed after either is for this session.
                 self.left = true;
-                self.events.push_back(InputEvent::Leave);
+                self.events.push_back(event);
             }
         }
     }
@@ -96,7 +97,7 @@ impl InputQueue {
                 let weight = match &event {
                     InputEvent::Data(bytes) => bytes.len(),
                     InputEvent::Switch(_) | InputEvent::Hint => 1,
-                    InputEvent::Leave => 0,
+                    InputEvent::Leave | InputEvent::Present => 0,
                 };
                 self.bytes = self.bytes.saturating_sub(weight);
                 Some(event)

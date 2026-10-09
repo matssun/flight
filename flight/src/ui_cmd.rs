@@ -4,9 +4,11 @@ use crate::args::{config_dir, now, Args};
 use crate::join_cmd::join_command;
 use crate::roles::ui_dir;
 use flight_client::{
-    run_session, ClientConfig, Handoff, OrchestratedBackend, SessionRequest, Switcher,
+    remember, run_presentation, run_session, side_by_side, starting_layout, ClientConfig, Handoff,
+    LayoutStore, OrchestratedBackend, SessionRequest, Switcher, TerminalEnd,
 };
 use flight_proto::RoleCode;
+use flight_state::SurfaceId;
 use flight_ui::{render_to_string, run_with_start, Backend, Exit, Start, ViewModel};
 use std::time::Duration;
 
@@ -19,7 +21,9 @@ pub const USAGE: &str = "usage: flight ui <command>
         Enter opens a workspace's agent, s its shell (offered if it has none), in a terminal
         carried over Flight's own connections (no ssh, no direct path to the node), on this
         machine or another. Inside: Ctrl-Space a / s switches between the agent and the shell,
-        Ctrl-Space q leaves, and Ctrl-Space Ctrl-Space sends a literal Ctrl-Space.";
+        Ctrl-Space v shows both side by side (inside that: | and - split, t tab, x close,
+        n / p tabs, h j k l or o move the keyboard, < > + _ resize, a / s show the agent or
+        shell here; the arrangement is remembered per workspace), Ctrl-Space q leaves, and Ctrl-Space Ctrl-Space sends a literal Ctrl-Space.";
 
 pub fn run_ui(args: &[String]) -> Result<(), String> {
     if args.iter().any(|a| a == "--help" || a == "-h") {
@@ -90,6 +94,11 @@ fn dashboard(args: &[String]) -> Result<(), String> {
                         typed_ahead,
                     },
                 );
+                let outcome = if outcome.end == TerminalEnd::Presenting {
+                    present(&link, &dir, &shown)
+                } else {
+                    outcome
+                };
                 let mut notice = format!("terminal: {}", outcome.end);
                 if outcome.undelivered > 0 {
                     notice.push_str(&format!(
@@ -106,6 +115,45 @@ fn dashboard(args: &[String]) -> Result<(), String> {
             }
             None => return Ok(()),
         }
+    }
+}
+
+/// Show a workspace's surfaces side by side (or as the user arranged them last time), remember
+/// the arrangement they leave, and report as a finished session. A layout that cannot be read or
+/// saved is said, and the arrangement is simply not remembered.
+fn present(
+    link: &OrchestratedBackend,
+    dir: &std::path::Path,
+    shown: &flight_client::ShownSurface,
+) -> flight_client::SessionOutcome {
+    let focus = SurfaceId::new(match shown.choice {
+        flight_ui::SurfaceChoice::Agent => "agent",
+        flight_ui::SurfaceChoice::Shell => "shell",
+    });
+    let mut store = LayoutStore::open(dir);
+    let layout = match &store {
+        Ok(store) => starting_layout(Some(store), &shown.workspace, &focus, |s| {
+            matches!(s.as_str(), "agent" | "shell")
+        }),
+        Err(_) => side_by_side(&focus),
+    };
+    let outcome = run_presentation(link, shown.workspace.clone(), layout);
+    let mut said = None;
+    match &mut store {
+        Ok(store) => {
+            if let Err(why) = remember(store, &shown.workspace, &outcome.layout) {
+                said = Some(format!("layout not remembered: {why}"));
+            }
+        }
+        Err(why) => said = Some(format!("layout not remembered: {why}")),
+    }
+    if let Some(said) = said {
+        eprintln!("{said}");
+    }
+    flight_client::SessionOutcome {
+        end: outcome.end,
+        shown: Some(shown.choice),
+        undelivered: outcome.undelivered,
     }
 }
 

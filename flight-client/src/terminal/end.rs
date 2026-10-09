@@ -10,6 +10,8 @@ pub enum TerminalEnd {
     UserLeft,
     /// The node reported the end.
     Exited { reason: ExitReasonCode, status: i32 },
+    /// The user asked to see the workspace's surfaces side by side.
+    Presenting,
     /// The connection failed or broke without a report.
     Lost(String),
 }
@@ -42,6 +44,7 @@ impl fmt::Display for TerminalEnd {
                 }
                 ExitReasonCode::Unspecified => f.write_str("the terminal ended"),
             },
+            Self::Presenting => f.write_str("showing the surfaces side by side"),
             Self::Lost(why) => write!(f, "the terminal connection was lost: {why}"),
         }
     }

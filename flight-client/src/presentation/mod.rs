@@ -8,6 +8,7 @@
 //! size of its own tile. Surfaces, links and attachments keep the lifetimes ADR-009 gives
 //! them; the layout decides none of them.
 
+mod arrangement;
 mod command;
 mod config;
 mod frame;
@@ -20,6 +21,7 @@ mod tile_link;
 #[cfg(test)]
 mod presentation_tests;
 
+pub use arrangement::{remember, side_by_side, starting_layout};
 pub use command::{Command, Shown};
 pub use config::PresentationConfig;
 pub use keys::{Key, KeyFilter};

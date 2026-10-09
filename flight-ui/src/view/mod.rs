@@ -12,6 +12,7 @@ mod nav;
 mod new_session_form;
 mod new_session_request;
 mod new_surface_request;
+mod opening;
 mod program;
 mod prompt_input;
 mod shell_prompt;

@@ -1,25 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use crate::{valid_id, HostId, ServerId, SurfaceId, WorkspaceId};
-
-/// What a surface is for, as the backend records it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SurfaceRole {
-    Agent,
-    Shell,
-}
-
-impl SurfaceRole {
-    /// The role a marker names, or `None` for an absent or unknown value (a window that was
-    /// never marked, or marked by a newer Flight).
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "agent" => Some(Self::Agent),
-            "shell" => Some(Self::Shell),
-            _ => None,
-        }
-    }
-}
+use crate::{valid_id, HostId, ServerId, SurfaceId, SurfaceRole, WorkspaceId};
 
 /// What the backend recorded about where a pane belongs, exactly as read: Flight's own
 /// markers (empty when the session predates workspaces) and the session's identity and start

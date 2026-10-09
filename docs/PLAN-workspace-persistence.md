@@ -15,7 +15,7 @@ Each increment is independently testable and shippable; later ones need earlier 
 | 5 | Snapshots, profiles, undo, export/import (`flight workspaces`); exclusive lock on the saved file; previous generation | library (8), node lock, CLI end to end with the real binary (8) | done, PR #19 (merge c7ee7e8) |
 | 6 | Persistent surface transport (ADR-009): measurements (6a, PR #21), per-terminal view sessions (6b, PR #22), surface session over a persistent link (6c) | latency by simulated RTT; driven key-burst end to end; live view and session tests | 6a, 6b done; 6c (#23) in review; 6d connection reuse in this PR |
 | 7 | Agent-session resumption (ADR-010): 7a library, node and tests; 7b wire and dashboard | planner, adapter, live node with a `claude` that behaves as the real one | 7a #25 in review; 7b wire and dashboard in this PR |
-| 8 | Composable presentation (ADR-011): 8a layout model; 8b compositor over a screen model; 8c multi-surface session and saved layouts | property tests; fidelity against tmux; driven side-by-side | 8a in this PR |
+| 8 | Composable presentation (ADR-011): 8a layout model; 8b compositor over a screen model; 8c multi-surface session and saved layouts | property tests; fidelity against tmux; driven side-by-side | 8a #27; 8b compositor in this PR |
 
 Separate tracks: the two flaky tests are tracked outside this work; Git worktree lifecycle is a different feature (ADR-008, "Git").
 

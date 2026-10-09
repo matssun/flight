@@ -12,9 +12,19 @@ Each increment is independently testable and shippable; later ones need earlier 
 | 4a | Dashboard shows saved workspaces that are not running, with host, configured root and failure; selectable; details in the preview pane | view-model, render (every failure kind, narrow terminal, no backend words) | done, PR #16 (merge eca7e43) |
 | 4b-1 | Actions on the wire and node: retry, remove, restore, accept root, set root, trust; `saved_actions_v1`; client/Backend support | proto, orchestrator routing, node live (9 tests) | done, PR #17 (merge a3f26ca) |
 | 4b-2 | Dashboard keys and prompts for those actions | view-model, render, keys (12 tests) | done, PR #18 (merge 597a9e2) |
-| 5 | Snapshots, profiles, undo, export/import (`flight workspaces`); exclusive lock on the saved file; previous generation | library (8), node lock, CLI end to end with the real binary (8) | done (this PR) |
+| 5 | Snapshots, profiles, undo, export/import (`flight workspaces`); exclusive lock on the saved file; previous generation | library (8), node lock, CLI end to end with the real binary (8) | done, PR #19 (merge c7ee7e8) |
 | 6 | Persistent surface transport experiment (ADR-009) | keystroke-loss and latency measurement | |
 | 7 | Agent-session resumption for a provider that supports it | | |
 | 8 | Terminal emulation / composition for side by side | | |
 
 Separate tracks: the two flaky tests are tracked outside this work; Git worktree lifecycle is a different feature (ADR-008, "Git").
+
+## Where the persistence milestone stands
+
+Increments 1 to 5 are merged: a Workspace survives the loss of its UI, orchestrator, node, tmux server and machine as a saved, versioned, atomically written definition that is reconciled (never blindly recreated) against what runs, with explicit unavailable states, user actions, snapshots, profiles, undo and untrusted import. Nothing in recovery creates, repairs or deletes filesystem content.
+
+Not started, and why:
+
+- **6, persistent surface transport.** A measurement-led experiment on a different subsystem (the terminal path), recommended by ADR-009 as the next investigation. It is not part of making workspaces durable and changes the orchestrator's terminal limits, so it gets its own plan and PRs.
+- **7, agent-session resumption.** The policy and action exist (`ResumeAgent`, `resumable_providers`), and no provider is wired. The missing piece is not derivable from the repository: Flight does not know an agent's session identity (Claude's resumable session id is not published to Flight), so a provider-specific, user-visible decision is needed about how it is learned and stored without recording secrets.
+- **8, terminal emulation and composition.** Deliberately after 6 (ADR-007, ADR-009).

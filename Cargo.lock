@@ -488,6 +488,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "flight-present"
+version = "0.0.1"
+dependencies = [
+ "flight-state",
+ "serde",
+ "toml",
+]
+
+[[package]]
 name = "flight-proto"
 version = "0.0.1"
 dependencies = [

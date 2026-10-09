@@ -443,7 +443,9 @@ dependencies = [
  "portable-pty",
  "ratatui",
  "rustix",
+ "serde",
  "tokio",
+ "toml",
  "vt100",
 ]
 

@@ -40,6 +40,7 @@ fn wait(what: &str, mut check: impl FnMut() -> bool) {
 }
 
 struct Rig {
+    ui_cfg: PathBuf,
     sock: Sock,
     work: PathBuf,
     writer: Box<dyn Write + Send>,
@@ -49,6 +50,10 @@ struct Rig {
 }
 
 impl Rig {
+    fn ui_config(&self) -> &std::path::Path {
+        &self.ui_cfg
+    }
+
     fn seen(&self, needle: &str) -> bool {
         self.screen
             .lock()
@@ -154,6 +159,7 @@ fn boot(tag: &str) -> Rig {
         });
     }
     Rig {
+        ui_cfg: ui_cfg.clone(),
         sock,
         work,
         writer,
@@ -358,5 +364,85 @@ fn keys_typed_right_after_opening_or_switching_reach_the_surface_they_were_typed
     assert_eq!(
         rig.tmux(&["list-windows", "-t", "=quick:"]).lines().count(),
         2
+    );
+}
+
+fn client_widths(rig: &Rig) -> Vec<u32> {
+    let mut widths: Vec<u32> = rig
+        .tmux(&[
+            "list-clients",
+            "-F",
+            "#{client_control_mode} #{client_width}",
+        ])
+        .lines()
+        .filter_map(|l| l.strip_prefix("0 ")?.trim().parse().ok())
+        .collect();
+    widths.sort_unstable();
+    widths
+}
+
+#[test]
+fn the_agent_and_the_shell_are_shown_side_by_side_each_with_its_own_keys_size_and_life() {
+    let mut rig = boot("present");
+    workspace_with_shell(&mut rig);
+
+    // Ctrl-Space v: both surfaces at once, each its own tmux client of half the width, the
+    // keyboard where it was (the shell).
+    rig.send(b"\x00v");
+    wait("two clients", || rig.clients() == 2);
+    // The agent's tile is on the left, a line, the shell's prompt on the right: both on one
+    // screen (the status lines are cut to fit half the width).
+    wait("both tiles on screen", || {
+        rig.seen("│[~]") && rig.seen("[flight-")
+    });
+    let widths = client_widths(&rig);
+    assert_eq!(widths.len(), 2, "{widths:?}");
+    assert!(
+        widths.iter().all(|w| (40..=60).contains(w)),
+        "each tile is about half of 110: {widths:?}"
+    );
+
+    // Keys go to the focused surface only, in order, and follow the focus.
+    rig.send(b"echo in-the-shell-$((6*7))\r");
+    wait("the shell ran it", || {
+        pane(&rig, "shell").contains("in-the-shell-42")
+    });
+    assert!(
+        !pane(&rig, "agent").contains("in-the-shell"),
+        "misdelivered"
+    );
+    rig.send(b"\x00h");
+    rig.send(b"FOR-THE-AGENT");
+    wait("the agent got its keys", || {
+        pane(&rig, "agent").contains("FOR-THE-AGENT")
+    });
+    assert!(
+        !pane(&rig, "shell").contains("FOR-THE-AGENT"),
+        "misdelivered"
+    );
+
+    // Closing the focused tile (the agent) lets only its attachment go: the agent keeps running,
+    // the shell fills the terminal.
+    rig.send(b"\x00x");
+    wait("one client", || rig.clients() == 1);
+    wait("the shell fills the width", || {
+        client_widths(&rig).iter().all(|w| *w >= 100)
+    });
+    assert_eq!(
+        rig.tmux(&["list-windows", "-t", "=quick:"]).lines().count(),
+        2,
+        "no surface was stopped"
+    );
+
+    // Leaving remembers the arrangement and shows the dashboard again.
+    rig.send(b"\x00q");
+    wait("the dashboard again", || {
+        rig.seen("Workspaces") && rig.clients() == 0
+    });
+    let saved = std::fs::read_to_string(rig.ui_config().join("ui").join("layouts.toml"))
+        .expect("the arrangement was remembered");
+    assert!(
+        saved.contains("focus = \"shell\"") && !saved.contains("agent"),
+        "the shell alone, as left: {saved}"
     );
 }

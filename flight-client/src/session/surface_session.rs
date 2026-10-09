@@ -16,7 +16,7 @@ use tokio::time::Instant;
 
 /// Said when `Ctrl-Space` is followed by a key that means nothing.
 const HINT: &str =
-    "[Ctrl-Space: q dashboard, a agent, s shell; Ctrl-Space Ctrl-Space sends a literal Ctrl-Space]";
+    "[Ctrl-Space: q dashboard, a agent, s shell, v both side by side; Ctrl-Space Ctrl-Space sends a literal Ctrl-Space]";
 
 /// Limits and timings of a session. The defaults are the ones the product uses.
 pub struct SessionConfig {
@@ -323,6 +323,7 @@ impl<H: SurfaceHost> Run<H> {
         loop {
             match self.queue.front() {
                 Some(InputEvent::Leave) => return Some(TerminalEnd::UserLeft),
+                Some(InputEvent::Present) => return Some(TerminalEnd::Presenting),
                 Some(InputEvent::Hint) => {
                     self.queue.pop(usize::MAX);
                     self.say(HINT);

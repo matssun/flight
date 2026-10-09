@@ -7,7 +7,8 @@ use flight_ui::SurfaceChoice;
 /// can always be left, and a literal `Ctrl-Space` can still be sent.
 const ESCAPE: u8 = 0x00;
 
-/// `Ctrl-Space` then `q` leaves; then `a` or `s` switches to the workspace's agent or shell;
+/// `Ctrl-Space` then `q` leaves; `v` asks for the surfaces side by side; then `a` or `s` switches
+/// to the workspace's agent or shell;
 /// then `Ctrl-Space` again sends one literal `Ctrl-Space`; followed by anything else it is
 /// discarded together with the prefix (and a hint is due), so nothing is forwarded by
 /// accident. The prefix may arrive in a different read from its key.
@@ -51,6 +52,11 @@ impl EscapeFilter {
                     b'q' | b'Q' => {
                         flush(&mut run, &mut events);
                         events.push(InputEvent::Leave);
+                        return events;
+                    }
+                    b'v' | b'V' => {
+                        flush(&mut run, &mut events);
+                        events.push(InputEvent::Present);
                         return events;
                     }
                     b'a' | b'A' | b's' | b'S' => {

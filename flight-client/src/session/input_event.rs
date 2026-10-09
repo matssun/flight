@@ -12,6 +12,9 @@ pub enum InputEvent {
     Switch(SurfaceChoice),
     /// `Ctrl-Space q`: leave the session.
     Leave,
+    /// `Ctrl-Space v`: show this workspace's surfaces side by side. Takes effect once the
+    /// bytes typed before it have been delivered.
+    Present,
     /// `Ctrl-Space` and an unknown key: remind the user of the keys.
     Hint,
 }

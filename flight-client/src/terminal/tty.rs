@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use crate::presentation::{PresentationConfig, PresentationSession};
 use crate::session::{Binding, SessionConfig, SessionOutcome, SessionStart, SurfaceSession};
 use crate::terminal::{LocalTerminal, TerminalEnd};
 use crate::{LinkHost, OrchestratedBackend, ShownSurface};
@@ -71,59 +72,108 @@ impl Wake {
     }
 }
 
+/// The user's real terminal for the length of a session: raw mode, a thread reading the
+/// keyboard, one watching the size, one writing output. Ending it restores the terminal.
+struct Plumbing {
+    _raw: RawMode,
+    wake: Arc<Wake>,
+    stop: Arc<AtomicBool>,
+    stdin_thread: std::thread::JoinHandle<()>,
+    size_thread: std::thread::JoinHandle<()>,
+    writer_thread: std::thread::JoinHandle<()>,
+}
+
+impl Plumbing {
+    fn start() -> Result<(Self, LocalTerminal), &'static str> {
+        let raw = RawMode::enter().map_err(|_| "cannot put the terminal in raw mode")?;
+        let wake = Arc::new(Wake::new().map_err(|_| "cannot create a wake-up pipe")?);
+        let stop = Arc::new(AtomicBool::new(false));
+        let (input_tx, input_rx) = mpsc::channel::<Vec<u8>>(8);
+        let (resize_tx, resize_rx) = mpsc::channel::<(u16, u16)>(4);
+        let (output_tx, mut output_rx) = mpsc::channel::<Vec<u8>>(OUTPUT_QUEUE);
+        let stdin_thread = {
+            let (stop, wake) = (stop.clone(), wake.clone());
+            std::thread::spawn(move || read_stdin(&stop, &wake.read, &input_tx))
+        };
+        let size_thread = {
+            let stop = stop.clone();
+            std::thread::spawn(move || watch_size(&stop, &resize_tx))
+        };
+        let writer_thread = std::thread::spawn(move || {
+            let mut out = std::io::stdout();
+            while let Some(chunk) = output_rx.blocking_recv() {
+                if out.write_all(&chunk).and_then(|()| out.flush()).is_err() {
+                    break;
+                }
+            }
+        });
+        let local = LocalTerminal {
+            input: input_rx,
+            resizes: resize_rx,
+            output: output_tx,
+        };
+        let plumbing = Self {
+            _raw: raw,
+            wake,
+            stop,
+            stdin_thread,
+            size_thread,
+            writer_thread,
+        };
+        Ok((plumbing, local))
+    }
+
+    /// Stop the threads and put the terminal back. `reset` is written last; keys typed for
+    /// something that is gone are discarded when `flush_keys`, so the dashboard does not read
+    /// them as commands.
+    fn finish(self, reset: &[u8], flush_keys: bool) {
+        self.stop.store(true, Ordering::Relaxed);
+        self.wake.wake();
+        self.size_thread.thread().unpark();
+        let _ = self.stdin_thread.join();
+        let _ = self.size_thread.join();
+        // The output sender went away with the session; the writer drains what it was given.
+        let _ = self.writer_thread.join();
+        let mut out = std::io::stdout();
+        let _ = out.write_all(reset);
+        let _ = out.flush();
+        if flush_keys {
+            let _ = rustix::termios::tcflush(
+                rustix::stdio::stdin(),
+                rustix::termios::QueueSelector::IFlush,
+            );
+        }
+    }
+}
+
+/// Notices can carry words from a peer (a refusal's message): none of it may carry a control
+/// character into the user's terminal.
+fn say_on_stderr() -> Arc<dyn Fn(&str) + Send + Sync> {
+    Arc::new(|text| {
+        let plain: String = text.chars().filter(|c| !c.is_control()).collect();
+        let _ = std::io::stderr().write_all(format!("\r\n{plain}\r\n").as_bytes());
+    })
+}
+
 /// Show the surfaces of a workspace in the user's terminal until the session ends, then
 /// restore the terminal. The link the dashboard already holds carries everything: nothing is
 /// dialed to start, and switching surface does not leave this function.
 pub fn run_session(link: &OrchestratedBackend, request: SessionRequest) -> SessionOutcome {
-    let lost = |why: &str| SessionOutcome {
-        end: TerminalEnd::Lost(why.to_owned()),
-        shown: None,
-        undelivered: 0,
-    };
-    let Ok(_raw) = RawMode::enter() else {
-        return lost("cannot put the terminal in raw mode");
-    };
-    let Ok(wake) = Wake::new() else {
-        return lost("cannot create a wake-up pipe");
-    };
-    let wake = Arc::new(wake);
-    let stop = Arc::new(AtomicBool::new(false));
-    let (input_tx, input_rx) = mpsc::channel::<Vec<u8>>(8);
-    let (resize_tx, resize_rx) = mpsc::channel::<(u16, u16)>(4);
-    let (output_tx, mut output_rx) = mpsc::channel::<Vec<u8>>(OUTPUT_QUEUE);
-
-    let stdin_thread = {
-        let (stop, wake) = (stop.clone(), wake.clone());
-        std::thread::spawn(move || read_stdin(&stop, &wake.read, &input_tx))
-    };
-    let size_thread = {
-        let stop = stop.clone();
-        std::thread::spawn(move || watch_size(&stop, &resize_tx))
-    };
-    let writer_thread = std::thread::spawn(move || {
-        let mut out = std::io::stdout();
-        while let Some(chunk) = output_rx.blocking_recv() {
-            if out.write_all(&chunk).and_then(|()| out.flush()).is_err() {
-                break;
+    let (plumbing, local) = match Plumbing::start() {
+        Ok(started) => started,
+        Err(why) => {
+            return SessionOutcome {
+                end: TerminalEnd::Lost(why.to_owned()),
+                shown: None,
+                undelivered: 0,
             }
         }
-    });
-
-    // Notices can carry words from a peer (a refusal's message): none of it may carry a control
-    // character into the user's terminal.
-    let say: Arc<dyn Fn(&str) + Send + Sync> = Arc::new(|text| {
-        let plain: String = text.chars().filter(|c| !c.is_control()).collect();
-        let _ = std::io::stderr().write_all(format!("\r\n{plain}\r\n").as_bytes());
-    });
+    };
     let host = Arc::new(LinkHost::new(link.clone(), request.shown.workspace.clone()));
-    let session = SurfaceSession::new(host, SessionConfig::new(say));
+    let session = SurfaceSession::new(host, SessionConfig::new(say_on_stderr()));
     let (cols, rows, _) = terminal_request_shape();
     let outcome = link.runtime().block_on(session.run(
-        LocalTerminal {
-            input: input_rx,
-            resizes: resize_rx,
-            output: output_tx,
-        },
+        local,
         SessionStart {
             id: request.id,
             choice: request.shown.choice,
@@ -132,24 +182,39 @@ pub fn run_session(link: &OrchestratedBackend, request: SessionRequest) -> Sessi
             size: (cols, rows),
         },
     ));
+    plumbing.finish(
+        &SessionConfig::new(Arc::new(|_| {})).reset,
+        outcome.end != TerminalEnd::UserLeft && outcome.end != TerminalEnd::Presenting,
+    );
+    outcome
+}
 
-    stop.store(true, Ordering::Relaxed);
-    wake.wake();
-    size_thread.thread().unpark();
-    let _ = stdin_thread.join();
-    let _ = size_thread.join();
-    // The output sender went away with the session; the writer drains what it was given.
-    let _ = writer_thread.join();
-    let mut out = std::io::stdout();
-    let _ = out.write_all(&SessionConfig::new(Arc::new(|_| {})).reset);
-    let _ = out.flush();
-    // Keys typed for a surface that is gone must not be read by the dashboard as commands.
-    if outcome.end != TerminalEnd::UserLeft {
-        let _ = rustix::termios::tcflush(
-            rustix::stdio::stdin(),
-            rustix::termios::QueueSelector::IFlush,
-        );
-    }
+/// Show several surfaces of a workspace at once, arranged by `layout`, until the user leaves or
+/// nothing can be shown, then restore the terminal. Returns how it ended, with the layout as
+/// the user left it.
+pub fn run_presentation(
+    link: &OrchestratedBackend,
+    workspace: flight_ui::WorkspaceKey,
+    layout: flight_present::Layout,
+) -> crate::presentation::PresentationOutcome {
+    let (plumbing, local) = match Plumbing::start() {
+        Ok(started) => started,
+        Err(why) => {
+            return crate::presentation::PresentationOutcome {
+                end: TerminalEnd::Lost(why.to_owned()),
+                layout,
+                undelivered: 0,
+            }
+        }
+    };
+    let host = Arc::new(LinkHost::new(link.clone(), workspace));
+    let session =
+        PresentationSession::new(host, PresentationConfig::for_workspace(say_on_stderr()));
+    let (cols, rows, _) = terminal_request_shape();
+    let outcome = link
+        .runtime()
+        .block_on(session.run(local, layout, (cols, rows)));
+    plumbing.finish(b"", outcome.end != TerminalEnd::UserLeft);
     outcome
 }
 

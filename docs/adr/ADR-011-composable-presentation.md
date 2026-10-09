@@ -95,6 +95,12 @@ Region  = Surface(SurfaceId)
 - **Failure is per tile:** an exit or a lost stream is written into that tile ("the tmux client ended", "connection lost"), a broken stream is attached again to the same process [250 ms, 1 s, 3 s], and the session ends only when no showing surface can recover, or the user leaves, or the link is gone (lease renewal fails).
 - **Painting:** at most one frame per 16 ms while output arrives; the picture is diffed against the previous one so only changed cells are written; the focused surface's cursor and its bracketed-paste and application-cursor-key modes are applied to the real terminal, so keys mean what that program expects. Mouse reporting is not forwarded to tiles yet (the terminal's mouse mode stays off): a known limitation.
 - **Keys** (`Ctrl-Space` then): `|` or `%` split side by side, `-` or `"` split stacked, `t` new tab, `x` close tile, `n`/`p` step tabs, `h j k l` focus by direction, `o` next tile, `< > + _` resize, `a`/`s` show the agent or shell here, `q` leave, `Ctrl-Space` a literal one.
-- The layout the user left is returned in the outcome, to be saved by the UI (not yet wired: next increment, together with the live side-by-side test).
+- The layout the user left is returned in the outcome.
 
 Layout edits added for it in `flight-present`: `replace` (same place, share and keyboard) and `step_tab`.
+
+## Entering it, and remembering it (8d)
+
+- **Entry:** `Ctrl-Space v` inside a terminal session ends that session (after the bytes typed before it are delivered) and starts a presentation of the workspace's agent and shell side by side, the keyboard on the surface the user was in. Leaving (`Ctrl-Space q`) returns to the dashboard on that workspace. Nothing about a surface changes: its attachment is let go and opened again, the same cost as a switch.
+- **Remembering:** the arrangement the user leaves is kept by the UI in `<ui config>/ui/layouts.toml` (mode 0600, atomic, at most 64 workspaces, each layout at most 16 KiB), keyed by host and workspace. It is a UI preference, not part of a saved workspace definition: it is not exported, and naming a surface in it creates nothing. On the next presentation it is read back and cut down to the surfaces that exist now; a file this build cannot read, or a newer one, is left alone and the default arrangement is used with a notice.
+- **Verified against the real stack** (`flight/tests/workspace_shell_e2e.rs`, real dashboard on a pty, orchestrator, node, private tmux server): two tmux clients each about half the width; keys typed go to the focused surface only and follow `Ctrl-Space h`; closing the focused tile lets only that client go (the agent window keeps running, the shell grows to the full width); leaving saves the arrangement.

@@ -122,6 +122,17 @@ Run for real against an orchestrator and two nodes on this machine (private sock
 Not yet run on the two physical machines. Known gaps: a created shell session reads as `idle · other`; nothing on screen
 inside a session says how to leave it; Question was not exercised (no fixture produces it).
 
+## Current branch: workspace-shell (ADR-007)
+
+The dashboard lists **workspaces**, each with an Agent surface and, on request, a companion Shell in the same host and directory
+(ADR-007). Identity is a minted `WorkspaceId`/`SurfaceId` kept in tmux options, so it survives node, orchestrator and UI restarts
+with no database; sessions without it appear as one-surface workspaces. `CreateSurface { workspace_id, kind }` names no host or
+directory: the orchestrator routes by the workspace and the node resolves the rest. `s` offers the shell when there is none;
+`Ctrl-Space a` / `s` switch inside a session (about a quarter of a second on a LAN, measured in the driven end-to-end test).
+
+Not done: side-by-side presentation (needs terminal emulation in the client; see ADR-007), more than one shell, and any other
+surface kind.
+
 ## Open limitations
 
 Third-machine UI test, hooks and process-table discovery, key rotation,

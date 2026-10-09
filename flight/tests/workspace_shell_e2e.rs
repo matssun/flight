@@ -68,13 +68,6 @@ impl Rig {
         tmux(&self.sock, args).unwrap_or_default()
     }
 
-    /// The window the session currently shows: what a person attached would be looking at.
-    fn current_window(&self) -> String {
-        self.tmux(&["display-message", "-p", "-t", "=quick:", "#{window_name}"])
-            .trim()
-            .to_owned()
-    }
-
     /// Terminals attached to the session: the node's own control connection is not one.
     fn clients(&self) -> usize {
         self.tmux(&["list-clients", "-F", "#{client_control_mode}"])

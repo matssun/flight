@@ -9,11 +9,11 @@ A session manager with an agent dashboard, in Rust. tmux is the internal backend
     cargo install --path flight    # or: cargo build, then target/debug/flight
     flight
 
-That is all. The first run sets Flight up on this machine (about a second), then shows the dashboard; quitting stops what it started, and your sessions keep running and are there next time. Press `n` to start Claude or a shell.
+That is all. The first run sets Flight up on this machine (about a second), then shows the dashboard; quitting stops what it started, and your sessions keep running and are there next time. Press `n` to start a workspace.
 
 Older, tmux-reading mode (no creating sessions): `flight --once`, `flight --ssh ALIAS`, `flight --socket NAME`.
 
-Create sessions from the dashboard: press `n`, choose the machine and directory, pick Claude or Shell, Create. Enter opens a session; `Ctrl-Space` then `q` returns to the dashboard and the session keeps running. Flight uses its own private tmux server and never touches your default one. Keys: arrows or j/k, Enter open, n new, / search, ? help, r refresh, q quit; the mouse selects (second click opens) and scrolls.
+A **workspace** is your project on one machine: an agent (Claude) and, when you want one, a shell in the same directory. Press `n`, choose the machine and directory, Create. Enter or `a` opens the agent, `s` its shell (Flight offers to make one if there is none). Inside, `Ctrl-Space a` and `Ctrl-Space s` switch between them, `Ctrl-Space q` returns to the dashboard, and everything keeps running. Flight uses its own private tmux server and never touches your default one. Keys: arrows or j/k, Enter open, a agent, s shell, n new, / search, ? help, r refresh, q quit; the mouse selects (second click opens) and scrolls.
 
 ## Distributed mode
 

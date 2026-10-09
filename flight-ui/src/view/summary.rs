@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use super::lists::workspaces;
+use super::lists::{unavailable, workspaces};
 use crate::snapshot::{HostHealth, UiSnapshot};
 use flight_state::AgentState;
 use std::collections::BTreeSet;
@@ -19,6 +19,10 @@ pub struct Summary {
     pub hosts: usize,
     /// Hosts the dashboard currently has a live link to.
     pub hosts_up: usize,
+    /// Saved workspaces that cannot be acted on (a root problem, an unreachable host).
+    pub unavailable: usize,
+    /// Saved workspaces that are simply not running.
+    pub saved_stopped: usize,
 }
 
 impl Summary {
@@ -41,6 +45,14 @@ impl Summary {
                 AgentState::Idle => &mut out.idle,
                 AgentState::Shell => &mut out.shell,
                 AgentState::Down => &mut out.down,
+            };
+            *slot = slot.saturating_add(1);
+        }
+        for v in unavailable(s, "") {
+            let slot = if v.health == crate::snapshot::SavedHealth::Blocked {
+                &mut out.unavailable
+            } else {
+                &mut out.saved_stopped
             };
             *slot = slot.saturating_add(1);
         }

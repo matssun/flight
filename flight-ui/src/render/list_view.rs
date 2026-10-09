@@ -5,6 +5,7 @@
 //! surfaces. A pure function of the view model and a width.
 
 use super::empty_state::empty_state;
+use super::saved_list::saved_rows;
 use super::style::{
     bold, dim, health_look, key, selected_row, state_icon, state_look, surface_status, tier_colour,
 };
@@ -26,7 +27,7 @@ pub struct ListView {
 }
 
 impl ListView {
-    fn push(&mut self, line: Line<'static>, pane: Option<PaneRef>) {
+    pub(super) fn push(&mut self, line: Line<'static>, pane: Option<PaneRef>) {
         self.lines.push(line);
         self.panes.push(pane);
     }
@@ -42,7 +43,7 @@ pub fn list_view(vm: &ViewModel, width: usize, card: bool) -> ListView {
         selected: None,
     };
     let listed = vm.listed();
-    if listed.is_empty() {
+    if listed.is_empty() && vm.unavailable().is_empty() {
         for l in empty_state(vm) {
             out.push(l, None);
         }
@@ -97,6 +98,7 @@ pub fn list_view(vm: &ViewModel, width: usize, card: bool) -> ListView {
             out.selected = Some((start, out.lines.len().saturating_sub(1)));
         }
     }
+    saved_rows(vm, &mut out, width, card);
     host_problems(vm, &mut out);
     out
 }

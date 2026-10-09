@@ -20,7 +20,7 @@ pub use snapshot::{
     SurfaceKind, UiSnapshot, Workspace, WorkspaceKey,
 };
 pub use view::{
-    workspaces, Action, Effect, Field, FilterInput, FormInput, FormOutcome, HostChoice, InputMode,
-    NewSessionForm, NewSessionRequest, NewSurfaceRequest, Program, PromptButton, PromptInput,
-    PromptOutcome, ShellPrompt, Summary, SurfaceChoice, Tier, ViewModel,
+    unavailable, workspaces, Action, Effect, Field, FilterInput, FormInput, FormOutcome,
+    HostChoice, InputMode, NewSessionForm, NewSessionRequest, NewSurfaceRequest, Program,
+    PromptButton, PromptInput, PromptOutcome, ShellPrompt, Summary, SurfaceChoice, Tier, ViewModel,
 };

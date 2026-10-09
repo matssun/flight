@@ -10,6 +10,7 @@ mod layout;
 mod list_view;
 mod preview_view;
 mod prompt_lines;
+mod saved_list;
 mod scroll;
 mod style;
 mod text;

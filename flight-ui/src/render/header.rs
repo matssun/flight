@@ -41,7 +41,9 @@ pub fn header_line(vm: &ViewModel, width: usize) -> Line<'static> {
     ));
     parts.extend(count(s.idle, "idle", dim()));
     parts.extend(count(s.shell, "shell", dim()));
-    if s.workspaces() == 0 {
+    parts.extend(count(s.unavailable, "saved unavailable", red));
+    parts.extend(count(s.saved_stopped, "saved stopped", dim()));
+    if s.workspaces() == 0 && s.unavailable == 0 && s.saved_stopped == 0 {
         parts.push(Span::styled("no workspaces", dim()));
     }
     parts.push(hosts_part(&s));

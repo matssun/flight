@@ -34,9 +34,11 @@ impl ControlConnection {
         let sessions = SystemRunner::new(endpoint.clone())
             .run(&["list-sessions", "-F", "#{session_name}"])?
             .stdout;
+        // Never a view: a control client attached to one would keep it alive after its terminal
+        // left.
         let session = sessions
             .lines()
-            .next()
+            .find(|name| !crate::is_view_session(name))
             .ok_or_else(|| TmuxError::Control("the server has no session to attach to".into()))?
             .to_owned();
         let mut child = Command::new("tmux")

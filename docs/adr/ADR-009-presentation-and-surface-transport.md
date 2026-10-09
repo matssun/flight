@@ -61,6 +61,22 @@ So on loopback the cost is structural (rebuilding the dashboard), and on a real 
 - The windows of a session share one *current window*. Two clients attached to the same session therefore cannot show two surfaces of one workspace at once; "warm" clients (option A above) for the other surface of the same session would just show the same window. Independent concurrent views need **session groups**: `new-session -d -t <workspace-session> -s <view>` gives a session with the same windows and its own current window.
 - In a group, `list-panes -a` reports every pane once per session of the group, and session options (`@flight_session`, `@flight_workspace`) are not inherited by the view session (window options such as `@flight_surface_id` are shared, being per window). A node that publishes by session option therefore does not publish view sessions, but anything keyed by pane id alone must be checked for the duplicates before views are used. This is the node-side prerequisite of simultaneous presentation; it is invisible to the wire protocol, which names a surface and gets an attachment.
 
+## Decision (increment 6, part 1): every terminal attaches to a view of its own
+
+**Finding.** The terminal path attached its tmux client to the pane's *session*. A session has one current window, so every client attached to it shows the same window: opening the second terminal onto the other surface of a workspace moved the first, and keys typed into either went to whichever window was current when tmux handled them. That is the opposite of "input is never delivered to the wrong surface", and it makes simultaneous presentation (option A and increment 8) impossible at the backend, whatever the transport does. It was invisible until now only because a switch ended the old terminal before the new one began.
+
+**Decision.** The node attaches each terminal to a **view session**: `new-session -d -t <pane> -s flight-view-<terminal id>`, then the window and pane asked for are selected inside that view, then the client attaches to it, and `destroy-unattached` is set once it is attached. Sessions of a group share their windows (the surface is the same one) and have a current window each. The pid guard and everything after it are still one tmux command queue: a wrong pid exits 1 and creates nothing (tested). Verified on tmux 3.7b, also in `flight-node/tests/terminal_live.rs`: two terminals show agent and shell of one workspace, keys reach only the window each shows, each terminal has its own size, and releasing one removes its view and nothing else.
+
+**What this costs, and how it is contained.**
+
+- `list-panes -a` lists a pane once per session of its group. `parse_panes_output` folds the views: each pane comes out once, as its workspace's own session lists it, and a client looking at it through a view counts toward `focused` (and `session_attached`), so a pane shown in a Flight terminal is focused exactly as before. Every consumer (sequential and control-mode observers, reveal, open) goes through that function.
+- A view is named `flight-view-` plus hex digits of the terminal id. The prefix is reserved: `valid_session_name` rejects it, so no session Flight creates for a person can be taken for a view. The node's control connection attaches to the first session that is not a view (a control client attached to a view would keep it alive).
+- Cleanup does not rely on one mechanism: `destroy-unattached` removes the view with its client; the terminal's cleanup (`kill-session`) covers a client that never attached.
+- A person who detaches inside the terminal (`prefix d`) detaches that view's client: the terminal ends, the workspace's session and everything in it keep running, as before.
+- Terminal ids are minted by the orchestrator (128 random bits), so views never collide; the view name uses 64 of those bits.
+
+The wire protocol did not change.
+
 ## Options for persistent transport (to measure, not yet to choose)
 
 | Option | Idea | Cost | Risk |

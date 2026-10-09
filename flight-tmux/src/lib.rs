@@ -15,6 +15,7 @@ mod pane_info;
 mod parse;
 mod runner;
 mod surface_mark;
+mod view;
 
 pub use client::Tmux;
 pub use client_ops::ClientInfo;
@@ -31,3 +32,4 @@ pub use surface_mark::{
     ConfigMark, SurfaceMark, SurfaceTag, CONFIG_OPTION, CONFIG_SURFACE_OPTION, SURFACE_ID_OPTION,
     SURFACE_OPTION, WORKSPACE_OPTION,
 };
+pub use view::{is_view_session, view_session_name, VIEW_SESSION_PREFIX};

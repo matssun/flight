@@ -320,7 +320,8 @@ fn open(live: &Live, p: &PaneState) -> flight_node::OpenedTerminal {
     live.servers
         .open_terminal(&TerminalSpec {
             request_id: 1,
-            terminal_id: [7; 16],
+            // Every terminal has an id of its own, and so has its view.
+            terminal_id: [u8::try_from(p.pid % 251).unwrap_or(7); 16],
             server: ServerId::new("live"),
             pane: PaneId::new(&pane.pane),
             pid: p.pid,

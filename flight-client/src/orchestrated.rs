@@ -260,6 +260,13 @@ fn create_failure(f: Failure) -> CreateFailure {
         Some(ErrorKindCode::ProgramUnavailable) => CreateFailure::ProgramUnavailable(f.message),
         Some(ErrorKindCode::NodeUnreachable) => CreateFailure::Unreachable,
         Some(ErrorKindCode::UnknownWorkspace) => CreateFailure::UnknownWorkspace,
+        // An orchestrator that predates a command cannot even decode it, and says so in its
+        // own words; the user should hear what to do, not that.
+        Some(ErrorKindCode::InvalidRequest) if f.message.contains("command.kind") => {
+            CreateFailure::Other(
+                "The orchestrator is too old for this. Update Flight on it.".to_owned(),
+            )
+        }
         Some(ErrorKindCode::Unsupported) => {
             CreateFailure::Other("That node is too old for this. Update Flight on it.".to_owned())
         }
@@ -446,5 +453,47 @@ fn describe(e: &flight_proto::ErrorInfo) -> String {
         "the pane changed since it was listed; refresh".to_owned()
     } else {
         e.message.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn failure(kind: ErrorKindCode, message: &str) -> Failure {
+        Failure {
+            kind: Some(kind),
+            message: message.to_owned(),
+        }
+    }
+
+    #[test]
+    fn an_orchestrator_that_cannot_decode_the_command_is_called_too_old() {
+        let f = create_failure(failure(
+            ErrorKindCode::InvalidRequest,
+            "missing command.kind",
+        ));
+        assert_eq!(
+            f,
+            CreateFailure::Other(
+                "The orchestrator is too old for this. Update Flight on it.".into()
+            )
+        );
+    }
+
+    #[test]
+    fn typed_refusals_stay_typed() {
+        assert_eq!(
+            create_failure(failure(ErrorKindCode::UnknownWorkspace, "x")),
+            CreateFailure::UnknownWorkspace
+        );
+        assert_eq!(
+            create_failure(failure(ErrorKindCode::NodeUnreachable, "x")),
+            CreateFailure::Unreachable
+        );
+        assert_eq!(
+            create_failure(failure(ErrorKindCode::AlreadyExists, "x")),
+            CreateFailure::AlreadyExists
+        );
     }
 }

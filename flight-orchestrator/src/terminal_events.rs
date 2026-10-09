@@ -8,6 +8,9 @@ use flight_proto::{
 };
 use flight_state::HostId;
 
+/// How long a terminal whose UI has gone is kept for the node to finish reading.
+const CLOSING_SECS: u64 = 5;
+
 /// Why a terminal stream was not accepted. Deliberately one answer: an unknown, expired,
 /// reused or foreign id must look the same to the peer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,9 +61,11 @@ impl OrchestratorCore {
         let identity = self.identity_of(ui);
         let pane = pane_key(&open.pane_ref);
         // One terminal per (UI, pane): opening again replaces the earlier one.
+        // (A terminal the UI has already said goodbye to is finishing on its own: replacing it
+        // would throw away the last input the node has not read yet.)
         for old in self
             .terminals
-            .ids_where(|t| t.ui_identity == identity && t.pane == pane)
+            .ids_where(|t| t.ui_identity == identity && t.pane == pane && !t.closing)
         {
             self.terminals.remove(&old);
             fx.terminals_ended.push((old, ExitReasonCode::ClosedByUi));
@@ -68,7 +73,10 @@ impl OrchestratorCore {
         let limits = self.config.terminal_limits;
         if self.terminals.len() >= limits.total
             || self.terminals.count_where(|t| &t.host == host) >= limits.per_node
-            || self.terminals.count_where(|t| t.ui_identity == identity) >= limits.per_ui
+            || self
+                .terminals
+                .count_where(|t| t.ui_identity == identity && !t.closing)
+                >= limits.per_ui
         {
             return Err((ErrorKindCode::Busy, "too many open terminals"));
         }
@@ -87,6 +95,7 @@ impl OrchestratorCore {
                 deadline: now.saturating_add(self.config.request_timeout_secs),
                 ui_attached: false,
                 node_attached: false,
+                closing: false,
             },
         );
         let mut forwarded = request.clone();
@@ -192,6 +201,16 @@ impl OrchestratorCore {
             t.deadline = lease_until;
         }
         Ok((id, Attached { both }))
+    }
+
+    /// The UI's side of terminal `id` is over (it said goodbye, or it is gone) but the node has
+    /// not finished reading what was sent. The terminal lives a few seconds more, then goes.
+    pub fn terminal_closing(&mut self, id: &TerminalId) {
+        let until = self.clock.saturating_add(CLOSING_SECS);
+        if let Some(t) = self.terminals.get_mut(id) {
+            t.closing = true;
+            t.deadline = t.deadline.min(until);
+        }
     }
 
     /// A terminal's stream ended (either side, any reason). The id is dead afterwards.

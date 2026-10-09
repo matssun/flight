@@ -6,7 +6,9 @@
 
 mod support;
 
-use flight_client::{ClientConfig, Handoff, Lease, OrchestratedBackend};
+use flight_client::{
+    ClientConfig, Handoff, LinkHost, OpenRequest, OrchestratedBackend, SurfaceHost,
+};
 use flight_transport::TerminalClient;
 use flight_ui::Backend;
 use std::path::PathBuf;
@@ -104,35 +106,37 @@ fn where_the_time_of_a_switch_goes() {
         .enable_all()
         .build()
         .expect("rt");
-
-    let (
-        mut backend_t,
-        mut snapshot_t,
-        mut reveal_open_t,
-        mut stream_t,
-        mut lease_t,
-        mut first_t,
-        mut total_t,
-    ) = (vec![], vec![], vec![], vec![], vec![], vec![], vec![]);
+    // The link is started once, as the dashboard process now does.
+    let t = Instant::now();
+    let mut backend = OrchestratedBackend::start(config.clone()).expect("backend");
+    let pane = loop {
+        let snap = backend.snapshot(0);
+        if let Some(p) = snap.hosts.iter().flat_map(|h| h.panes.iter()).next() {
+            break p.clone();
+        }
+        assert!(t.elapsed() < Duration::from_secs(20), "no pane");
+        std::thread::sleep(Duration::from_millis(1));
+    };
+    println!(
+        "PHASE link start until first snapshot (once) {:.1} ms",
+        ms(t)
+    );
+    let workspace = flight_ui::WorkspaceKey {
+        host: pane.pane_ref.host.clone(),
+        workspace: pane.workspace.clone(),
+    };
+    let host = LinkHost::new(backend.clone(), config.clone(), workspace);
+    let (mut dash_open_t, mut dash_stream_t, mut dash_lease_t, mut dash_total_t) =
+        (vec![], vec![], vec![], vec![]);
+    let (mut session_open_t, mut session_first_t, mut session_total_t) = (vec![], vec![], vec![]);
     for _ in 0..rounds {
+        // The path a switch took before the surface session: reveal and open through the
+        // dashboard backend, then two new connections (the terminal stream and the lease).
         let total = Instant::now();
-        let t = Instant::now();
-        let mut backend = OrchestratedBackend::start(config.clone()).expect("backend");
-        backend_t.push(ms(t));
-        let t = Instant::now();
-        let pane = loop {
-            let snap = backend.snapshot(0);
-            if let Some(p) = snap.hosts.iter().flat_map(|h| h.panes.iter()).next() {
-                break p.clone();
-            }
-            assert!(t.elapsed() < Duration::from_secs(20), "no pane");
-            std::thread::sleep(Duration::from_millis(1));
-        };
-        snapshot_t.push(ms(t));
         let handoff = backend.handoff();
         let t = Instant::now();
         backend.switch_to(&pane).expect("switch");
-        reveal_open_t.push(ms(t));
+        dash_open_t.push(ms(t));
         let Some(Handoff::Terminal { id, .. }) = handoff.take() else {
             panic!("no terminal")
         };
@@ -145,35 +149,57 @@ fn where_the_time_of_a_switch_goes() {
                 &id,
             ))
             .expect("stream");
-        stream_t.push(ms(t));
+        dash_stream_t.push(ms(t));
         let t = Instant::now();
-        let _lease = runtime
-            .block_on(Lease::connect(&config, &id))
-            .expect("lease");
-        lease_t.push(ms(t));
+        let control = runtime
+            .block_on(flight_transport::UiClient::connect(
+                &config.address,
+                &config.identity,
+                &config.orchestrator,
+            ))
+            .expect("lease connection");
+        dash_lease_t.push(ms(t));
+        drop(control);
+        dash_total_t.push(ms(total));
+        drop(client);
+        std::thread::sleep(Duration::from_millis(300));
+
+        // The path now: the link already exists; ask for the terminal and connect.
+        let total = Instant::now();
         let t = Instant::now();
-        let (_tx, mut rx) = client.split();
-        let frame = runtime
-            .block_on(async { tokio::time::timeout(Duration::from_secs(10), rx.next()).await });
-        assert!(matches!(frame, Ok(Ok(Some(_)))), "no output");
-        first_t.push(ms(t));
-        total_t.push(ms(total));
-        drop(rx);
-        drop(backend);
+        let mut attachment = runtime
+            .block_on(host.open(OpenRequest {
+                choice: flight_ui::SurfaceChoice::Agent,
+                cols: 100,
+                rows: 30,
+                expect: None,
+            }))
+            .expect("open");
+        session_open_t.push(ms(t));
+        let t = Instant::now();
+        let frame = runtime.block_on(async {
+            tokio::time::timeout(Duration::from_secs(10), attachment.from_remote.recv()).await
+        });
+        assert!(matches!(frame, Ok(Some(_))), "no output");
+        session_first_t.push(ms(t));
+        session_total_t.push(ms(total));
+        drop(attachment);
         std::thread::sleep(Duration::from_millis(300));
     }
     let row = |name: &str, v: &Vec<f64>| {
         println!(
-            "PHASE {name:<28} p50={:>7.1} ms  max={:>7.1}",
+            "PHASE {name:<30} p50={:>7.1} ms  max={:>7.1}",
             median(v.clone()),
             v.iter().cloned().fold(0.0, f64::max)
         )
     };
-    row("backend start (new runtime)", &backend_t);
-    row("until first snapshot", &snapshot_t);
-    row("reveal + OpenTerminal", &reveal_open_t);
-    row("terminal stream (UI dial)", &stream_t);
-    row("lease connection (UI dial)", &lease_t);
-    row("first output byte", &first_t);
-    row("TOTAL from cold", &total_t);
+    println!("-- before: reveal and open through the dashboard, then new connections");
+    row("reveal + OpenTerminal", &dash_open_t);
+    row("terminal stream (UI dial)", &dash_stream_t);
+    row("lease connection (UI dial)", &dash_lease_t);
+    row("TOTAL (after the dashboard)", &dash_total_t);
+    println!("-- now: the surface session over the link that is already up");
+    row("OpenTerminal + stream", &session_open_t);
+    row("first output byte", &session_first_t);
+    row("TOTAL", &session_total_t);
 }

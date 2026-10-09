@@ -259,6 +259,58 @@ fn opening_the_same_pane_again_replaces_the_first_terminal() {
     assert_eq!(w.orch.terminal_count(), 1);
 }
 
+fn close_ui_side(w: &mut World, id: &[u8]) -> TerminalId {
+    let id: TerminalId = id.to_vec().try_into().unwrap();
+    w.orch.terminal_closing(&id);
+    id
+}
+
+#[test]
+fn a_terminal_the_ui_has_said_goodbye_to_is_not_replaced_by_opening_the_pane_again() {
+    let mut w = world();
+    let first = open_one(&mut w, UiId(1), 1, "%1", 1);
+    let first = close_ui_side(&mut w, &first);
+    // The same pane is shown again at once (a quick switch back): the first one is still
+    // finishing what it was sent, and is left to.
+    let second = open_one(&mut w, UiId(1), 2, "%1", 1);
+    assert!(
+        w.orch.terminal_is_open(&first),
+        "the closing one was replaced"
+    );
+    assert!(!w.ended.iter().any(|(i, _)| *i == first));
+    assert_ne!(first.to_vec(), second);
+    assert_eq!(w.orch.terminal_count(), 2);
+}
+
+#[test]
+fn a_closing_terminal_does_not_use_up_the_uis_limit_but_does_use_the_nodes() {
+    let mut w = world();
+    let a = open_one(&mut w, UiId(1), 1, "%1", 1);
+    open_one(&mut w, UiId(1), 2, "%2", 2);
+    close_ui_side(&mut w, &a);
+    // The UI is at two terminals, one of them closing: a third is fine for it...
+    open_one(&mut w, UiId(1), 3, "%3", 3);
+    assert_eq!(w.orch.terminal_count(), 3);
+    // ...and the node's limit of four still counts all of them.
+    open_one(&mut w, UiId(2), 4, "%4", 4);
+    send(&mut w, UiId(2), open(5, "node-a", "%5", 5));
+    assert_eq!(errors(&w).last(), Some(&(ErrorKindCode::Busy as i32)));
+}
+
+#[test]
+fn a_closing_terminal_is_given_a_few_seconds_and_then_goes() {
+    let mut w = world();
+    let id = open_one(&mut w, UiId(1), 1, "%1", 1);
+    w.orch.terminal_attach(Side::Ui, &id, "ui-a").unwrap();
+    w.orch.terminal_attach(Side::Node, &id, "node-a").unwrap();
+    let closing = close_ui_side(&mut w, &id);
+    w.advance(3);
+    assert!(w.orch.terminal_is_open(&closing), "still finishing");
+    w.advance(5);
+    assert!(!w.orch.terminal_is_open(&closing), "never lingers");
+    assert!(w.ended.iter().any(|(i, _)| *i == closing));
+}
+
 #[test]
 fn an_open_nobody_attaches_to_expires_and_the_id_stays_dead() {
     let mut w = world();

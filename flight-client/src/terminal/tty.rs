@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-use crate::terminal::{relay, Lease, LocalTerminal, TerminalEnd};
-use crate::ClientConfig;
+use crate::session::{Binding, SessionConfig, SessionOutcome, SessionStart, SurfaceSession};
+use crate::terminal::{LocalTerminal, TerminalEnd};
+use crate::{ClientConfig, LinkHost, OrchestratedBackend, ShownSurface};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, size};
 use flight_proto::valid_term;
-use flight_transport::TerminalClient;
-use flight_ui::SurfaceChoice;
 use rustix::event::{poll, PollFd, PollFlags};
+use rustix::fd::OwnedFd;
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -15,13 +15,8 @@ use tokio::sync::mpsc;
 
 /// Frames of output waiting for the user's terminal. One in hand plus this many.
 const OUTPUT_QUEUE: usize = 2;
-/// How often the terminal size and the stop flag are looked at.
+/// How often the terminal size is looked at.
 const TICK: Duration = Duration::from_millis(100);
-/// Put the terminal back in a plain state: leave the alternate screen, show the cursor,
-/// reset attributes, switch mouse reporting and bracketed paste off. Whatever the remote
-/// tmux left on when it went away.
-const RESET: &[u8] =
-    b"\x1b[?1049l\x1b[?25h\x1b[0m\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?2004l";
 
 /// The size and `TERM` of the user's terminal, as an `OpenTerminal` wants them.
 pub fn terminal_request_shape() -> (u16, u16, String) {
@@ -31,6 +26,16 @@ pub fn terminal_request_shape() -> (u16, u16, String) {
         .filter(|t| valid_term(t))
         .unwrap_or_else(|| "xterm-256color".to_owned());
     (cols.max(1), rows.max(1), term)
+}
+
+/// What the dashboard hands over when the user opens a surface.
+pub struct SessionRequest {
+    /// The terminal the dashboard asked the orchestrator for.
+    pub id: Vec<u8>,
+    pub shown: ShownSurface,
+    pub binding: Binding,
+    /// Keys the user typed after opening the surface and before the dashboard let go, in order.
+    pub typed_ahead: Vec<u8>,
 }
 
 struct RawMode;
@@ -48,48 +53,55 @@ impl Drop for RawMode {
     }
 }
 
-/// Show the terminal `terminal_id` in the user's terminal until it ends, then restore the
-/// terminal. `Ctrl-Space` then `q` leaves at any time.
-pub fn run_terminal(
+/// A pipe whose read end can be waited on together with the keyboard, so stopping the keyboard
+/// reader is immediate instead of up to a polling period away.
+struct Wake {
+    read: OwnedFd,
+    write: OwnedFd,
+}
+
+impl Wake {
+    fn new() -> std::io::Result<Self> {
+        let (read, write) = rustix::pipe::pipe()?;
+        Ok(Self { read, write })
+    }
+
+    fn wake(&self) {
+        let _ = rustix::io::write(&self.write, &[1]);
+    }
+}
+
+/// Show the surfaces of a workspace in the user's terminal until the session ends, then
+/// restore the terminal. The link the dashboard already holds carries everything: nothing is
+/// dialed to start, and switching surface does not leave this function.
+pub fn run_session(
+    link: &OrchestratedBackend,
     config: &ClientConfig,
-    terminal_id: &[u8],
-    showing: Option<SurfaceChoice>,
-) -> TerminalEnd {
-    let Ok(runtime) = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(2)
-        .enable_all()
-        .build()
-    else {
-        return TerminalEnd::Lost("cannot start the terminal runtime".to_owned());
-    };
-    let client = match runtime.block_on(TerminalClient::connect_ui(
-        &config.address,
-        &config.identity,
-        &config.orchestrator,
-        terminal_id,
-    )) {
-        Ok(client) => client,
-        Err(e) => return TerminalEnd::Lost(e.to_string()),
-    };
-    let lease = match runtime.block_on(Lease::connect(config, terminal_id)) {
-        Ok(lease) => lease,
-        Err(why) => return TerminalEnd::Lost(why),
+    request: SessionRequest,
+) -> SessionOutcome {
+    let lost = |why: &str| SessionOutcome {
+        end: TerminalEnd::Lost(why.to_owned()),
+        shown: None,
+        undelivered: 0,
     };
     let Ok(_raw) = RawMode::enter() else {
-        return TerminalEnd::Lost("cannot put the terminal in raw mode".to_owned());
+        return lost("cannot put the terminal in raw mode");
     };
-    let (sender, receiver) = client.split();
+    let Ok(wake) = Wake::new() else {
+        return lost("cannot create a wake-up pipe");
+    };
+    let wake = Arc::new(wake);
     let stop = Arc::new(AtomicBool::new(false));
     let (input_tx, input_rx) = mpsc::channel::<Vec<u8>>(8);
     let (resize_tx, resize_rx) = mpsc::channel::<(u16, u16)>(4);
     let (output_tx, mut output_rx) = mpsc::channel::<Vec<u8>>(OUTPUT_QUEUE);
 
     let stdin_thread = {
-        let (stop, input_tx) = (stop.clone(), input_tx);
-        std::thread::spawn(move || read_stdin(&stop, &input_tx))
+        let (stop, wake) = (stop.clone(), wake.clone());
+        std::thread::spawn(move || read_stdin(&stop, &wake.read, &input_tx))
     };
     let size_thread = {
-        let (stop, resize_tx) = (stop.clone(), resize_tx);
+        let stop = stop.clone();
         std::thread::spawn(move || watch_size(&stop, &resize_tx))
     };
     let writer_thread = std::thread::spawn(move || {
@@ -101,43 +113,76 @@ pub fn run_terminal(
         }
     });
 
-    let hint = || {
-        let _ = std::io::stderr().write_all(
-            b"\r\n[Ctrl-Space: q dashboard, a agent, s shell; Ctrl-Space Ctrl-Space sends a literal Ctrl-Space]\r\n",
-        );
-    };
-    let end = runtime.block_on(relay(
-        sender,
-        receiver,
+    // Notices can carry words from a peer (a refusal's message): none of it may carry a control
+    // character into the user's terminal.
+    let say: Arc<dyn Fn(&str) + Send + Sync> = Arc::new(|text| {
+        let plain: String = text.chars().filter(|c| !c.is_control()).collect();
+        let _ = std::io::stderr().write_all(format!("\r\n{plain}\r\n").as_bytes());
+    });
+    let host = Arc::new(LinkHost::new(
+        link.clone(),
+        config.clone(),
+        request.shown.workspace.clone(),
+    ));
+    let session = SurfaceSession::new(host, SessionConfig::new(say));
+    let (cols, rows, _) = terminal_request_shape();
+    let outcome = link.runtime().block_on(session.run(
         LocalTerminal {
             input: input_rx,
             resizes: resize_rx,
             output: output_tx,
         },
-        hint,
-        lease,
-        showing,
+        SessionStart {
+            id: request.id,
+            choice: request.shown.choice,
+            binding: request.binding,
+            typed_ahead: request.typed_ahead,
+            size: (cols, rows),
+        },
     ));
 
     stop.store(true, Ordering::Relaxed);
+    wake.wake();
+    size_thread.thread().unpark();
     let _ = stdin_thread.join();
     let _ = size_thread.join();
-    // The output sender went away with the relay; the writer drains what it was given.
+    // The output sender went away with the session; the writer drains what it was given.
     let _ = writer_thread.join();
     let mut out = std::io::stdout();
-    let _ = out.write_all(RESET).and_then(|()| out.flush());
-    end
+    let _ = out.write_all(&SessionConfig::new(Arc::new(|_| {})).reset);
+    let _ = out.flush();
+    // Keys typed for a surface that is gone must not be read by the dashboard as commands.
+    if outcome.end != TerminalEnd::UserLeft {
+        let _ = rustix::termios::tcflush(
+            rustix::stdio::stdin(),
+            rustix::termios::QueueSelector::IFlush,
+        );
+    }
+    outcome
 }
 
-/// Raw bytes from the terminal, without ever blocking past `stop`: a thread stuck in `read`
-/// would take the next keystroke away from whatever uses the terminal after us.
-fn read_stdin(stop: &AtomicBool, input: &mpsc::Sender<Vec<u8>>) {
+/// Raw bytes from the terminal. Waits on the keyboard and the wake-up pipe together, so it ends
+/// at once when stopped, and never sits in a `read` that would take the next keystroke away
+/// from whatever uses the terminal after us.
+fn read_stdin(stop: &AtomicBool, wake: &OwnedFd, input: &mpsc::Sender<Vec<u8>>) {
     let stdin = rustix::stdio::stdin();
     let mut buf = vec![0u8; 4096];
     while !stop.load(Ordering::Relaxed) {
-        let mut fds = [PollFd::new(&stdin, PollFlags::IN)];
-        let ready = poll(&mut fds, 100);
-        if !matches!(ready, Ok(n) if n > 0) {
+        let mut fds = [
+            PollFd::new(&stdin, PollFlags::IN),
+            PollFd::new(wake, PollFlags::IN),
+        ];
+        if poll(&mut fds, -1).is_err() {
+            continue;
+        }
+        let woken = fds
+            .get(1)
+            .is_some_and(|fd| fd.revents().contains(PollFlags::IN));
+        let ready = fds.first().is_some_and(|fd| !fd.revents().is_empty());
+        if woken || stop.load(Ordering::Relaxed) {
+            return;
+        }
+        if !ready {
             continue;
         }
         match std::io::stdin().lock().read(&mut buf) {
@@ -155,7 +200,7 @@ fn read_stdin(stop: &AtomicBool, input: &mpsc::Sender<Vec<u8>>) {
 fn watch_size(stop: &AtomicBool, resizes: &mpsc::Sender<(u16, u16)>) {
     let mut last = size().ok();
     while !stop.load(Ordering::Relaxed) {
-        std::thread::sleep(TICK);
+        std::thread::park_timeout(TICK);
         let now = size().ok();
         if now != last {
             last = now;

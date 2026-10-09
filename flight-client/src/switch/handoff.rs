@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use crate::session::Binding;
 use crate::switch::AttachCommand;
 use flight_ui::{SurfaceChoice, WorkspaceKey};
 
@@ -16,6 +17,11 @@ pub struct ShownSurface {
 pub enum Handoff {
     /// Replace this process with a local tmux attach.
     Attach(AttachCommand),
-    /// Show a remote pane through the terminal stream with this id, then come back.
-    Terminal { id: Vec<u8>, shown: ShownSurface },
+    /// Show a remote pane through the terminal stream with this id, then come back. `binding`
+    /// is the process the terminal was asked for.
+    Terminal {
+        id: Vec<u8>,
+        shown: ShownSurface,
+        binding: Binding,
+    },
 }

@@ -7,7 +7,7 @@ use flight_orchestrator::Side;
 use flight_proto::{ExitReasonCode, TerminalFrame};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{mpsc, watch, Notify};
 
 /// Frames queued per direction. With 16 KiB at most per data frame, 64 KiB per direction.
 pub(crate) const QUEUE_FRAMES: usize = 4;
@@ -21,6 +21,9 @@ pub(crate) struct Ends {
     pub(crate) incoming: mpsc::Receiver<TerminalFrame>,
     pub(crate) abort: watch::Receiver<Option<ExitReasonCode>>,
     pub(crate) peak: Arc<AtomicUsize>,
+    /// Signalled when the node's side of the terminal has ended, so that the UI's side can wait
+    /// for the node to have read what the UI sent last before the terminal is torn down.
+    pub(crate) node_ended: Arc<Notify>,
 }
 
 /// Both queues of one terminal, until each side has claimed its half.
@@ -31,6 +34,7 @@ pub(crate) struct Relay {
     for_ui: Option<mpsc::Receiver<TerminalFrame>>,
     abort: watch::Sender<Option<ExitReasonCode>>,
     peak: Arc<AtomicUsize>,
+    node_ended: Arc<Notify>,
     pub(crate) started: std::time::Instant,
 }
 
@@ -46,6 +50,7 @@ impl Relay {
             for_ui: Some(for_ui),
             abort,
             peak: Arc::new(AtomicUsize::new(0)),
+            node_ended: Arc::new(Notify::new()),
             started: std::time::Instant::now(),
         }
     }
@@ -62,6 +67,7 @@ impl Relay {
             incoming,
             abort: self.abort.subscribe(),
             peak: self.peak.clone(),
+            node_ended: self.node_ended.clone(),
         })
     }
 

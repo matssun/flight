@@ -261,6 +261,11 @@ impl Shared {
         Some((id, ends))
     }
 
+    /// The UI's side of a terminal is over; the node's is still finishing.
+    pub(crate) fn terminal_closing(&mut self, id: &TerminalId) {
+        self.core.terminal_closing(id);
+    }
+
     /// One side's stream ended: the id is dead and the relay is gone.
     pub(crate) fn finish_terminal(&mut self, id: TerminalId, side: Side, reason: ExitReasonCode) {
         self.core.terminal_ended(&id);

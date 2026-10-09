@@ -77,8 +77,8 @@ impl Rig {
     }
 }
 
-fn boot() -> Rig {
-    let base = PathBuf::from(format!("/tmp/fl-ws-{}", std::process::id()));
+fn boot(tag: &str) -> Rig {
+    let base = PathBuf::from(format!("/tmp/fl-ws-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&base);
     std::fs::create_dir_all(&base).expect("base dir");
     let cleanup = TempDir(base.clone());
@@ -100,7 +100,7 @@ fn boot() -> Rig {
             .expect("join");
         assert!(out.status.success());
     }
-    let socket = format!("fl-ws-{}", std::process::id());
+    let socket = format!("fl-ws-{tag}-{}", std::process::id());
     let file = NamedSocketFile(socket.clone());
     let sock = Sock::Named(socket.clone());
     let node = Proc(
@@ -127,6 +127,9 @@ fn boot() -> Rig {
     cmd.arg(&ui_cfg);
     cmd.env_clear();
     cmd.env("TERM", "xterm-256color");
+    if let Ok(t) = std::env::var("FLIGHT_TRACE_FILE") {
+        cmd.env("FLIGHT_TRACE_FILE", t);
+    }
     cmd.env("HOME", std::env::var("HOME").unwrap_or_default());
     cmd.env("PATH", std::env::var("PATH").unwrap_or_default());
     let child = pair.slave.spawn_command(cmd).expect("dashboard");
@@ -168,7 +171,7 @@ fn boot() -> Rig {
 
 #[test]
 fn a_workspace_gets_a_shell_in_its_directory_and_agent_and_shell_switch_without_the_dashboard() {
-    let mut rig = boot();
+    let mut rig = boot("basic");
     wait("the dashboard", || {
         rig.seen("mini-e2e") && rig.seen("n New")
     });
@@ -266,6 +269,92 @@ fn a_workspace_gets_a_shell_in_its_directory_and_agent_and_shell_switch_without_
     wait("the dashboard to exit", || {
         rig.child.try_wait().ok().flatten().is_some()
     });
+    assert_eq!(
+        rig.tmux(&["list-windows", "-t", "=quick:"]).lines().count(),
+        2
+    );
+}
+
+/// Create workspace `quick` through the form and give it a shell, leaving the shell on screen.
+fn workspace_with_shell(rig: &mut Rig) {
+    wait("the dashboard", || {
+        rig.seen("mini-e2e") && rig.seen("n New")
+    });
+    rig.send(b"n");
+    wait("the form", || rig.seen("New workspace"));
+    for _ in 0..3 {
+        rig.send(b"\x7f");
+    }
+    rig.send(b"quick");
+    rig.send(b"\t");
+    rig.send(&[0x7f; 4]);
+    let dir = rig.work.to_string_lossy().into_owned();
+    rig.send(dir.as_bytes());
+    rig.send(b"\t");
+    rig.send(b"\t");
+    rig.send(b"\r");
+    wait("the workspace to be listed and selected", || {
+        rig.seen("Created workspace quick on mini-e2e.") && rig.seen("none yet")
+    });
+    rig.send(b"s");
+    wait("the offer", || rig.seen("quick has no shell yet"));
+    rig.send(b"\r");
+    wait("the shell on screen", || {
+        rig.clients() == 1 && rig.seen("1:shell*")
+    });
+}
+
+fn pane(rig: &Rig, window: &str) -> String {
+    rig.tmux(&["capture-pane", "-p", "-t", &format!("=quick:{window}")])
+}
+
+#[test]
+fn keys_typed_right_after_opening_or_switching_reach_the_surface_they_were_typed_for() {
+    let mut rig = boot("typed");
+    workspace_with_shell(&mut rig);
+    rig.send(b"\x00q");
+    wait("the dashboard again", || {
+        rig.seen("Workspaces") && rig.seen("s Shell") && rig.clients() == 0
+    });
+
+    // `s` opens the shell, and the rest is typed at once, before anything is on screen: the
+    // dashboard must not read any of it as commands (it has keys for most of these letters).
+    rig.writer
+        .write_all(b"secho typed-ahead-$((6*7))\r")
+        .expect("keys");
+    rig.writer.flush().expect("flush");
+    wait("the shell has what was typed", || {
+        pane(&rig, "shell").contains("typed-ahead-42")
+    });
+    assert!(!pane(&rig, "agent").contains("typed-ahead"), "misdelivered");
+    wait("the shell on screen", || {
+        rig.clients() == 1 && rig.seen("1:shell*")
+    });
+
+    // Switch away and back in one burst, with input for each surface between the switches.
+    rig.writer
+        .write_all(b"echo one-$((1+1))\r\x00aFOR-THE-AGENT\x00secho two-$((2+2))\r")
+        .expect("keys");
+    rig.writer.flush().expect("flush");
+    wait("both parts reached the shell", || {
+        let shell = pane(&rig, "shell");
+        shell.contains("one-2") && shell.contains("two-4")
+    });
+    wait("the agent got its part", || {
+        pane(&rig, "agent").contains("FOR-THE-AGENT")
+    });
+    let shell = pane(&rig, "shell");
+    assert!(!shell.contains("FOR-THE-AGENT"), "misdelivered: {shell}");
+    assert!(
+        shell
+            .find("one-2")
+            .zip(shell.find("two-4"))
+            .is_some_and(|(a, b)| a < b),
+        "out of order: {shell}"
+    );
+    // The surfaces are both still there and exactly one client shows one of them (the one that
+    // showed the other surface is let go a moment after the switch).
+    wait("only one client is left", || rig.clients() == 1);
     assert_eq!(
         rig.tmux(&["list-windows", "-t", "=quick:"]).lines().count(),
         2

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use crate::session::{Binding, OpenFailure};
 use crate::snapshot_view::ui_snapshot;
 use crate::switch::{
     Handoff, HandoffSlot, Presented, RemoteOps, ShownSurface, SwitchTarget, Switcher, TmuxEnv,
@@ -8,7 +9,7 @@ use crate::terminal::terminal_request_shape;
 use flight_proto::{
     command_kind as ck, response_result, ui_event_body, ui_request_body, Command, ErrorKindCode,
     FleetImage, PaneRefMsg, ProgramCode, Request, SavedActionCode, Step, Subscribe,
-    SurfaceKindCode, UiEvent, UiRequest,
+    SurfaceKindCode, TerminalLease, UiEvent, UiRequest,
 };
 use flight_state::PaneRef;
 use flight_transport::UiClient;
@@ -97,16 +98,39 @@ struct ControlRequest {
     reply: oneshot::Sender<Result<Answer, Failure>>,
 }
 
+/// What the link is asked to send.
+enum LinkRequest {
+    Command(ControlRequest),
+    /// The presentation of this terminal is alive (ADR-004).
+    Lease(Vec<u8>),
+}
+
 /// The dashboard's backend over an orchestrator. A background task keeps the link up and a
 /// [`FleetImage`] current; `snapshot` just renders that image, so refreshing never waits on
 /// the network.
+///
+/// Cloning gives another handle to the same link: the connection, its runtime and the image
+/// outlive any one dashboard run, so showing a terminal and coming back does not rebuild them.
+/// The link stops when the last handle is dropped.
+#[derive(Clone)]
 pub struct OrchestratedBackend {
-    runtime: Runtime,
-    state: Shared,
-    requests: mpsc::Sender<ControlRequest>,
-    stop: watch::Sender<bool>,
+    inner: Arc<Link>,
     switcher: Switcher,
     handoff: HandoffSlot,
+}
+
+/// The link itself: shared by every handle.
+struct Link {
+    runtime: Runtime,
+    state: Shared,
+    requests: mpsc::Sender<LinkRequest>,
+    stop: watch::Sender<bool>,
+}
+
+impl Drop for Link {
+    fn drop(&mut self) {
+        let _ = self.stop.send(true);
+    }
 }
 
 impl OrchestratedBackend {
@@ -120,10 +144,12 @@ impl OrchestratedBackend {
         let (stop, stop_rx) = watch::channel(false);
         runtime.spawn(link_loop(config, state.clone(), rx, stop_rx));
         Ok(Self {
-            runtime,
-            state,
-            requests,
-            stop,
+            inner: Arc::new(Link {
+                runtime,
+                state,
+                requests,
+                stop,
+            }),
             switcher: Switcher::default(),
             handoff: HandoffSlot::default(),
         })
@@ -142,19 +168,83 @@ impl OrchestratedBackend {
 
     /// Whether the stream to the orchestrator is up right now.
     pub fn connected(&self) -> bool {
-        lock(&self.state).connected
+        lock(&self.inner.state).connected
     }
-}
 
-impl Drop for OrchestratedBackend {
-    fn drop(&mut self) {
-        let _ = self.stop.send(true);
+    /// The runtime the link runs on. Whatever works on the link's behalf (a terminal session)
+    /// runs here too, so there is one set of worker threads and one place to stop them.
+    pub fn runtime(&self) -> &Runtime {
+        &self.inner.runtime
+    }
+
+    /// The fleet as the link last saw it, for finding the surface to show.
+    pub(crate) fn current_snapshot(&self) -> UiSnapshot {
+        let state = lock(&self.inner.state);
+        ui_snapshot(
+            &state.image,
+            state.connected,
+            state.last_error.as_deref(),
+            0,
+        )
+    }
+
+    /// Ask the orchestrator for a terminal onto `pane`, guarded by the process the caller saw.
+    pub(crate) async fn request_terminal(
+        &self,
+        pane: &PaneRef,
+        pid: u32,
+        (cols, rows, term): (u16, u16, String),
+    ) -> Result<Vec<u8>, OpenFailure> {
+        // A request queued behind a link that is down would wait out the whole timeout for an
+        // answer that cannot come; say so at once, and let the caller try again.
+        if !self.connected() {
+            return Err(OpenFailure::Unavailable(
+                "not connected to the orchestrator".to_owned(),
+            ));
+        }
+        let kind = ck::Kind::OpenTerminal(ck::OpenTerminal {
+            pane_ref: Some(PaneRefMsg::from(pane)),
+            expected_pid: pid,
+            cols: u32::from(cols),
+            rows: u32::from(rows),
+            term,
+            terminal_id: Vec::new(),
+        });
+        match call(&self.inner.requests, kind, REVEAL_TIMEOUT).await {
+            Ok(Answer::Terminal(id)) => Ok(id),
+            Ok(_) => Err(OpenFailure::Refused(
+                "the orchestrator answered without a terminal".to_owned(),
+            )),
+            Err(f) => Err(match f.kind {
+                // Nothing is wrong with the request; the node, the link or a limit is not
+                // available right now.
+                None | Some(ErrorKindCode::NodeUnreachable | ErrorKindCode::Busy) => {
+                    OpenFailure::Unavailable(f.message)
+                }
+                Some(_) => OpenFailure::Refused(f.message),
+            }),
+        }
+    }
+
+    /// Say a terminal's presentation is alive. Fails only when the link has stopped; while it is
+    /// reconnecting the lease lifetime (several periods) covers the gap.
+    pub(crate) fn send_lease(&self, terminal_id: &[u8]) -> Result<(), String> {
+        match self
+            .inner
+            .requests
+            .try_send(LinkRequest::Lease(terminal_id.to_vec()))
+        {
+            Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => Ok(()),
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                Err("the link to the orchestrator has stopped".to_owned())
+            }
+        }
     }
 }
 
 impl Backend for OrchestratedBackend {
     fn snapshot(&mut self, now: u64) -> UiSnapshot {
-        let state = lock(&self.state);
+        let state = lock(&self.inner.state);
         ui_snapshot(
             &state.image,
             state.connected,
@@ -169,8 +259,9 @@ impl Backend for OrchestratedBackend {
             lines: PREVIEW_LINES,
         });
         let content = self
+            .inner
             .runtime
-            .block_on(call(&self.requests, kind, PREVIEW_TIMEOUT))
+            .block_on(call(&self.inner.requests, kind, PREVIEW_TIMEOUT))
             .map_err(|f| f.message)
             .and_then(|answer| match answer {
                 Answer::Text(text) => Ok(text),
@@ -185,8 +276,8 @@ impl Backend for OrchestratedBackend {
     fn switch_to(&mut self, pane: &PaneView) -> Result<(), String> {
         let target = SwitchTarget::from(pane);
         let mut remote = LinkOps {
-            runtime: &self.runtime,
-            requests: &self.requests,
+            runtime: &self.inner.runtime,
+            requests: &self.inner.requests,
         };
         match self
             .switcher
@@ -199,6 +290,10 @@ impl Backend for OrchestratedBackend {
             }
             Ok(Presented::Terminal(id)) => {
                 self.handoff.put(Handoff::Terminal {
+                    binding: Binding {
+                        pane: pane.pane_ref.clone(),
+                        pid: pane.pid,
+                    },
                     id,
                     shown: ShownSurface {
                         workspace: WorkspaceKey {
@@ -228,8 +323,9 @@ impl Backend for OrchestratedBackend {
                 SurfaceChoice::Agent => SurfaceKindCode::Agent,
             } as i32,
         });
-        self.runtime
-            .block_on(call(&self.requests, kind, CREATE_TIMEOUT))
+        self.inner
+            .runtime
+            .block_on(call(&self.inner.requests, kind, CREATE_TIMEOUT))
             .map(drop)
             .map_err(create_failure)
     }
@@ -249,8 +345,9 @@ impl Backend for OrchestratedBackend {
             action: action as i32,
             root,
         });
-        self.runtime
-            .block_on(call(&self.requests, kind, CREATE_TIMEOUT))
+        self.inner
+            .runtime
+            .block_on(call(&self.inner.requests, kind, CREATE_TIMEOUT))
             .map(drop)
             .map_err(create_failure)
     }
@@ -266,8 +363,9 @@ impl Backend for OrchestratedBackend {
                 Program::Shell => ProgramCode::Shell,
             } as i32,
         });
-        self.runtime
-            .block_on(call(&self.requests, kind, CREATE_TIMEOUT))
+        self.inner
+            .runtime
+            .block_on(call(&self.inner.requests, kind, CREATE_TIMEOUT))
             .map(drop)
             .map_err(create_failure)
     }
@@ -298,7 +396,7 @@ fn create_failure(f: Failure) -> CreateFailure {
 /// A switch's requests to the orchestrator, over the dashboard's own link.
 struct LinkOps<'a> {
     runtime: &'a Runtime,
-    requests: &'a mpsc::Sender<ControlRequest>,
+    requests: &'a mpsc::Sender<LinkRequest>,
 }
 
 impl RemoteOps for LinkOps<'_> {
@@ -335,12 +433,16 @@ impl RemoteOps for LinkOps<'_> {
 
 /// Send one command and wait for its answer, bounded.
 async fn call(
-    requests: &mpsc::Sender<ControlRequest>,
+    requests: &mpsc::Sender<LinkRequest>,
     kind: ck::Kind,
     timeout: Duration,
 ) -> Result<Answer, Failure> {
     let (reply, answer) = oneshot::channel();
-    if requests.send(ControlRequest { kind, reply }).await.is_err() {
+    if requests
+        .send(LinkRequest::Command(ControlRequest { kind, reply }))
+        .await
+        .is_err()
+    {
         return Err("not connected to the orchestrator".to_owned().into());
     }
     match tokio::time::timeout(timeout, answer).await {
@@ -371,7 +473,7 @@ fn command_request(id: u64, kind: ck::Kind) -> UiRequest {
 async fn link_loop(
     config: ClientConfig,
     state: Shared,
-    mut requests: mpsc::Receiver<ControlRequest>,
+    mut requests: mpsc::Receiver<LinkRequest>,
     mut stop: watch::Receiver<bool>,
 ) {
     let mut delay = RECONNECT_MIN;
@@ -399,7 +501,7 @@ async fn link_loop(
 async fn serve_link(
     config: &ClientConfig,
     state: &Shared,
-    requests: &mut mpsc::Receiver<ControlRequest>,
+    requests: &mut mpsc::Receiver<LinkRequest>,
 ) -> String {
     let mut client =
         match UiClient::connect(&config.address, &config.identity, &config.orchestrator).await {
@@ -422,16 +524,25 @@ async fn serve_link(
                 Ok(None) => return "the orchestrator closed the connection".to_owned(),
                 Err(e) => return e.to_string(),
             },
-            Some(req) = requests.recv() => {
-                next_id += 1;
-                if client.send(command_request(next_id, req.kind)).is_ok() {
-                    waiting.insert(next_id, req.reply);
-                } else {
-                    let _ = req
-                        .reply
-                        .send(Err("too many requests in flight".to_owned().into()));
+            Some(request) = requests.recv() => match request {
+                LinkRequest::Command(req) => {
+                    next_id += 1;
+                    if client.send(command_request(next_id, req.kind)).is_ok() {
+                        waiting.insert(next_id, req.reply);
+                    } else {
+                        let _ = req
+                            .reply
+                            .send(Err("too many requests in flight".to_owned().into()));
+                    }
                 }
-            }
+                LinkRequest::Lease(terminal_id) => {
+                    // Best effort: a lease that is not sent is covered by the next one, and the
+                    // orchestrator's lifetime for a terminal is several periods.
+                    let _ = client.send(UiRequest {
+                        body: Some(ui_request_body::Body::TerminalLease(TerminalLease { terminal_id })),
+                    });
+                }
+            },
         }
     }
 }

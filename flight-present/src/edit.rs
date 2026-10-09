@@ -134,6 +134,41 @@ impl Layout {
         Ok(layout)
     }
 
+    /// Show `new` where `old` is, in the same place and with the same share. If `old` had the
+    /// keyboard, `new` has it. `old` is no longer named, which stops showing it and nothing else.
+    pub fn replace(&self, old: &SurfaceId, new: SurfaceId) -> Result<Layout, LayoutError> {
+        if !self.contains(old) {
+            return Err(LayoutError::Unknown(old.to_string()));
+        }
+        if self.contains(&new) {
+            return Err(LayoutError::Duplicate(new.to_string()));
+        }
+        let root = swap_in(&self.root, old, &new);
+        let focus = if &self.focus == old {
+            new
+        } else {
+            self.focus.clone()
+        };
+        let layout = Layout { root, focus };
+        layout.check()?;
+        Ok(layout)
+    }
+
+    /// Show the next (or previous) tab of the tab set the focused surface is in, wrapping
+    /// round, and give the keyboard to its first showing surface. No tab set: no change.
+    pub fn step_tab(&self, forward: bool) -> Layout {
+        let mut root = self.root.clone();
+        let Some(first) = step_in(&mut root, &self.focus, forward) else {
+            return self.clone();
+        };
+        let layout = Layout { root, focus: first };
+        if layout.check().is_ok() {
+            layout
+        } else {
+            self.clone()
+        }
+    }
+
     fn visible_ids(&self) -> Vec<SurfaceId> {
         self.visible().into_iter().cloned().collect()
     }
@@ -439,5 +474,39 @@ fn normalize(children: &mut [Child]) {
     }
     for (c, w) in children.iter_mut().zip(scaled) {
         c.weight = u16::try_from(w).unwrap_or(1);
+    }
+}
+
+/// Move the active tab of the nearest tab set holding `focus`; the surface that should then have
+/// the keyboard (the first one showing in the new tab).
+fn step_in(region: &mut Region, focus: &SurfaceId, forward: bool) -> Option<SurfaceId> {
+    match region {
+        Region::Surface(_) => None,
+        Region::Split { children, .. } => children
+            .iter_mut()
+            .find(|c| contains(&c.region, focus))
+            .and_then(|c| step_in(&mut c.region, focus, forward)),
+        Region::Tabs { active, tabs } => {
+            // A tab set inside the focused tab is nearer to the focus than this one.
+            if let Some(i) = tabs.iter().position(|t| contains(t, focus)) {
+                if let Some(t) = tabs.get_mut(i) {
+                    if let Some(inner) = step_in(t, focus, forward) {
+                        return Some(inner);
+                    }
+                }
+            }
+            let n = tabs.len();
+            if n < 2 {
+                return None;
+            }
+            *active = if forward {
+                active.saturating_add(1) % n
+            } else {
+                active.checked_sub(1).unwrap_or(n.saturating_sub(1))
+            };
+            let mut shown = Vec::new();
+            tabs.get(*active)?.visible(&mut shown);
+            shown.first().map(|s| (*s).clone())
+        }
     }
 }

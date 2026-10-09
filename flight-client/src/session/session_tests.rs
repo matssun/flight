@@ -103,6 +103,7 @@ impl SurfaceHost for FakeHost {
         &self,
         _id: Vec<u8>,
         choice: SurfaceChoice,
+        _binding: Binding,
     ) -> Result<Attachment, OpenFailure> {
         self.calls.lock().unwrap().push((choice, None));
         self.attach(choice).await

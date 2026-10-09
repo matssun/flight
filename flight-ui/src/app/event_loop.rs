@@ -57,7 +57,7 @@ pub fn run_with_notice(
         refresh_every,
         Start {
             notice,
-            resume: None,
+            ..Start::default()
         },
     )
 }
@@ -69,6 +69,8 @@ pub fn run_with_notice(
 pub struct Start {
     pub notice: Option<String>,
     pub resume: Option<(WorkspaceKey, SurfaceChoice)>,
+    /// The workspace to put the cursor on.
+    pub select: Option<WorkspaceKey>,
 }
 
 /// [`run`], beginning as `start` says.
@@ -94,6 +96,9 @@ fn event_loop(
 ) -> io::Result<Exit> {
     let mut vm = ViewModel::new();
     vm.set_message(start.notice);
+    if let Some(key) = start.select {
+        vm.point_at(key);
+    }
     if let Some((key, choice)) = start.resume {
         vm.resume(key, choice);
     }

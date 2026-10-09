@@ -412,3 +412,36 @@ fn no_screen_names_the_backend() {
         }
     }
 }
+
+#[test]
+fn coming_back_from_a_session_puts_the_cursor_on_its_workspace() {
+    let s = snap(vec![online(
+        "dev1",
+        vec![
+            pane("dev1", "first", "%1", Question),
+            pane("dev1", "second", "%2", Busy),
+        ],
+    )]);
+    let mut vm = ViewModel::new();
+    vm.point_at(key("dev1", "second"));
+    // The first snapshot is the one from before the connection is up: empty.
+    vm.apply_snapshot(snap(vec![]));
+    vm.apply_snapshot(s.clone());
+    assert_eq!(vm.selected_key(), Some(&key("dev1", "second")));
+    // A workspace that is gone leaves the usual first choice.
+    let mut vm = ViewModel::new();
+    vm.point_at(key("dev1", "gone"));
+    vm.apply_snapshot(s);
+    assert_eq!(vm.selected_key(), Some(&key("dev1", "first")));
+}
+
+#[test]
+fn a_quiet_shell_reads_ready_whatever_the_node_calls_its_quiet() {
+    for quiet in [flight_state::AgentState::Shell, Idle] {
+        let mut s = nga(Busy, true);
+        s.hosts[0].panes[1].state = quiet;
+        let text = flight_ui::render_to_string(&vm_with(s), 110, 30);
+        let line = text.lines().find(|l| l.contains("s Shell")).unwrap();
+        assert!(line.contains("ready"), "{quiet:?}: {line}");
+    }
+}

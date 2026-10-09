@@ -31,6 +31,9 @@ pub struct ViewModel {
     /// A surface to open as soon as it shows up in a snapshot (just created, or asked for by
     /// a terminal that was left to switch).
     pub(super) opening: Option<Opening>,
+    /// Where to put the cursor once that workspace is listed: the snapshots before the
+    /// connection is up are empty, so this waits for it.
+    pub(super) pointing: Option<(WorkspaceKey, u8)>,
     /// The search text; only sessions matching it are listed.
     pub(super) filter: String,
     /// Keys are going into the search.
@@ -80,6 +83,7 @@ impl ViewModel {
             prompt: None,
             pending: None,
             opening: None,
+            pointing: None,
             filter: String::new(),
             searching: false,
             help: false,
@@ -187,6 +191,7 @@ impl ViewModel {
         self.loaded = true;
         let before = self.selected();
         self.reconcile();
+        self.apply_pointing();
         self.select_created();
         let opened = self.open_pending();
         if matches!(opened, Effect::None) {
@@ -389,6 +394,24 @@ impl ViewModel {
                 }
                 Effect::None
             }
+        }
+    }
+
+    /// Start with the cursor on this workspace (the one just left), if it is listed once the
+    /// first snapshot arrives.
+    pub fn point_at(&mut self, key: WorkspaceKey) {
+        self.pointing = Some((key, PENDING_SNAPSHOTS));
+    }
+
+    fn apply_pointing(&mut self) {
+        let Some((key, left)) = self.pointing.take() else {
+            return;
+        };
+        if let Some(i) = self.keys().iter().position(|k| *k == key) {
+            self.hint = i;
+            self.selected = Some(key);
+        } else if left > 1 {
+            self.pointing = Some((key, left.saturating_sub(1)));
         }
     }
 

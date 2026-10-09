@@ -60,6 +60,7 @@ impl ViewModel {
 
     pub(super) fn step(&mut self, delta: isize) -> Effect {
         self.pending = None;
+        self.pointing = None;
         self.opening = None;
         let before = self.selected();
         let list = self.keys();

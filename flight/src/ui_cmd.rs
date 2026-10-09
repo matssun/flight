@@ -84,12 +84,14 @@ fn dashboard(args: &[String]) -> Result<(), String> {
                     // Ctrl-Space a / s: the dashboard comes back only long enough to open the
                     // workspace's other surface.
                     TerminalEnd::SwitchTo(choice) => Start {
-                        notice: None,
                         resume: Some((shown.workspace, choice)),
+                        ..Start::default()
                     },
+                    // Back on the workspace that was just left.
                     other => Start {
                         notice: Some(format!("terminal: {other}")),
-                        resume: None,
+                        select: Some(shown.workspace),
+                        ..Start::default()
                     },
                 };
             }

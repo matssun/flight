@@ -85,11 +85,12 @@ pub fn health_look(h: &HostHealth) -> (&'static str, String, Color) {
     }
 }
 
-/// What to say of a surface and in which colour. A shell that is just a shell is "ready"; an
-/// agent (or anything else running in a shell surface) is described by its state.
+/// What to say of a surface and in which colour. A shell with nothing running in it (the
+/// node calls that a shell, or idle once it has been quiet a while) is "ready"; an agent, or
+/// anything else running in a shell surface, is described by its state.
 pub fn surface_status(s: &Surface) -> (&'static str, Color) {
     let state = s.pane.state;
-    if s.kind == SurfaceKind::Shell && state == AgentState::Shell {
+    if s.kind == SurfaceKind::Shell && matches!(state, AgentState::Shell | AgentState::Idle) {
         return ("ready", Color::Green);
     }
     let (_, label, colour) = state_look(state);

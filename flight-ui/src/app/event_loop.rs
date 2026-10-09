@@ -124,6 +124,9 @@ fn event_loop(
             }
         } else {
             vm.tick();
+            if vm.is_opening() {
+                let _ = worker.tx.send(Cmd::Refresh);
+            }
         }
         while let Ok(msg) = worker.rx.try_recv() {
             if let Some(exit) = on_message(&mut vm, worker, msg) {

@@ -47,6 +47,10 @@ const PENDING_SNAPSHOTS: u8 = 30;
 pub(super) struct Opening {
     pub(super) key: WorkspaceKey,
     pub(super) choice: SurfaceChoice,
+    /// The workspace is there but lacks the surface: offer to make a shell (true, for a
+    /// terminal that was left to switch) or keep waiting for it to be published (false, for one
+    /// just created).
+    pub(super) offer_if_missing: bool,
     pub(super) snapshots_left: u8,
 }
 
@@ -374,6 +378,7 @@ impl ViewModel {
                         workspace: request.workspace.clone(),
                     },
                     choice: request.kind,
+                    offer_if_missing: false,
                     snapshots_left: PENDING_SNAPSHOTS,
                 });
                 self.open_pending()
@@ -387,12 +392,19 @@ impl ViewModel {
         }
     }
 
+    /// Whether a surface is being waited for: the loop then looks for news more often than
+    /// its refresh interval, so opening it is not held back by the next poll.
+    pub fn is_opening(&self) -> bool {
+        self.opening.is_some()
+    }
+
     /// Ask for a surface to be opened as soon as it exists (a terminal was left in order to
     /// switch to it).
     pub fn resume(&mut self, key: WorkspaceKey, choice: SurfaceChoice) {
         self.opening = Some(Opening {
             key,
             choice,
+            offer_if_missing: true,
             snapshots_left: PENDING_SNAPSHOTS,
         });
     }
@@ -417,10 +429,14 @@ impl ViewModel {
         }
         // A workspace that is listed but lacks the surface is the answer, not a wait: a missing
         // shell is offered, a missing agent is left alone.
-        let (key, choice) = (opening.key.clone(), opening.choice);
+        let (key, choice, offer) = (
+            opening.key.clone(),
+            opening.choice,
+            opening.offer_if_missing,
+        );
         if let Some(workspace) = workspaces(&self.snapshot, "")
             .into_iter()
-            .find(|w| w.key() == key)
+            .find(|w| w.key() == key && offer)
         {
             self.opening = None;
             if choice == SurfaceChoice::Shell {

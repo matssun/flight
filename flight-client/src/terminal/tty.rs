@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use crate::terminal::{relay, Lease, TerminalEnd};
+use crate::terminal::{relay, Lease, LocalTerminal, TerminalEnd};
 use crate::ClientConfig;
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, size};
 use flight_proto::valid_term;
@@ -107,7 +107,16 @@ pub fn run_terminal(
         );
     };
     let end = runtime.block_on(relay(
-        sender, receiver, input_rx, resize_rx, output_tx, hint, lease, showing,
+        sender,
+        receiver,
+        LocalTerminal {
+            input: input_rx,
+            resizes: resize_rx,
+            output: output_tx,
+        },
+        hint,
+        lease,
+        showing,
     ));
 
     stop.store(true, Ordering::Relaxed);

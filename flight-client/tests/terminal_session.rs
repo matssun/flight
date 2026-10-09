@@ -6,7 +6,8 @@
 
 use flight_classify::AgentKind;
 use flight_client::{
-    relay, ClientConfig, Handoff, Lease, OrchestratedBackend, RemoteOps, Switcher, TerminalEnd,
+    relay, ClientConfig, Handoff, Lease, LocalTerminal, OrchestratedBackend, RemoteOps, Switcher,
+    TerminalEnd,
 };
 use flight_node::{NodeCore, NodeSession, PaneObservation, Round, ServerOutcome, TmuxServers};
 use flight_orchestrator::OrchestratorConfig;
@@ -296,9 +297,11 @@ impl Rig {
         let task = self.rt.spawn(relay(
             sender,
             receiver,
-            input_rx,
-            resize_rx,
-            output_tx,
+            LocalTerminal {
+                input: input_rx,
+                resizes: resize_rx,
+                output: output_tx,
+            },
             || {},
             lease,
             None,

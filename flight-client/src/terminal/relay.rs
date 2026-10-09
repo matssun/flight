@@ -11,6 +11,13 @@ use tokio::sync::mpsc;
 
 /// How long to wait for the far end to finish reading a goodbye.
 const GOODBYE: Duration = Duration::from_secs(1);
+/// The user's side of a terminal: what they type, how big the window is, and where output goes.
+pub struct LocalTerminal {
+    pub input: mpsc::Receiver<Vec<u8>>,
+    pub resizes: mpsc::Receiver<(u16, u16)>,
+    pub output: mpsc::Sender<Vec<u8>>,
+}
+
 fn frame(body: terminal_body::Body) -> TerminalFrame {
     TerminalFrame { body: Some(body) }
 }
@@ -24,13 +31,16 @@ fn frame(body: terminal_body::Body) -> TerminalFrame {
 pub async fn relay(
     sender: TerminalSender,
     mut receiver: TerminalReceiver,
-    mut input: mpsc::Receiver<Vec<u8>>,
-    mut resizes: mpsc::Receiver<(u16, u16)>,
-    output: mpsc::Sender<Vec<u8>>,
+    local: LocalTerminal,
     hint: impl Fn() + Send + 'static,
     mut lease: Lease,
     showing: Option<SurfaceChoice>,
 ) -> TerminalEnd {
+    let LocalTerminal {
+        mut input,
+        mut resizes,
+        output,
+    } = local;
     let from_remote = tokio::spawn(async move {
         loop {
             match receiver.next().await {

@@ -17,6 +17,9 @@ pub struct Delta {
 pub mod delta_change {
     use super::{PaneRefMsg, PaneState, ServerStatus};
 
+    /// `PaneState` is the wire message and is held by value everywhere; boxing it here would
+    /// change every pattern that matches a delta for no gain at this size.
+    #[allow(clippy::large_enum_variant)]
     #[derive(Clone, PartialEq, Eq, prost::Oneof)]
     pub enum Change {
         #[prost(message, tag = "3")]

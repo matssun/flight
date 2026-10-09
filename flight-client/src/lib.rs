@@ -19,6 +19,6 @@ pub use switch::{
     UiPlacement,
 };
 pub use terminal::{
-    relay, run_terminal, terminal_request_shape, EscapeAction, EscapeFilter, Lease, TerminalEnd,
-    LEASE_PERIOD,
+    relay, run_terminal, terminal_request_shape, EscapeAction, EscapeFilter, Lease, LocalTerminal,
+    TerminalEnd, LEASE_PERIOD,
 };

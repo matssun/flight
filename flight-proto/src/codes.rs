@@ -49,6 +49,24 @@ wire_enum! {
 }
 
 wire_enum! {
+    /// The health of a saved workspace as its node sees it (ADR-008).
+    SavedHealthCode { Running = 1, Partial = 2, Stopped = 3, Blocked = 4 }
+}
+
+wire_enum! {
+    /// What looking at a saved workspace's root found (ADR-008).
+    SavedRootCode {
+        Verified = 1,
+        FirstSighting = 2,
+        Missing = 3,
+        NotADirectory = 4,
+        PermissionDenied = 5,
+        Unverified = 6,
+        Changed = 7,
+    }
+}
+
+wire_enum! {
     /// Why a terminal session ended (ADR-003).
     ExitReasonCode {
         ClientExited = 1,

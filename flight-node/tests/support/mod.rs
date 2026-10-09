@@ -75,6 +75,7 @@ pub struct Mirror {
     cursor: ReplicationCursor,
     pub panes: BTreeMap<PaneRef, PaneState>,
     pub servers: BTreeMap<String, ServerStatus>,
+    pub saved: Vec<flight_proto::SavedWorkspace>,
 }
 
 impl Mirror {
@@ -87,6 +88,7 @@ impl Mirror {
             .iter()
             .map(|s| (s.server.clone(), s.clone()))
             .collect();
+        self.saved = snapshot.saved.clone();
     }
 
     pub fn apply(&mut self, delta: &Delta) -> Step {
@@ -106,6 +108,9 @@ impl Mirror {
             Change::ServerStatus(s) => {
                 self.servers.insert(s.server.clone(), s.clone());
             }
+            Change::Saved(s) => {
+                self.saved = s.items.clone();
+            }
         }
         step
     }
@@ -113,7 +118,7 @@ impl Mirror {
     pub fn matches(&self, snapshot: &Snapshot) -> bool {
         let mut other = Mirror::default();
         other.load(snapshot);
-        self.panes == other.panes && self.servers == other.servers
+        self.panes == other.panes && self.servers == other.servers && self.saved == other.saved
     }
 }
 

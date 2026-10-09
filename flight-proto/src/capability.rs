@@ -22,8 +22,12 @@ pub const CREATE_SESSION: &str = "create_session_v1";
 /// the node resolves the host's directory and session from the workspace itself.
 pub const CREATE_SURFACE: &str = "create_surface_v1";
 
+/// The node reports the workspaces it has saved, with their health (ADR-008). Without it
+/// accepted, a node sends no `Delta.saved` (an older orchestrator could not decode one).
+pub const SAVED_WORKSPACES: &str = "saved_workspaces_v1";
+
 /// Every capability this build knows about.
-pub const KNOWN: [&str; 7] = [
+pub const KNOWN: [&str; 8] = [
     PREVIEW,
     GUARDED_REVEAL,
     TERMINAL,
@@ -31,6 +35,7 @@ pub const KNOWN: [&str; 7] = [
     KILL,
     CREATE_SESSION,
     CREATE_SURFACE,
+    SAVED_WORKSPACES,
 ];
 
 /// The offered capabilities that `supported` also contains, in offered order, without

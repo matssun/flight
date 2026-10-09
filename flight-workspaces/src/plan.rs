@@ -60,6 +60,8 @@ pub enum Refusal {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Item {
     pub key: ConfigKey,
+    /// The running workspace that realizes it, when one does.
+    pub runtime: Option<String>,
     pub health: Health,
     /// How the root compared, whether or not a process is running.
     pub root: RootCheck,

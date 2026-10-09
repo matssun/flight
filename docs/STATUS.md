@@ -146,7 +146,9 @@ driver that reconnects, resumes or replaces under an explicit policy. Not wired 
 | # | Commit / PR | Validation | Guarantees | Limitations |
 |---|---|---|---|---|
 | 1 | PR #13, merged ad257df (code 958ea5d) | fmt, clippy `-D warnings`, `cargo test --workspace`; CI 4 jobs + CodeQL green on the final head | atomic fsynced store; newer/unreadable files never overwritten; non-destructive root classification; idempotent planner/driver; trust gates | library only |
-| 2 | PR (this branch) | as above, plus 10 live-tmux tests run 5 times without a failure | tmux config marks; autosave on create; startup reconcile; `--restore`; no duplicate on lost reply or concurrent passes; missing/changed directory never started in; corrupt file preserved | not on the wire or in the dashboard (increments 3-4); no agent resumption; single writer, not enforced |
+| 2 | PR #14, merged 652ae3a (code c1e7e6a) | as above, plus 10 live-tmux tests run 5 times without a failure | tmux config marks; autosave on create; startup reconcile; `--restore`; no duplicate on lost reply or concurrent passes; missing/changed directory never started in; corrupt file preserved | not on the wire or in the dashboard (increments 3-4); no agent resumption; single writer, not enforced |
+
+| 3 | PR (this branch) | as above; proto schema test, 6 proto, 6 orchestrator, 4 client, 1 real-TLS and 2 live tests added | saved workspaces replicated node -> orchestrator -> UI as last-known state; capability-gated, no sequence gap for an older orchestrator; bounded and validated | UI does not display them yet (increment 4); the node reports an unusable saved file as nothing |
 
 ### Observed failures and resolutions
 

@@ -3,10 +3,12 @@
 use flight_classify::AgentKind;
 use flight_proto::{
     AgentKindCode, AvailabilityCode, FleetImage, FleetNode, NodeStatusCode, PaneState,
-    SurfaceKindCode,
+    SavedHealthCode, SavedRootCode, SavedWorkspace, SurfaceKindCode,
 };
 use flight_state::{HostId, PaneRef, ServerId, SurfaceId, WorkspaceId};
-use flight_ui::{HostHealth, HostView, PaneView, SurfaceKind, UiSnapshot};
+use flight_ui::{
+    HostHealth, HostView, PaneView, SavedHealth, SavedRoot, SavedView, SurfaceKind, UiSnapshot,
+};
 use std::collections::BTreeSet;
 
 /// The orchestrator link itself, shown as a host row when it is down.
@@ -33,13 +35,66 @@ pub fn ui_snapshot(
     }
     let mut nodes: Vec<(&String, &FleetNode)> = image.nodes().iter().collect();
     nodes.sort_by(|a, b| (&a.1.display_name, a.0).cmp(&(&b.1.display_name, b.0)));
+    let mut saved = Vec::new();
     for (id, node) in nodes {
         hosts.extend(node_hosts(id, node, connected));
+        saved.extend(saved_views(id, node, connected));
     }
     UiSnapshot {
         hosts,
+        saved,
         taken_at: now,
     }
+}
+
+/// The node's saved workspaces, each with how reachable its node is. A node that is stale or
+/// gone still lists them (last-known): a saved workspace never vanishes with its host.
+fn saved_views(id: &str, node: &FleetNode, connected: bool) -> Vec<SavedView> {
+    let host_health = match (connected, node.status_code()) {
+        (true, Some(NodeStatusCode::Online)) => HostHealth::Online,
+        (true, Some(NodeStatusCode::Disconnected) | None) => HostHealth::Disconnected,
+        _ => HostHealth::Stale,
+    };
+    node.saved
+        .iter()
+        .filter_map(|s| saved_view(id, node, &host_health, s))
+        .collect()
+}
+
+fn saved_view(
+    id: &str,
+    node: &FleetNode,
+    host_health: &HostHealth,
+    s: &SavedWorkspace,
+) -> Option<SavedView> {
+    let health = match SavedHealthCode::try_from(s.health).ok()? {
+        SavedHealthCode::Running => SavedHealth::Running,
+        SavedHealthCode::Partial => SavedHealth::Partial,
+        SavedHealthCode::Stopped => SavedHealth::Stopped,
+        SavedHealthCode::Blocked | SavedHealthCode::Unspecified => SavedHealth::Blocked,
+    };
+    let root_state = match SavedRootCode::try_from(s.root_state).ok()? {
+        SavedRootCode::Verified => SavedRoot::Verified,
+        SavedRootCode::FirstSighting => SavedRoot::FirstSighting,
+        SavedRootCode::Missing => SavedRoot::Missing,
+        SavedRootCode::NotADirectory => SavedRoot::NotADirectory,
+        SavedRootCode::PermissionDenied => SavedRoot::PermissionDenied,
+        SavedRootCode::Changed => SavedRoot::Changed,
+        SavedRootCode::Unverified | SavedRootCode::Unspecified => SavedRoot::Unverified,
+    };
+    Some(SavedView {
+        host: HostId::new(id),
+        host_label: node.display_name.clone(),
+        host_health: host_health.clone(),
+        config_key: s.config_key.clone(),
+        name: s.name.clone(),
+        root: s.root.clone(),
+        health,
+        root_state,
+        detail: s.detail.clone(),
+        running: (!s.workspace_id.is_empty()).then(|| s.workspace_id.clone()),
+        imported: s.imported,
+    })
 }
 
 fn node_hosts(id: &str, node: &FleetNode, connected: bool) -> Vec<HostView> {

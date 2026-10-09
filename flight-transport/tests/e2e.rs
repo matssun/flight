@@ -177,3 +177,69 @@ async fn two_nodes_with_the_same_display_name_stay_distinct() {
     }
     server.shutdown().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn saved_workspaces_reach_the_ui_over_mutual_tls_and_survive_a_reconnect() {
+    use flight_proto::{SavedHealthCode, SavedRootCode, SavedWorkspace};
+    let saved = |key: &str, health: SavedHealthCode| SavedWorkspace {
+        config_key: key.to_owned(),
+        name: "nga".to_owned(),
+        root: "/work/nga".to_owned(),
+        health: health as i32,
+        root_state: SavedRootCode::Missing as i32,
+        detail: "no such directory".to_owned(),
+        workspace_id: String::new(),
+        imported: false,
+    };
+    let node_id = Arc::new(Identity::generate().expect("node"));
+    let ui_id = Identity::generate().expect("ui");
+    let trust = trust_with(&[(&node_id, "mini-1")], &[(&ui_id, "laptop")]);
+    let (server, orch, addr) = start(trust, None).await;
+    let node_fp = node_id.fingerprint().clone();
+    let link = node_link(&node_id, &addr, &orch, "mini-1", None, 1);
+    let (stop_tx, stop_rx) = watch::channel(false);
+    let runner = {
+        let link = link.clone();
+        tokio::spawn(async move { link.run(stop_rx).await })
+    };
+    wait_until("node online", || {
+        node_status(&server, &node_fp) == Some(NodeStatusCode::Online as i32)
+    })
+    .await;
+    let mut ui = UiClient::connect(&addr, &ui_id, &orch).await.expect("ui");
+    ui.send(subscribe()).expect("send");
+    ui_until(&mut ui, "fleet snapshot", |e| {
+        matches!(e.body, Some(ui_event_body::Body::Snapshot(_)))
+    })
+    .await;
+
+    link.observe_saved(vec![saved("c-1", SavedHealthCode::Blocked)]);
+    let got = ui_until(&mut ui, "saved delta", |e| {
+        matches!(&e.body, Some(ui_event_body::Body::Delta(d))
+            if matches!(&d.change, Some(Change::NodeSaved(_))))
+    })
+    .await;
+    let Some(ui_event_body::Body::Delta(d)) = got.body else {
+        unreachable!()
+    };
+    let Some(Change::NodeSaved(n)) = d.change else {
+        unreachable!()
+    };
+    assert_eq!(n.node_id, node_fp.as_str());
+    assert_eq!(n.items[0].detail, "no such directory");
+
+    // The node goes away; a UI that subscribes afterwards still sees the saved workspace.
+    stop_tx.send(true).expect("stop");
+    runner.await.expect("runner");
+    let mut late = UiClient::connect(&addr, &ui_id, &orch).await.expect("ui");
+    late.send(subscribe()).expect("send");
+    let first = ui_until(&mut late, "fleet snapshot", |e| {
+        matches!(e.body, Some(ui_event_body::Body::Snapshot(_)))
+    })
+    .await;
+    let Some(ui_event_body::Body::Snapshot(s)) = first.body else {
+        unreachable!()
+    };
+    assert_eq!(s.nodes[0].saved.len(), 1);
+    assert_eq!(s.nodes[0].status, NodeStatusCode::Disconnected as i32);
+}

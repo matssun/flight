@@ -99,6 +99,15 @@ Boundary with future worktree management: **Flight's recovery responsibility end
 - **Starting.** Only through the existing creation paths. The companion shell is now also refused when the workspace's directory no longer exists (tmux would otherwise start it silently in another directory); this applies to the dashboard's `CreateSurface` too.
 - **Concurrency.** A pass holds the persistence lock throughout, so passes serialize; tmux refuses a duplicate session name; surface creation is already one at a time.
 
+## Wire (increment 3)
+
+- `SavedWorkspace` (stable `config_key`, name, root, `SavedHealthCode`, `SavedRootCode`, bounded `detail`, running `workspace_id`, `imported`) is the node's own reading of a saved definition. The node is the only party that can verify a root, so the orchestrator relays and never judges.
+- Replication reuses the existing machinery with whole-list replacement: `Snapshot.saved` (4), `Delta.saved` (6), `NodeView.saved` (6), `FleetDelta.node_saved` (9). The list is small and changes rarely, so replacing it whole is simpler and cannot drift; it is bounded at 1024 entries and validated like every other message.
+- Capability `saved_workspaces_v1`. A node updates its state either way (so any snapshot has the list) but sends a delta only to an orchestrator that accepted the capability, and then consumes no sequence number: a delta nobody receives would look like a gap and cause a resync loop. An older orchestrator ignores the unknown snapshot field; a newer orchestrator with an older node simply shows none.
+- Saved workspaces are last-known state, like panes: they stay in the fleet image when their node goes away, and the dashboard shows them with the host's connection state ("unreachable host" is the orchestrator's knowledge of the node, not the node's of its root).
+- The node re-reads its report every 5 s (a stat per saved root and one pane listing), and sends a delta only when it changed. Reporting is read-only: it plans with the default policy and never starts, binds or saves.
+- A saved file that cannot be used reports nothing (persistence is disabled and the file is left alone); surfacing that condition to the dashboard is part of increment 4.
+
 ## Deferred, with reasons
 
 - Wire protocol: publishing saved-but-not-running workspaces to the dashboard, and the user actions, are the next increment (`SavedWorkspace` messages with capability negotiation, so an older node simply publishes none).

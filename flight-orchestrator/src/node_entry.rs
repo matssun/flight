@@ -44,6 +44,7 @@ impl NodeEntry {
             status: self.liveness.code() as i32,
             servers: self.image.servers.values().cloned().collect(),
             panes: self.image.panes.values().cloned().collect(),
+            saved: self.image.saved.clone(),
         }
     }
 }

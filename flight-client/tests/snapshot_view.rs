@@ -43,6 +43,7 @@ fn server(availability: AvailabilityCode, detail: &str) -> ServerStatus {
 
 fn node(id: &str, name: &str, status: NodeStatusCode, availability: AvailabilityCode) -> NodeView {
     NodeView {
+        saved: vec![],
         node_id: id.into(),
         display_name: name.into(),
         status: status as i32,
@@ -197,4 +198,119 @@ fn a_node_with_no_panes_yet_is_still_listed() {
     let s = ui_snapshot(&image(vec![v]), true, None, 5);
     assert_eq!(s.hosts.len(), 1);
     assert_eq!(s.hosts[0].health, HostHealth::Online);
+}
+
+mod saved {
+    use super::*;
+    use flight_proto::{
+        fleet_change, ui_event_body, FleetDelta, FleetImage, FleetSnapshot, NodeSavedWorkspaces,
+        SavedHealthCode, SavedRootCode, SavedWorkspace, UiEvent,
+    };
+    use flight_ui::{HostHealth, SavedHealth, SavedRoot};
+
+    fn entry(key: &str, root_state: SavedRootCode) -> SavedWorkspace {
+        SavedWorkspace {
+            config_key: key.to_owned(),
+            name: key.to_owned(),
+            root: "/work/x".to_owned(),
+            health: SavedHealthCode::Blocked as i32,
+            root_state: root_state as i32,
+            detail: "no such directory".to_owned(),
+            workspace_id: String::new(),
+            imported: false,
+        }
+    }
+
+    fn image_with(status: NodeStatusCode, saved: Vec<SavedWorkspace>) -> FleetImage {
+        let mut n = node("n1", "dev1", status, AvailabilityCode::Available);
+        n.saved = saved;
+        let mut image = FleetImage::new();
+        image.apply(&UiEvent {
+            body: Some(ui_event_body::Body::Snapshot(FleetSnapshot {
+                incarnation: vec![1; 16],
+                nodes: vec![n],
+            })),
+        });
+        image
+    }
+
+    #[test]
+    fn a_saved_workspace_is_listed_with_its_host_root_and_failure() {
+        let image = image_with(
+            NodeStatusCode::Online,
+            vec![entry("c-1", SavedRootCode::Missing)],
+        );
+        let snap = flight_client::ui_snapshot(&image, true, None, 5);
+        assert_eq!(snap.saved.len(), 1);
+        let s = &snap.saved[0];
+        assert_eq!(
+            (s.host_label.as_str(), s.root.as_str()),
+            ("dev1", "/work/x")
+        );
+        assert_eq!(
+            (s.health, s.root_state),
+            (SavedHealth::Blocked, SavedRoot::Missing)
+        );
+        assert_eq!(
+            (s.detail.as_str(), s.host_health.clone()),
+            ("no such directory", HostHealth::Online)
+        );
+    }
+
+    #[test]
+    fn a_saved_workspace_stays_listed_when_its_node_is_gone_or_the_orchestrator_is() {
+        let image = image_with(
+            NodeStatusCode::Disconnected,
+            vec![entry("c-1", SavedRootCode::Verified)],
+        );
+        let gone = flight_client::ui_snapshot(&image, true, None, 5);
+        assert_eq!(gone.saved.len(), 1);
+        assert_eq!(gone.saved[0].host_health, HostHealth::Disconnected);
+        let offline = flight_client::ui_snapshot(&image, false, Some("down"), 5);
+        assert_eq!(offline.saved.len(), 1);
+        assert_eq!(offline.saved[0].host_health, HostHealth::Stale);
+    }
+
+    #[test]
+    fn a_delta_replaces_the_list() {
+        let mut image = image_with(
+            NodeStatusCode::Online,
+            vec![entry("c-1", SavedRootCode::Missing)],
+        );
+        image.apply(&UiEvent {
+            body: Some(ui_event_body::Body::Delta(FleetDelta {
+                incarnation: vec![1; 16],
+                sequence: 1,
+                change: Some(fleet_change::Change::NodeSaved(NodeSavedWorkspaces {
+                    node_id: "n1".to_owned(),
+                    items: vec![
+                        entry("c-2", SavedRootCode::Changed),
+                        entry("c-3", SavedRootCode::Verified),
+                    ],
+                })),
+            })),
+        });
+        let keys: Vec<_> = flight_client::ui_snapshot(&image, true, None, 5)
+            .saved
+            .into_iter()
+            .map(|s| s.config_key)
+            .collect();
+        assert_eq!(keys, vec!["c-2", "c-3"]);
+    }
+
+    #[test]
+    fn an_entry_with_a_code_this_build_does_not_know_is_skipped_not_guessed() {
+        let mut odd = entry("c-9", SavedRootCode::Missing);
+        odd.health = 99;
+        let image = image_with(
+            NodeStatusCode::Online,
+            vec![odd, entry("c-1", SavedRootCode::Missing)],
+        );
+        assert_eq!(
+            flight_client::ui_snapshot(&image, true, None, 5)
+                .saved
+                .len(),
+            1
+        );
+    }
 }

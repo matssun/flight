@@ -70,6 +70,14 @@ impl TmuxServers {
         self.persistence = Some(persistence);
     }
 
+    /// The saved workspaces and their health, for the wire; empty without persistence.
+    pub fn saved_report(&self) -> Vec<flight_proto::SavedWorkspace> {
+        self.persistence
+            .as_ref()
+            .map(|p| p.report(self))
+            .unwrap_or_default()
+    }
+
     pub fn persistence(&self) -> Option<&WorkspacePersistence> {
         self.persistence.as_ref()
     }

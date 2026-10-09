@@ -154,6 +154,17 @@ impl NodeLink {
         }
     }
 
+    /// Fold the node's saved-workspace list into its state and stream the change, if connected.
+    pub fn observe_saved(&self, saved: Vec<flight_proto::SavedWorkspace>) {
+        let mut session = guard(&self.session);
+        let frames = session.observe_saved(saved);
+        if let Some(outbox) = guard(&self.out).as_ref() {
+            for f in frames {
+                let _ = outbox.push_delta(f);
+            }
+        }
+    }
+
     /// Read access to the session, for inspection.
     pub fn with_session<T>(&self, f: impl FnOnce(&NodeSession) -> T) -> T {
         f(&guard(&self.session))

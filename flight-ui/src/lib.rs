@@ -16,8 +16,8 @@ pub use app::{run, run_with_notice, run_with_start, Exit, Start};
 pub use collect::{Backend, Collector, CreateFailure};
 pub use render::{layout_kind, render, render_to_string, session_at, LayoutKind};
 pub use snapshot::{
-    HostHealth, HostView, PanePreview, PaneView, Surface, SurfaceKind, UiSnapshot, Workspace,
-    WorkspaceKey,
+    HostHealth, HostView, PanePreview, PaneView, SavedHealth, SavedRoot, SavedView, Surface,
+    SurfaceKind, UiSnapshot, Workspace, WorkspaceKey,
 };
 pub use view::{
     workspaces, Action, Effect, Field, FilterInput, FormInput, FormOutcome, HostChoice, InputMode,

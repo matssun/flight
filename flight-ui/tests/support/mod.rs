@@ -70,6 +70,7 @@ pub fn down(host: &str, health: HostHealth) -> HostView {
 pub fn snap(hosts: Vec<HostView>) -> UiSnapshot {
     UiSnapshot {
         hosts,
+        saved: Vec::new(),
         taken_at: 1000,
     }
 }

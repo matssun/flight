@@ -266,3 +266,84 @@ impl Screen {
             .join("\n")
     }
 }
+
+/// A TCP proxy to `target` that delays every chunk by `one_way` in each direction, so a round
+/// trip costs `2 * one_way` on top of the loopback. Returns the address to dial. Test tooling
+/// for measuring what latency does to connection setup; it never inspects the bytes (the
+/// connection is mutually authenticated TLS end to end).
+#[allow(dead_code)]
+pub fn delay_proxy(target: &str, one_way: Duration) -> String {
+    use std::io::{Read, Write};
+    use std::net::{TcpListener, TcpStream};
+    use std::sync::mpsc;
+    let listener = TcpListener::bind("127.0.0.1:0").expect("proxy bind");
+    let address = listener.local_addr().expect("proxy addr").to_string();
+    let target = target.to_owned();
+    std::thread::spawn(move || {
+        for client in listener.incoming().flatten() {
+            let Ok(server) = TcpStream::connect(&target) else {
+                continue;
+            };
+            let _ = (client.set_nodelay(true), server.set_nodelay(true));
+            for (mut from, mut to) in [
+                (
+                    client.try_clone().expect("clone"),
+                    server.try_clone().expect("clone"),
+                ),
+                (server, client),
+            ] {
+                let (tx, rx) = mpsc::channel::<(Instant, Vec<u8>)>();
+                std::thread::spawn(move || {
+                    let mut buf = vec![0u8; 16 * 1024];
+                    while let Ok(n) = from.read(&mut buf) {
+                        if n == 0
+                            || tx
+                                .send((Instant::now() + one_way, buf[..n].to_vec()))
+                                .is_err()
+                        {
+                            break;
+                        }
+                    }
+                });
+                std::thread::spawn(move || {
+                    while let Ok((due, bytes)) = rx.recv() {
+                        let now = Instant::now();
+                        if due > now {
+                            std::thread::sleep(due - now);
+                        }
+                        if to.write_all(&bytes).is_err() {
+                            break;
+                        }
+                    }
+                    let _ = to.shutdown(std::net::Shutdown::Both);
+                });
+            }
+        }
+    });
+    address
+}
+
+/// Replace the orchestrator address in an enrollment bundle with a delaying proxy when
+/// `FLIGHT_MEASURE_RTT_MS` asks for a simulated round trip time.
+#[allow(dead_code)]
+pub fn through_proxy(bundle: &str, real: &str) -> String {
+    let Some(rtt) = std::env::var("FLIGHT_MEASURE_RTT_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|v| *v > 0)
+    else {
+        return bundle.to_owned();
+    };
+    let proxy = delay_proxy(real, Duration::from_micros(rtt * 500));
+    bundle
+        .split_whitespace()
+        .map(|w| {
+            if w.starts_with("address=") {
+                format!("address={proxy}")
+            } else {
+                w.to_owned()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}

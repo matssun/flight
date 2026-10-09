@@ -37,6 +37,7 @@ fn dashboard_action(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('x') => Some(Action::SavedOp(SavedOp::Remove)),
         KeyCode::Char('v') => Some(Action::SavedOp(SavedOp::AcceptRoot)),
         KeyCode::Char('t') => Some(Action::SavedOp(SavedOp::Trust)),
+        KeyCode::Char('f') => Some(Action::SavedOp(SavedOp::Fresh)),
         KeyCode::Char('/') => Some(Action::Search),
         KeyCode::Char('?') => Some(Action::Help),
         KeyCode::Char('q') => Some(Action::Quit),

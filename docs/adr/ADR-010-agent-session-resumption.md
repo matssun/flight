@@ -54,8 +54,16 @@ A token lets a process on the same machine and user reopen a conversation, with 
 
 ## Consequences and limits
 
-- Agents created before this change have no reference; they are replaced as before, and the dashboard (once the wire carries it) says "new conversation".
+- Agents created before this change have no reference; they are replaced as before, and the dashboard says "new conversation (none was saved)".
 - Sessions started outside Flight are not discovered or adopted.
 - Resuming starts a model session that may re-read a long history; the provider's own cost and cache behaviour apply.
 - A non-ASCII or very long root cannot be matched to the provider's records and is not resumed.
 - Tested against a fake `claude` that behaves as the real one was observed to; the real CLI was exercised by hand once, for the facts above, not in CI.
+
+## On the wire and in the dashboard
+
+The dashboard words what Enter will do from what the node reported, never from hope. `SavedWorkspace.resume` (capability `agent_resume_v1`) is one of: absent (a node that predates it: no claim is made), `None` (no session saved: a new conversation), `Available` (the provider still has the conversation: Enter continues it), `Unavailable` (a session was saved and cannot be continued, with the reason: Enter will be refused), `Unsupported` (the provider has no reliable mechanism, with the reason). The report is made from the same checks as a resumption except the scan of running processes (that runs when it matters, at the resumption).
+
+- Enter on a stopped workspace says "Enter continues the earlier conversation", "Enter starts a new conversation (none was saved)" or "cannot continue the earlier conversation" plus the node's reason, wrapped whole, and offers `f`.
+- `f` asks, defaulting to No ("Start this workspace with a NEW agent conversation? The earlier conversation is not continued"), and sends `RestoreFresh`, which an orchestrator routes only to a node that offers `agent_resume_v1` (a node that does not would restore, which is not what was asked).
+- After success the message says "Continued … earlier conversation" only if the node had reported `Available` when the request was made, "Started … as a new conversation" otherwise, and "Started …" when the node does not say. A refusal keeps the entry and shows the node's words ("nothing was started and the saved workspace was kept").

@@ -16,6 +16,8 @@ pub enum SavedPromptKind {
     Trust,
     /// Point at another directory; the text being typed.
     ChangeRoot(String),
+    /// Start a new conversation, not the earlier one.
+    Fresh,
 }
 
 /// Which button has the focus.
@@ -128,6 +130,7 @@ impl SavedPrompt {
             SavedPromptKind::Remove => SavedActionKind::Remove,
             SavedPromptKind::AcceptRoot => SavedActionKind::AcceptRoot,
             SavedPromptKind::Trust => SavedActionKind::Trust,
+            SavedPromptKind::Fresh => SavedActionKind::RestoreFresh,
             SavedPromptKind::ChangeRoot(text) => {
                 let text = text.trim().to_owned();
                 if !valid_dir(&text) {
@@ -146,6 +149,7 @@ impl SavedPrompt {
             config_key: self.saved.config_key.clone(),
             name: self.saved.name.clone(),
             action,
+            resume: self.saved.resume.clone(),
         })
     }
 

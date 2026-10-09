@@ -218,6 +218,8 @@ mod saved {
             detail: "no such directory".to_owned(),
             workspace_id: String::new(),
             imported: false,
+            resume: 0,
+            resume_detail: String::new(),
         }
     }
 
@@ -311,6 +313,34 @@ mod saved {
                 .saved
                 .len(),
             1
+        );
+    }
+
+    #[test]
+    fn what_a_restart_does_about_the_conversation_is_only_what_the_node_said() {
+        use flight_proto::SavedResumeCode as R;
+        use flight_ui::SavedResume as V;
+        let with = |code: i32, detail: &str| {
+            let mut e = entry("c-1", SavedRootCode::Verified);
+            e.health = SavedHealthCode::Stopped as i32;
+            e.resume = code;
+            e.resume_detail = detail.to_owned();
+            let image = image_with(NodeStatusCode::Online, vec![e]);
+            flight_client::ui_snapshot(&image, true, None, 5).saved[0]
+                .resume
+                .clone()
+        };
+        // A node that does not say claims nothing either way.
+        assert_eq!(with(0, ""), V::Unknown);
+        assert_eq!(with(R::None as i32, ""), V::New);
+        assert_eq!(with(R::Available as i32, ""), V::Continues);
+        assert_eq!(
+            with(R::Unavailable as i32, "no saved conversation"),
+            V::CannotContinue("no saved conversation".into())
+        );
+        assert_eq!(
+            with(R::Unsupported as i32, "Codex"),
+            V::Unsupported("Codex".into())
         );
     }
 }

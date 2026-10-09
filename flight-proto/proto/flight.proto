@@ -156,6 +156,22 @@ enum SavedActionCode {
   SAVED_ACTION_CODE_SET_ROOT = 5;
   // An imported definition is trusted: it may now start processes.
   SAVED_ACTION_CODE_TRUST = 6;
+  // Start the workspace as a NEW conversation on purpose: the earlier one is not continued
+  // (ADR-010). Capability agent_resume_v1.
+  SAVED_ACTION_CODE_RESTORE_FRESH = 7;
+}
+
+// What starting a saved workspace again does about its agent's conversation (ADR-010).
+enum SavedResumeCode {
+  SAVED_RESUME_CODE_UNSPECIFIED = 0;
+  // No session was saved for it: starting it is a new conversation.
+  SAVED_RESUME_CODE_NONE = 1;
+  // The earlier conversation is there and starting it again continues it.
+  SAVED_RESUME_CODE_AVAILABLE = 2;
+  // A session was saved but cannot be continued now (resume_detail says why).
+  SAVED_RESUME_CODE_UNAVAILABLE = 3;
+  // This agent's provider has no reliable way to continue a session (resume_detail).
+  SAVED_RESUME_CODE_UNSUPPORTED = 4;
 }
 
 // Why a terminal session ended (ADR-003).
@@ -240,6 +256,11 @@ message SavedWorkspace {
   string workspace_id = 7;
   // The definition was imported, not made on this node: it starts nothing on its own.
   bool imported = 8;
+  // What starting it again does about the agent's conversation; unspecified from a node that
+  // does not say (ADR-010).
+  SavedResumeCode resume = 9;
+  // Why a conversation cannot be continued, plain text, bounded.
+  string resume_detail = 10;
 }
 
 // The node's complete list of saved workspaces. Replaces the previous list.

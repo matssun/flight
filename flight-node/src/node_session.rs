@@ -14,7 +14,7 @@ use flight_state::{PaneRef, WorkspaceId};
 
 /// What this node can do. `send_input` is not offered: there is no input path yet. A node
 /// never switches a client (it has none): it reveals a pane in its own tmux hierarchy.
-pub const ADVERTISED_CAPABILITIES: [&str; 8] = [
+pub const ADVERTISED_CAPABILITIES: [&str; 9] = [
     capability::PREVIEW,
     capability::GUARDED_REVEAL,
     capability::TERMINAL,
@@ -23,6 +23,7 @@ pub const ADVERTISED_CAPABILITIES: [&str; 8] = [
     capability::CREATE_SURFACE,
     capability::SAVED_WORKSPACES,
     capability::SAVED_ACTIONS,
+    capability::AGENT_RESUME,
 ];
 
 /// Frames to send, control work to run, and whether the node should close the stream.
@@ -288,6 +289,7 @@ impl NodeSession {
                     Ok(SavedActionCode::Retry) => SavedAction::Retry,
                     Ok(SavedActionCode::Remove) => SavedAction::Remove,
                     Ok(SavedActionCode::Restore) => SavedAction::Restore,
+                    Ok(SavedActionCode::RestoreFresh) => SavedAction::RestoreFresh,
                     Ok(SavedActionCode::AcceptRoot) => SavedAction::AcceptRoot,
                     Ok(SavedActionCode::SetRoot) => SavedAction::SetRoot(c.root.clone()),
                     Ok(SavedActionCode::Trust) => SavedAction::Trust,

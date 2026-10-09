@@ -31,6 +31,7 @@ fn saved(name: &str, root: SavedRoot, imported: bool) -> SavedView {
         detail: String::new(),
         running: None,
         imported,
+        resume: flight_ui::SavedResume::Unknown,
     }
 }
 
@@ -256,5 +257,122 @@ fn no_prompt_speaks_backend_words() {
             assert!(!screen.contains(banned), "{banned} in\n{screen}");
         }
         vm.apply(Action::SavedPrompt(SavedPromptInput::Cancel));
+    }
+}
+
+mod conversation {
+    use super::*;
+    use flight_ui::SavedResume;
+
+    fn on_with(resume: SavedResume) -> ViewModel {
+        let mut s = saved("gone", SavedRoot::Verified, false);
+        s.resume = resume;
+        on(s)
+    }
+
+    #[test]
+    fn the_screen_says_what_enter_will_do_and_no_more_than_the_node_reported() {
+        for (resume, expect, forbid) in [
+            (
+                SavedResume::Continues,
+                "continues the earlier conversation",
+                "new conversation (none",
+            ),
+            (
+                SavedResume::New,
+                "starts a new conversation (none was saved)",
+                "continues",
+            ),
+            (
+                SavedResume::CannotContinue("no saved conversation was found".into()),
+                "cannot continue the earlier conversation",
+                "Enter continues",
+            ),
+            (
+                SavedResume::Unsupported("Codex chooses its session ids itself".into()),
+                "Enter starts a new conversation",
+                "Enter continues",
+            ),
+        ] {
+            let vm = on_with(resume.clone());
+            let screen = render_to_string(&vm, 140, 34);
+            assert!(screen.contains(expect), "{resume:?}\n{screen}");
+            if let SavedResume::CannotContinue(why) | SavedResume::Unsupported(why) = &resume {
+                assert!(
+                    screen.contains(why.as_str()),
+                    "the reason is shown whole\n{screen}"
+                );
+            }
+            assert!(!screen.contains(forbid), "{resume:?}\n{screen}");
+        }
+        // A node that says nothing gets no claim at all.
+        let screen = render_to_string(&on_with(SavedResume::Unknown), 140, 34);
+        assert!(!screen.contains("conversation"), "{screen}");
+    }
+
+    #[test]
+    fn a_continuation_is_worded_as_one_only_when_the_node_said_it_would_continue() {
+        for (resume, started, continued) in [
+            (SavedResume::Continues, false, true),
+            (SavedResume::New, true, false),
+            (SavedResume::Unknown, true, false),
+            (SavedResume::Unsupported("x".into()), true, false),
+        ] {
+            let mut vm = on_with(resume.clone());
+            let r = request(vm.apply(Action::Switch));
+            vm.apply_saved_action(&r, Ok(()));
+            let said = vm.message().unwrap().to_owned();
+            assert_eq!(said.contains("Continued"), continued, "{resume:?}: {said}");
+            assert_eq!(said.starts_with("Started"), started, "{resume:?}: {said}");
+        }
+    }
+
+    #[test]
+    fn a_new_conversation_asks_first_defaults_to_no_and_is_its_own_action() {
+        let mut vm = on_with(SavedResume::CannotContinue("gone".into()));
+        assert_eq!(vm.apply(Action::SavedOp(SavedOp::Fresh)), Effect::None);
+        assert_eq!(vm.input_mode(), InputMode::SavedConfirm);
+        let screen = render_to_string(&vm, 120, 34);
+        assert!(screen.contains("NEW agent conversation"), "{screen}");
+        assert_eq!(
+            vm.apply(Action::SavedPrompt(SavedPromptInput::Enter)),
+            Effect::None,
+            "a stray Enter is a No"
+        );
+        vm.apply(Action::SavedOp(SavedOp::Fresh));
+        let r = request(vm.apply(Action::SavedPrompt(SavedPromptInput::Yes)));
+        assert_eq!(r.action, SavedActionKind::RestoreFresh);
+        vm.apply_saved_action(&r, Ok(()));
+        assert!(vm
+            .message()
+            .unwrap()
+            .contains("the earlier one was not continued"));
+    }
+
+    #[test]
+    fn a_failed_continuation_leaves_the_saved_entry_and_says_why_without_starting_anything() {
+        let mut vm = on_with(SavedResume::Continues);
+        let r = request(vm.apply(Action::Switch));
+        vm.apply_saved_action(
+            &r,
+            Err(CreateFailure::Other(
+                "cannot continue the earlier conversation (no saved conversation was found for \
+                 this directory); nothing was started and the saved workspace was kept"
+                    .into(),
+            )),
+        );
+        let said = vm.message().unwrap();
+        assert!(said.contains("nothing was started"), "{said}");
+        assert!(!said.contains("Started") && !said.contains("Continued"));
+        // It is still listed, still selectable.
+        assert!(vm.selected_saved().is_some());
+    }
+
+    #[test]
+    fn a_node_that_cannot_tell_gets_no_fresh_start_offer() {
+        let mut vm = on_with(SavedResume::Unknown);
+        assert_eq!(vm.apply(Action::SavedOp(SavedOp::Fresh)), Effect::None);
+        assert!(vm.saved_prompt().is_none());
+        assert!(vm.message().unwrap().contains("already starts a new one"));
     }
 }

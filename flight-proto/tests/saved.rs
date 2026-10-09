@@ -4,8 +4,8 @@
 //! and refused when malformed.
 
 use flight_proto::{
-    capability, delta_change, Delta, Reject, SavedHealthCode, SavedRootCode, SavedWorkspace,
-    SavedWorkspaces, Snapshot, Validate, MAX_DETAIL_LEN, MAX_SAVED,
+    capability, delta_change, Delta, Reject, SavedHealthCode, SavedResumeCode, SavedRootCode,
+    SavedWorkspace, SavedWorkspaces, Snapshot, Validate, MAX_DETAIL_LEN, MAX_SAVED,
 };
 use prost::Message;
 
@@ -19,6 +19,8 @@ fn good() -> SavedWorkspace {
         detail: "gone".to_owned(),
         workspace_id: String::new(),
         imported: false,
+        resume: 0,
+        resume_detail: String::new(),
     }
 }
 
@@ -158,6 +160,7 @@ mod saved_action {
             SavedActionCode::Restore,
             SavedActionCode::AcceptRoot,
             SavedActionCode::Trust,
+            SavedActionCode::RestoreFresh,
         ] {
             let c = command(a, "");
             assert_eq!(c.target_host(), Some("node-a"));
@@ -175,6 +178,7 @@ mod saved_action {
             (SavedActionCode::SetRoot, "relative/dir"),
             (SavedActionCode::SetRoot, "/bad\ndir"),
             (SavedActionCode::Restore, "/surprise"),
+            (SavedActionCode::RestoreFresh, "/surprise"),
             (SavedActionCode::Remove, "/surprise"),
         ];
         for (a, root) in bad {
@@ -202,5 +206,54 @@ mod saved_action {
             s.host.clear();
         }
         assert!(c.validate().is_err());
+    }
+}
+
+mod resume_status {
+    use super::*;
+
+    #[test]
+    fn a_node_that_does_not_say_sends_nothing_and_is_valid() {
+        let w = good();
+        assert_eq!((w.resume, w.resume_detail.as_str()), (0, ""));
+        w.validate().unwrap();
+        // The new fields cost nothing on the wire when unset, so an old peer sees the same bytes.
+        let mut with = good();
+        with.resume = SavedResumeCode::Available as i32;
+        assert!(with.encode_to_vec().len() > w.encode_to_vec().len());
+        let back = SavedWorkspace::decode(w.encode_to_vec().as_slice()).unwrap();
+        assert_eq!(back, w);
+    }
+
+    #[test]
+    fn every_status_is_valid_and_an_unknown_one_is_refused() {
+        for c in [
+            SavedResumeCode::None,
+            SavedResumeCode::Available,
+            SavedResumeCode::Unavailable,
+            SavedResumeCode::Unsupported,
+        ] {
+            let mut w = good();
+            w.resume = c as i32;
+            w.validate().unwrap();
+        }
+        let mut w = good();
+        w.resume = 99;
+        assert!(w.validate().is_err());
+    }
+
+    #[test]
+    fn the_reason_is_bounded() {
+        let mut w = good();
+        w.resume = SavedResumeCode::Unavailable as i32;
+        w.resume_detail = "x".repeat(MAX_DETAIL_LEN);
+        w.validate().unwrap();
+        w.resume_detail.push('x');
+        assert!(w.validate().is_err());
+    }
+
+    #[test]
+    fn the_capability_is_known_so_it_can_be_negotiated() {
+        assert!(capability::KNOWN.contains(&capability::AGENT_RESUME));
     }
 }

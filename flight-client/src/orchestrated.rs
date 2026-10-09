@@ -349,6 +349,7 @@ impl Backend for OrchestratedBackend {
             SavedActionKind::Retry => (SavedActionCode::Retry, String::new()),
             SavedActionKind::Remove => (SavedActionCode::Remove, String::new()),
             SavedActionKind::Restore => (SavedActionCode::Restore, String::new()),
+            SavedActionKind::RestoreFresh => (SavedActionCode::RestoreFresh, String::new()),
             SavedActionKind::AcceptRoot => (SavedActionCode::AcceptRoot, String::new()),
             SavedActionKind::SetRoot(path) => (SavedActionCode::SetRoot, path.clone()),
             SavedActionKind::Trust => (SavedActionCode::Trust, String::new()),

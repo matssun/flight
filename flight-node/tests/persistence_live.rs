@@ -1050,4 +1050,92 @@ mod resume {
         assert!(starts(&live).last().unwrap().starts_with("--session-id "));
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "version = 99\n");
     }
+
+    #[test]
+    fn the_report_says_what_starting_it_again_would_do_about_the_conversation() {
+        use flight_proto::SavedResumeCode as R;
+        let Some((live, key)) = lost("rs-wire") else {
+            return;
+        };
+        let resume = |live: &Live| {
+            let r = live.servers.saved_report();
+            (r[0].resume, r[0].resume_detail.clone())
+        };
+        assert_eq!(resume(&live), (R::Available as i32, String::new()));
+        // The provider loses the conversation: the report says so, and says why.
+        for t in transcripts(&live) {
+            std::fs::remove_file(t).unwrap();
+        }
+        let (code, why) = resume(&live);
+        assert_eq!(code, R::Unavailable as i32);
+        assert!(why.contains("no saved conversation"), "{why}");
+        // A fresh start is a new conversation and is then continuable.
+        act(&live, &key, SavedAction::RestoreFresh).unwrap();
+        live.lose_tmux();
+        assert_eq!(resume(&live).0, R::Available as i32);
+        // A changed directory forgets the reference: starting it again is a new conversation.
+        let other = live.dir("elsewhere");
+        act(&live, &key, SavedAction::SetRoot(other)).unwrap();
+        assert_eq!(resume(&live), (R::None as i32, String::new()));
+    }
+
+    #[test]
+    fn a_workspace_with_no_agent_or_an_unsupported_one_never_claims_a_continuation() {
+        use flight_proto::SavedResumeCode as R;
+        let Some(live) = Live::start("rs-none") else {
+            return;
+        };
+        let dir = live.dir("sh");
+        live.servers
+            .create_session(&SessionRequest {
+                name: "sh".to_owned(),
+                dir,
+                program: Program::Shell,
+            })
+            .unwrap();
+        assert_eq!(live.servers.saved_report()[0].resume, R::None as i32);
+    }
+
+    #[test]
+    fn an_agent_of_a_provider_without_a_mechanism_is_reported_unsupported_and_never_resumed() {
+        use flight_proto::SavedResumeCode as R;
+        use flight_workspaces::{
+            ConfigKey, Document, Origin, RootSpec, Store, SurfaceSpec, WorkspaceDefinition,
+        };
+        let Some(mut live) = Live::start("rs-codex") else {
+            return;
+        };
+        let dir = live.dir("cx");
+        let (key, surface) = (ConfigKey::mint().unwrap(), ConfigKey::mint().unwrap());
+        let mut doc = Document::default();
+        doc.active_mut().unwrap().upsert(WorkspaceDefinition {
+            key: key.clone(),
+            name: "cx".into(),
+            host: HOST.into(),
+            root: RootSpec::new(dir),
+            surfaces: vec![SurfaceSpec {
+                key: surface,
+                kind: flight_workspaces::SurfaceKind::Agent,
+                provider: Some("codex".into()),
+                skip_permissions: false,
+                last_surface_id: None,
+            }],
+            origin: Origin::Local,
+            last_workspace_id: None,
+        });
+        drop(std::mem::take(&mut live.servers));
+        Store::new(state(&live)).save(&doc).unwrap();
+        live.servers = Live::node(&live.endpoint, &live.root);
+        let r = live.servers.saved_report();
+        assert_eq!(r[0].resume, R::Unsupported as i32);
+        assert!(
+            r[0].resume_detail.contains("Codex"),
+            "{}",
+            r[0].resume_detail
+        );
+        // Starting it is refused with a reason about the provider; nothing resumes it.
+        let e = act(&live, key.as_str(), SavedAction::Restore).unwrap_err();
+        assert!(e.message.contains("no agent provider"), "{}", e.message);
+        assert!(live.sessions().is_empty());
+    }
 }

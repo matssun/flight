@@ -3,8 +3,8 @@
 #![allow(dead_code)]
 
 use flight_classify::AgentKind;
-use flight_state::{AgentState, HostId, PaneId, PaneRef, ServerId};
-use flight_ui::{HostHealth, HostView, PaneView, UiSnapshot};
+use flight_state::{AgentState, HostId, PaneId, PaneRef, ServerId, SurfaceId, WorkspaceId};
+use flight_ui::{HostHealth, HostView, PaneView, SurfaceKind, UiSnapshot};
 
 pub fn pref(host: &str, id: &str) -> PaneRef {
     PaneRef {
@@ -24,6 +24,26 @@ pub fn pane(host: &str, session: &str, id: &str, state: AgentState) -> PaneView 
         why: "test".to_owned(),
         title: String::new(),
         pid: 1,
+        workspace: workspace_of(host, session),
+        surface: SurfaceId::new(format!("s-{id}")),
+        kind: SurfaceKind::Agent(AgentKind::Claude),
+        root: "/work".to_owned(),
+    }
+}
+
+/// The workspace a test's agent pane belongs to: named by host and session, like a real one is
+/// by the node's id (never by the pane).
+pub fn workspace_of(host: &str, session: &str) -> WorkspaceId {
+    WorkspaceId::new(format!("w-{host}-{session}"))
+}
+
+/// A shell pane in the same workspace as `pane(host, session, ...)`.
+pub fn shell_pane(host: &str, session: &str, id: &str) -> PaneView {
+    PaneView {
+        agent: AgentKind::Other,
+        state: AgentState::Shell,
+        kind: SurfaceKind::Shell,
+        ..pane(host, session, id, AgentState::Shell)
     }
 }
 

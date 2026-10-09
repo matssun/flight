@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use crate::{OpenedTerminal, SessionRequest, TerminalSpec};
+use crate::{OpenedTerminal, SessionRequest, SurfaceRequest, TerminalSpec};
 use flight_proto::{
     node_body, response_result, ErrorInfo, ErrorKindCode, NodeFrame, Preview, Response,
 };
@@ -78,6 +78,15 @@ pub trait Control: Send + Sync {
             "creating a session is not available on this control",
         ))
     }
+
+    /// Add a surface to an existing workspace, found by its id. All or nothing: on failure no
+    /// window is left behind, and an existing surface is never touched or replaced.
+    fn create_surface(&self, _request: &SurfaceRequest) -> Result<(), ControlError> {
+        Err(ControlError::new(
+            ErrorKindCode::Unsupported,
+            "creating a surface is not available on this control",
+        ))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -98,6 +107,7 @@ enum Op {
         pid: u32,
     },
     Create(SessionRequest),
+    CreateSurface(SurfaceRequest),
     OpenTerminal(TerminalSpec),
 }
 
@@ -139,6 +149,13 @@ impl ControlJob {
         Self {
             request_id,
             op: Op::Create(request),
+        }
+    }
+
+    pub(crate) fn create_surface(request_id: u64, request: SurfaceRequest) -> Self {
+        Self {
+            request_id,
+            op: Op::CreateSurface(request),
         }
     }
 
@@ -184,6 +201,9 @@ impl ControlJob {
                 .map(|()| response_result::Result::Done(response_result::Done {})),
             Op::Create(request) => control
                 .create_session(request)
+                .map(|()| response_result::Result::Done(response_result::Done {})),
+            Op::CreateSurface(request) => control
+                .create_surface(request)
                 .map(|()| response_result::Result::Done(response_result::Done {})),
             // A terminal is opened through `Control::open_terminal`, never through this path.
             Op::OpenTerminal(_) => Err(ControlError::new(

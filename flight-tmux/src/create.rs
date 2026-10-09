@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-use crate::{CreateError, Launch, NewSession, Tmux, TmuxError, TmuxRunner};
+use crate::{
+    CreateError, Launch, NewSession, Tmux, TmuxError, TmuxRunner, SURFACE_ID_OPTION,
+    SURFACE_OPTION, WORKSPACE_OPTION,
+};
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -41,8 +44,26 @@ impl<R: TmuxRunner> Tmux<R> {
             .map(str::to_owned)
             .into();
         args.extend([spec.name.clone(), "-c".to_owned(), spec.dir.clone()]);
+        if let Some(mark) = &spec.mark {
+            args.extend(["-n".to_owned(), mark.kind.as_str().to_owned()]);
+        }
         if let Launch::Program { argv } = &spec.launch {
             args.extend(argv.iter().cloned());
+        }
+        if let Some(mark) = &spec.mark {
+            // The identity is written by the same tmux invocation that creates the session, so
+            // no observer can see the session without it.
+            for (flag, option, value) in [
+                (None, FLIGHT_SESSION_OPTION, "1"),
+                (None, WORKSPACE_OPTION, mark.workspace_id.as_str()),
+                (Some("-w"), SURFACE_OPTION, mark.kind.as_str()),
+                (Some("-w"), SURFACE_ID_OPTION, mark.surface_id.as_str()),
+            ] {
+                args.push(";".to_owned());
+                args.push("set-option".to_owned());
+                args.extend(flag.map(str::to_owned));
+                args.extend([option.to_owned(), value.to_owned()]);
+            }
         }
         let args: Vec<&str> = args.iter().map(String::as_str).collect();
         match self.runner().run(&args) {

@@ -15,10 +15,24 @@ fn required_capability(kind: &Kind) -> &'static str {
         Kind::SendInput(_) => capability::SEND_INPUT,
         Kind::KillPane(_) => capability::KILL,
         Kind::CreateSession(_) => capability::CREATE_SESSION,
+        Kind::CreateSurface(_) => capability::CREATE_SURFACE,
     }
 }
 
 impl OrchestratorCore {
+    /// The one host whose published panes include a surface of this workspace. A workspace id
+    /// that no host has, or that two hosts claim, names no host: nothing is routed on a guess.
+    fn host_of_workspace(&self, workspace_id: &str) -> Option<HostId> {
+        let mut hosts = self.nodes.iter().filter(|(_, e)| {
+            e.image
+                .panes
+                .values()
+                .any(|p| p.workspace_id == workspace_id)
+        });
+        let (host, _) = hosts.next()?;
+        hosts.next().is_none().then(|| host.clone())
+    }
+
     /// Route a validated command to its node by stable id. Only a currently connected node
     /// receives it; otherwise it fails at once. Commands are never queued: their target may
     /// no longer mean what it meant when the user issued them.
@@ -32,9 +46,28 @@ impl OrchestratorCore {
             fail(&mut fx, ErrorKindCode::InvalidRequest, "no command");
             return fx;
         };
-        let Some(target) = command.target_host().map(HostId::new) else {
-            fail(&mut fx, ErrorKindCode::InvalidRequest, "no target");
-            return fx;
+        // A surface belongs to a workspace and so to the workspace's host: the caller names the
+        // workspace and nothing else, and this side finds the host. A pane-addressed command
+        // names its host in the pane.
+        let target = match command.kind.as_ref() {
+            Some(Kind::CreateSurface(c)) => match self.host_of_workspace(&c.workspace_id) {
+                Some(host) => host,
+                None => {
+                    fail(
+                        &mut fx,
+                        ErrorKindCode::UnknownWorkspace,
+                        "no such workspace",
+                    );
+                    return fx;
+                }
+            },
+            _ => {
+                let Some(target) = command.target_host().map(HostId::new) else {
+                    fail(&mut fx, ErrorKindCode::InvalidRequest, "no target");
+                    return fx;
+                };
+                target
+            }
         };
         let (Some(entry), Some(kind)) = (self.nodes.get(&target), command.kind.as_ref()) else {
             fail(&mut fx, ErrorKindCode::InvalidRequest, "unknown node");

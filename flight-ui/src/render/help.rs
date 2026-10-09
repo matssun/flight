@@ -10,9 +10,11 @@ pub fn help_lines() -> Vec<Line<'static>> {
     let mut out = vec![Line::raw("")];
     out.push(heading("Moving around"));
     for (k, text) in [
-        ("↑ ↓  j k", "move between sessions"),
-        ("Enter", "open the selected session"),
-        ("Ctrl-Space then q", "leave a session; it keeps running"),
+        ("↑ ↓  j k", "move between workspaces"),
+        ("Enter  a", "open the workspace's agent"),
+        ("s", "open its shell (offers to create one)"),
+        ("Ctrl-Space a / s", "switch to the agent / shell"),
+        ("Ctrl-Space q", "back to the dashboard; both keep running"),
         ("/", "search by name, host or agent"),
         ("Esc", "clear the search, or quit"),
     ] {
@@ -39,7 +41,7 @@ pub fn help_lines() -> Vec<Line<'static>> {
     out.push(Line::raw(""));
     out.push(heading("Actions"));
     for (k, text) in [
-        ("n", "new session (host, folder, Claude or shell)"),
+        ("n", "new workspace (host, folder, Claude)"),
         ("r", "refresh"),
         ("q", "quit"),
     ] {
@@ -57,7 +59,7 @@ fn heading(text: &'static str) -> Line<'static> {
 fn entry(k: &'static str, text: &'static str) -> Line<'static> {
     Line::from(vec![
         Span::raw("  "),
-        Span::styled(format!("{k:<16}"), key()),
+        Span::styled(format!("{k:<18}"), key()),
         Span::styled(text.to_owned(), dim()),
     ])
 }

@@ -58,6 +58,7 @@ fn spec(launch: Launch) -> NewSession {
         name: "api".to_owned(),
         dir: "/work".to_owned(),
         launch,
+        mark: None,
     }
 }
 

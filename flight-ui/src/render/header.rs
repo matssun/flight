@@ -41,8 +41,8 @@ pub fn header_line(vm: &ViewModel, width: usize) -> Line<'static> {
     ));
     parts.extend(count(s.idle, "idle", dim()));
     parts.extend(count(s.shell, "shell", dim()));
-    if s.sessions() == 0 {
-        parts.push(Span::styled("no sessions", dim()));
+    if s.workspaces() == 0 {
+        parts.push(Span::styled("no workspaces", dim()));
     }
     parts.push(hosts_part(&s));
     spans.push(Span::styled("  ─  ", dim()));

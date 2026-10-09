@@ -12,11 +12,15 @@ mod render;
 mod snapshot;
 mod view;
 
-pub use app::{run, run_with_notice, Exit};
+pub use app::{run, run_with_notice, run_with_start, Exit, Start};
 pub use collect::{Backend, Collector, CreateFailure};
 pub use render::{layout_kind, render, render_to_string, session_at, LayoutKind};
-pub use snapshot::{HostHealth, HostView, PanePreview, PaneView, UiSnapshot};
+pub use snapshot::{
+    HostHealth, HostView, PanePreview, PaneView, Surface, SurfaceKind, UiSnapshot, Workspace,
+    WorkspaceKey,
+};
 pub use view::{
-    sessions, Action, Effect, Field, FilterInput, FormInput, FormOutcome, HostChoice, InputMode,
-    NewSessionForm, NewSessionRequest, Program, Summary, Tier, ViewModel,
+    workspaces, Action, Effect, Field, FilterInput, FormInput, FormOutcome, HostChoice, InputMode,
+    NewSessionForm, NewSessionRequest, NewSurfaceRequest, Program, PromptButton, PromptInput,
+    PromptOutcome, ShellPrompt, Summary, SurfaceChoice, Tier, ViewModel,
 };

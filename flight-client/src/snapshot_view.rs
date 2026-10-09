@@ -3,9 +3,10 @@
 use flight_classify::AgentKind;
 use flight_proto::{
     AgentKindCode, AvailabilityCode, FleetImage, FleetNode, NodeStatusCode, PaneState,
+    SurfaceKindCode,
 };
-use flight_state::{HostId, PaneRef, ServerId};
-use flight_ui::{HostHealth, HostView, PaneView, UiSnapshot};
+use flight_state::{HostId, PaneRef, ServerId, SurfaceId, WorkspaceId};
+use flight_ui::{HostHealth, HostView, PaneView, SurfaceKind, UiSnapshot};
 use std::collections::BTreeSet;
 
 /// The orchestrator link itself, shown as a host row when it is down.
@@ -97,16 +98,43 @@ fn availability(node: &FleetNode, server: &str) -> HostHealth {
 }
 
 fn pane_view(key: &PaneRef, p: &PaneState) -> Option<PaneView> {
+    let agent = agent_kind(p.agent_kind);
+    // A node that predates workspaces publishes none: the pane is then a workspace of its own.
+    let workspace = if p.workspace_id.is_empty() {
+        WorkspaceId::for_unmarked_session(key.host.as_str(), key.server.as_str(), &p.session)
+    } else {
+        WorkspaceId::new(&p.workspace_id)
+    };
+    let surface = if p.surface_id.is_empty() {
+        SurfaceId::new(format!(
+            "{workspace}.{}",
+            key.pane.as_str().trim_start_matches('%')
+        ))
+    } else {
+        SurfaceId::new(&p.surface_id)
+    };
+    let kind = match SurfaceKindCode::try_from(p.surface_kind) {
+        Ok(SurfaceKindCode::Shell) => SurfaceKind::Shell,
+        _ => SurfaceKind::Agent(agent),
+    };
     Some(PaneView {
         pane_ref: key.clone(),
         session: p.session.clone(),
         window: p.window.clone(),
-        agent: agent_kind(p.agent_kind),
+        agent,
         state: p.agent_state().ok()?,
         why: p.why.clone(),
         // The title changes on every poll and is not replicated.
         title: String::new(),
         pid: p.pid,
+        workspace,
+        surface,
+        kind,
+        root: if p.workspace_root.is_empty() {
+            p.path.clone()
+        } else {
+            p.workspace_root.clone()
+        },
     })
 }
 

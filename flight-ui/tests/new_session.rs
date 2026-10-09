@@ -99,7 +99,7 @@ fn the_form_starts_on_the_host_of_the_selected_pane() {
     let mut vm = ViewModel::new();
     vm.apply_snapshot(fleet());
     // The first snapshot selects the first pane; move to the dev1 pane.
-    while vm.selected().map(|p| p.host.as_str()) != Some("dev1") {
+    while vm.selected().map(|p| p.host.to_string()).as_deref() != Some("dev1") {
         vm.apply(Action::Down);
     }
     vm.apply(Action::NewSession);
@@ -175,7 +175,7 @@ fn host_and_program_are_chosen_with_the_arrow_keys() {
     input(&mut vm, FormInput::Right);
     assert_eq!(vm.form().unwrap().program(), Program::ClaudeSkipPermissions);
     input(&mut vm, FormInput::Right);
-    assert_eq!(vm.form().unwrap().program(), Program::Shell);
+    assert_eq!(vm.form().unwrap().program(), Program::Claude, "wraps");
     input(&mut vm, FormInput::Left);
     assert_eq!(vm.form().unwrap().program(), Program::ClaudeSkipPermissions);
     input(&mut vm, FormInput::Left);
@@ -214,7 +214,6 @@ fn create_sends_exactly_the_chosen_host_name_directory_and_program() {
         input(&mut vm, FormInput::Next);
     }
     input(&mut vm, FormInput::Right); // Claude, no permission prompts
-    input(&mut vm, FormInput::Right); // Shell
     let effect = submit(&mut vm, "api", "/srv/work");
     let Effect::Create(req) = effect else {
         panic!("{effect:?} / {:?}", error(&vm));
@@ -222,7 +221,7 @@ fn create_sends_exactly_the_chosen_host_name_directory_and_program() {
     assert_eq!(req.host.as_str(), "dev1");
     assert_eq!(req.name, "api");
     assert_eq!(req.dir, "/srv/work");
-    assert_eq!(req.program, Program::Shell);
+    assert_eq!(req.program, Program::ClaudeSkipPermissions);
     assert!(vm.form().unwrap().submitting());
 }
 
@@ -375,11 +374,11 @@ fn success_returns_to_the_dashboard_and_selects_the_new_session_when_it_appears(
     vm.apply_created(&req, Ok(()));
     assert!(vm.form().is_none(), "back on the dashboard");
     assert!(vm.message().unwrap().contains("api"));
-    let before = vm.selected().cloned();
+    let before = vm.selected();
 
     // Not in the snapshot yet: the cursor stays where it was.
     vm.apply_snapshot(fleet());
-    assert_eq!(vm.selected(), before.as_ref());
+    assert_eq!(vm.selected(), before);
 
     // Now the node reports it.
     let mut hosts = fleet();
@@ -387,7 +386,7 @@ fn success_returns_to_the_dashboard_and_selects_the_new_session_when_it_appears(
         .panes
         .push(pane("mac-local", "api", "%9", Busy));
     let effect = vm.apply_snapshot(hosts);
-    assert_eq!(vm.selected(), Some(&pref("mac-local", "%9")));
+    assert_eq!(vm.selected(), Some(pref("mac-local", "%9")));
     assert_eq!(effect, Effect::Select(Some(pref("mac-local", "%9"))));
 }
 
@@ -399,7 +398,7 @@ fn a_created_session_on_another_host_with_the_same_name_is_not_selected() {
     let mut hosts = fleet();
     hosts.hosts[1].panes.push(pane("dev1", "api", "%9", Busy));
     vm.apply_snapshot(hosts);
-    assert_ne!(vm.selected(), Some(&pref("dev1", "%9")));
+    assert_ne!(vm.selected(), Some(pref("dev1", "%9")));
 }
 
 #[test]
@@ -408,13 +407,13 @@ fn moving_the_cursor_cancels_the_pending_selection() {
     let req = request(&mut vm);
     vm.apply_created(&req, Ok(()));
     vm.apply(Action::Down);
-    let moved = vm.selected().cloned();
+    let moved = vm.selected();
     let mut hosts = fleet();
     hosts.hosts[0]
         .panes
         .push(pane("mac-local", "api", "%9", Busy));
     vm.apply_snapshot(hosts);
-    assert_eq!(vm.selected(), moved.as_ref(), "the user's choice wins");
+    assert_eq!(vm.selected(), moved, "the user's choice wins");
 }
 
 #[test]
@@ -429,7 +428,7 @@ fn the_dashboard_says_how_to_open_the_form() {
         render_to_string(&vm, 100, 24)
     };
     assert!(
-        empty.contains("No Flight sessions yet") && empty.contains("Press n to start"),
+        empty.contains("No Flight workspaces yet") && empty.contains("Press n to start"),
         "{empty}"
     );
 }
@@ -440,7 +439,7 @@ fn the_rendered_form_shows_fields_focus_and_buttons() {
     type_text(&mut vm, "api");
     let text = render_to_string(&vm, 100, 30);
     for want in [
-        "New session",
+        "New workspace",
         "Host",
         "mac-local",
         "▌ Name",
@@ -448,7 +447,8 @@ fn the_rendered_form_shows_fields_focus_and_buttons() {
         "Directory",
         "[~",
         "(•) Claude",
-        "( ) Shell",
+        "( ) Claude, no permission prompts",
+        "Agent",
         "Create",
         "Cancel",
         "Esc cancel",

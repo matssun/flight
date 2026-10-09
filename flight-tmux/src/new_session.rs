@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+use crate::SurfaceMark;
+
 /// How the first pane of a new session starts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Launch {
@@ -12,10 +14,13 @@ pub enum Launch {
     Program { argv: Vec<String> },
 }
 
-/// A detached session to create. The name is matched exactly, never as a prefix.
+/// A detached session to create. The name is matched exactly, never as a prefix. With a `mark`
+/// the session is a Flight workspace whose first window is the marked surface; without one it is
+/// an unmarked (legacy) session.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewSession {
     pub name: String,
     pub dir: String,
     pub launch: Launch,
+    pub mark: Option<SurfaceMark>,
 }

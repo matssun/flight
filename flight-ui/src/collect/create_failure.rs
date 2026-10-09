@@ -12,6 +12,8 @@ pub enum CreateFailure {
     ProgramUnavailable(String),
     /// The node is not connected.
     Unreachable,
+    /// The workspace is not (or no longer) known to the node or the orchestrator.
+    UnknownWorkspace,
     /// This dashboard has no way to create sessions (it is not reading an orchestrator).
     Unsupported,
     /// Anything else, in the words of whoever refused.

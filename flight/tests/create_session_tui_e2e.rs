@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//! The "New session" form, driven by keys in the real dashboard (a pseudo-terminal) against an
+//! The "New workspace" form, driven by keys in the real dashboard (a pseudo-terminal) against an
 //! orchestrator and a node on a private tmux server. Never touches the default tmux server.
 
 mod support;
@@ -12,6 +12,22 @@ use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use support::*;
+
+/// A `claude` that only waits, first on the node's `PATH`: the form offers an agent, and the
+/// test needs one that can run anywhere.
+fn path_with_fake_claude(base: &std::path::Path) -> String {
+    use std::os::unix::fs::PermissionsExt;
+    let bin = base.join("bin");
+    std::fs::create_dir_all(&bin).expect("bin");
+    let claude = bin.join("claude");
+    std::fs::write(&claude, "#!/bin/sh\nexec sleep 3600\n").expect("fake claude");
+    std::fs::set_permissions(&claude, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    format!(
+        "{}:{}",
+        bin.display(),
+        std::env::var("PATH").unwrap_or_default()
+    )
+}
 
 fn wait(what: &str, mut check: impl FnMut() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(30);
@@ -51,6 +67,7 @@ fn n_opens_the_form_and_a_filled_form_creates_a_session_that_appears_selected() 
     let _node = Proc(
         flight()
             .args(["node", "run", "--interval", "1", "--socket", &socket])
+            .env("PATH", path_with_fake_claude(&base))
             .arg("--config-dir")
             .arg(&node_cfg)
             .stdout(Stdio::null())
@@ -110,7 +127,7 @@ fn n_opens_the_form_and_a_filled_form_creates_a_session_that_appears_selected() 
     // Open the form: the fields are labelled and the buttons are there.
     writer.write_all(b"n").expect("n");
     wait("the form", || {
-        seen("New session") && seen("Directory") && seen(" Create ")
+        seen("New workspace") && seen("Directory") && seen(" Create ")
     });
 
     // An empty name is explained inside the form and does not close it.
@@ -118,10 +135,10 @@ fn n_opens_the_form_and_a_filled_form_creates_a_session_that_appears_selected() 
         writer.write_all(key).expect("key");
     }
     wait("the name to be asked for", || {
-        seen("Enter a name for the session.")
+        seen("Enter a name for the workspace.")
     });
 
-    // Fill it in: name, then the directory, then Shell (right arrow twice: Claude, no permission prompts, Shell), then Create.
+    // Fill it in: name, then the directory, then the default agent, then Create.
     for _ in 0..3 {
         writer.write_all(b"\x7f").expect("bs");
     }
@@ -131,7 +148,7 @@ fn n_opens_the_form_and_a_filled_form_creates_a_session_that_appears_selected() 
     writer
         .write_all(work.to_string_lossy().as_bytes())
         .expect("dir");
-    writer.write_all(b"\t\x1b[C\x1b[C").expect("shell");
+    writer.write_all(b"\t").expect("agent");
     writer.write_all(b"\t\r").expect("create");
 
     wait("tmux to have the session", || {
@@ -159,8 +176,8 @@ fn n_opens_the_form_and_a_filled_form_creates_a_session_that_appears_selected() 
         "the dashboard to confirm, close the form and select the new session",
         || {
             let text = screen.lock().unwrap_or_else(|p| p.into_inner()).text();
-            text.contains("Created session quick on mini-e2e.")
-                && !text.contains("New session")
+            text.contains("Created workspace quick on mini-e2e.")
+                && !text.contains("New workspace")
                 && text.lines().any(|l| l.contains('▌') && l.contains("quick"))
         },
     );

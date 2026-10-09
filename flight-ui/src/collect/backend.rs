@@ -2,7 +2,7 @@
 
 use super::CreateFailure;
 use crate::snapshot::{PanePreview, PaneView, UiSnapshot};
-use crate::NewSessionRequest;
+use crate::{NewSessionRequest, NewSurfaceRequest};
 use flight_state::PaneRef;
 
 /// Where the dashboard's data comes from. The UI neither knows nor cares whether it is
@@ -15,7 +15,12 @@ pub trait Backend: Send {
     fn preview(&mut self, pane: &PaneRef) -> PanePreview;
     /// Take the user to a pane. Backends that cannot say why not.
     fn switch_to(&mut self, pane: &PaneView) -> Result<(), String>;
-    /// Create a session on a node. A backend that cannot says so.
+    /// Add a surface (a shell) to a workspace that exists, on the workspace's own host. A
+    /// backend that cannot says so.
+    fn create_surface(&mut self, _request: &NewSurfaceRequest) -> Result<(), CreateFailure> {
+        Err(CreateFailure::Unsupported)
+    }
+    /// Create a workspace on a node (its agent session). A backend that cannot says so.
     fn create_session(&mut self, _request: &NewSessionRequest) -> Result<(), CreateFailure> {
         Err(CreateFailure::Unsupported)
     }

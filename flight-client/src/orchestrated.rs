@@ -1,17 +1,21 @@
 // SPDX-License-Identifier: MIT
 
 use crate::snapshot_view::ui_snapshot;
-use crate::switch::{Handoff, HandoffSlot, Presented, RemoteOps, SwitchTarget, Switcher, TmuxEnv};
+use crate::switch::{
+    Handoff, HandoffSlot, Presented, RemoteOps, ShownSurface, SwitchTarget, Switcher, TmuxEnv,
+};
 use crate::terminal::terminal_request_shape;
 use flight_proto::{
     command_kind as ck, response_result, ui_event_body, ui_request_body, Command, ErrorKindCode,
-    FleetImage, PaneRefMsg, ProgramCode, Request, Step, Subscribe, UiEvent, UiRequest,
+    FleetImage, PaneRefMsg, ProgramCode, Request, Step, Subscribe, SurfaceKindCode, UiEvent,
+    UiRequest,
 };
 use flight_state::PaneRef;
 use flight_transport::UiClient;
 use flight_trust::{ConnectionConfig, Fingerprint, Identity, TrustError};
 use flight_ui::{
-    Backend, CreateFailure, NewSessionRequest, PanePreview, PaneView, Program, UiSnapshot,
+    Backend, CreateFailure, NewSessionRequest, NewSurfaceRequest, PanePreview, PaneView, Program,
+    SurfaceChoice, UiSnapshot, WorkspaceKey,
 };
 use std::collections::HashMap;
 use std::path::Path;
@@ -194,11 +198,40 @@ impl Backend for OrchestratedBackend {
                 Ok(())
             }
             Ok(Presented::Terminal(id)) => {
-                self.handoff.put(Handoff::Terminal(id));
+                self.handoff.put(Handoff::Terminal {
+                    id,
+                    shown: ShownSurface {
+                        workspace: WorkspaceKey {
+                            host: pane.pane_ref.host.clone(),
+                            workspace: pane.workspace.clone(),
+                        },
+                        choice: if pane.kind.is_agent() {
+                            SurfaceChoice::Agent
+                        } else {
+                            SurfaceChoice::Shell
+                        },
+                    },
+                });
                 Ok(())
             }
             Err(e) => Err(e.to_string()),
         }
+    }
+
+    fn create_surface(&mut self, request: &NewSurfaceRequest) -> Result<(), CreateFailure> {
+        // The workspace id and the kind, and nothing else: the orchestrator finds the host and
+        // the node finds the directory.
+        let kind = ck::Kind::CreateSurface(ck::CreateSurface {
+            workspace_id: request.workspace.as_str().to_owned(),
+            kind: match request.kind {
+                SurfaceChoice::Shell => SurfaceKindCode::Shell,
+                SurfaceChoice::Agent => SurfaceKindCode::Agent,
+            } as i32,
+        });
+        self.runtime
+            .block_on(call(&self.requests, kind, CREATE_TIMEOUT))
+            .map(drop)
+            .map_err(create_failure)
     }
 
     fn create_session(&mut self, request: &NewSessionRequest) -> Result<(), CreateFailure> {
@@ -208,8 +241,8 @@ impl Backend for OrchestratedBackend {
             dir: request.dir.clone(),
             program: match request.program {
                 Program::Claude => ProgramCode::Claude,
-                Program::Shell => ProgramCode::Shell,
                 Program::ClaudeSkipPermissions => ProgramCode::ClaudeSkipPermissions,
+                Program::Shell => ProgramCode::Shell,
             } as i32,
         });
         self.runtime
@@ -226,9 +259,17 @@ fn create_failure(f: Failure) -> CreateFailure {
         Some(ErrorKindCode::InvalidDirectory) => CreateFailure::NoSuchDirectory(f.message),
         Some(ErrorKindCode::ProgramUnavailable) => CreateFailure::ProgramUnavailable(f.message),
         Some(ErrorKindCode::NodeUnreachable) => CreateFailure::Unreachable,
-        Some(ErrorKindCode::Unsupported) => CreateFailure::Other(
-            "That node is too old to create sessions. Update Flight on it.".to_owned(),
-        ),
+        Some(ErrorKindCode::UnknownWorkspace) => CreateFailure::UnknownWorkspace,
+        // An orchestrator that predates a command cannot even decode it, and says so in its
+        // own words; the user should hear what to do, not that.
+        Some(ErrorKindCode::InvalidRequest) if f.message.contains("command.kind") => {
+            CreateFailure::Other(
+                "The orchestrator is too old for this. Update Flight on it.".to_owned(),
+            )
+        }
+        Some(ErrorKindCode::Unsupported) => {
+            CreateFailure::Other("That node is too old for this. Update Flight on it.".to_owned())
+        }
         _ => CreateFailure::Other(f.message),
     }
 }
@@ -412,5 +453,47 @@ fn describe(e: &flight_proto::ErrorInfo) -> String {
         "the pane changed since it was listed; refresh".to_owned()
     } else {
         e.message.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn failure(kind: ErrorKindCode, message: &str) -> Failure {
+        Failure {
+            kind: Some(kind),
+            message: message.to_owned(),
+        }
+    }
+
+    #[test]
+    fn an_orchestrator_that_cannot_decode_the_command_is_called_too_old() {
+        let f = create_failure(failure(
+            ErrorKindCode::InvalidRequest,
+            "missing command.kind",
+        ));
+        assert_eq!(
+            f,
+            CreateFailure::Other(
+                "The orchestrator is too old for this. Update Flight on it.".into()
+            )
+        );
+    }
+
+    #[test]
+    fn typed_refusals_stay_typed() {
+        assert_eq!(
+            create_failure(failure(ErrorKindCode::UnknownWorkspace, "x")),
+            CreateFailure::UnknownWorkspace
+        );
+        assert_eq!(
+            create_failure(failure(ErrorKindCode::NodeUnreachable, "x")),
+            CreateFailure::Unreachable
+        );
+        assert_eq!(
+            create_failure(failure(ErrorKindCode::AlreadyExists, "x")),
+            CreateFailure::AlreadyExists
+        );
     }
 }

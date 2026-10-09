@@ -6,7 +6,8 @@
 
 use flight_classify::AgentKind;
 use flight_client::{
-    relay, ClientConfig, Handoff, Lease, OrchestratedBackend, RemoteOps, Switcher, TerminalEnd,
+    relay, ClientConfig, Handoff, Lease, LocalTerminal, OrchestratedBackend, RemoteOps, Switcher,
+    TerminalEnd,
 };
 use flight_node::{NodeCore, NodeSession, PaneObservation, Round, ServerOutcome, TmuxServers};
 use flight_orchestrator::OrchestratorConfig;
@@ -147,6 +148,7 @@ fn start(tag: &str, command: &str, terminals: bool) -> Rig {
             title: String::new(),
             focused: false,
             screen_lines: vec!["Done!".into(), String::new(), "❯".into()],
+            placement: Default::default(),
         })
         .collect();
     let deadline = Instant::now() + Duration::from_secs(10);
@@ -226,6 +228,10 @@ impl Rig {
             why: String::new(),
             title: String::new(),
             pid: pid + pid_offset,
+            workspace: flight_state::WorkspaceId::new("w-test"),
+            surface: flight_state::SurfaceId::new(format!("s-{id}")),
+            kind: flight_ui::SurfaceKind::Agent(AgentKind::Claude),
+            root: "/work".into(),
         }
     }
 
@@ -260,7 +266,7 @@ impl Rig {
         let view = self.view(i, 0);
         self.backend.switch_to(&view).expect("switch");
         match self.backend.handoff().take() {
-            Some(Handoff::Terminal(id)) => id,
+            Some(Handoff::Terminal { id, .. }) => id,
             other => panic!("expected a terminal handoff, got {other:?}"),
         }
     }
@@ -291,11 +297,14 @@ impl Rig {
         let task = self.rt.spawn(relay(
             sender,
             receiver,
-            input_rx,
-            resize_rx,
-            output_tx,
+            LocalTerminal {
+                input: input_rx,
+                resizes: resize_rx,
+                output: output_tx,
+            },
             || {},
             lease,
+            None,
         ));
         Shown {
             input: input_tx,

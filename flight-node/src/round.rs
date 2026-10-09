@@ -2,7 +2,7 @@
 
 use crate::Unavailable;
 use flight_classify::AgentKind;
-use flight_state::{PaneId, ServerId};
+use flight_state::{PaneId, RawPlacement, ServerId};
 use flight_tmux::PaneInfo;
 
 /// One agent pane as an observer saw it, with the captured screen the classifier needs.
@@ -20,6 +20,8 @@ pub struct PaneObservation {
     pub title: String,
     pub focused: bool,
     pub screen_lines: Vec<String>,
+    /// Where the backend says the pane belongs (workspace, surface, root).
+    pub placement: RawPlacement,
 }
 
 impl PaneObservation {
@@ -29,6 +31,7 @@ impl PaneObservation {
         screen_lines: Vec<String>,
         focused: bool,
     ) -> Self {
+        let placement = raw_placement(&info);
         Self {
             pane: PaneId::new(info.pane_id),
             pid: info.pane_pid,
@@ -40,6 +43,7 @@ impl PaneObservation {
             title: info.pane_title,
             focused,
             screen_lines,
+            placement,
         }
     }
 }
@@ -57,4 +61,16 @@ pub struct Round {
     pub server: ServerId,
     pub now: u64,
     pub outcome: ServerOutcome,
+}
+
+/// What the backend recorded about the pane's place, as read from the listing.
+pub(crate) fn raw_placement(info: &PaneInfo) -> RawPlacement {
+    RawPlacement {
+        workspace_id: info.workspace_id.clone(),
+        surface_id: info.surface_id.clone(),
+        surface_kind: info.surface_kind.clone(),
+        window_id: info.window_id.clone(),
+        session_id: info.session_id.clone(),
+        session_path: info.session_path.clone(),
+    }
 }

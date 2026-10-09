@@ -6,12 +6,13 @@
 mod support;
 
 use flight_node::{
-    Control, ControlError, NodeSession, SessionOutput, SessionRequest, ADVERTISED_CAPABILITIES,
+    Control, ControlError, NodeSession, SessionOutput, SessionRequest, SurfaceRequest,
+    ADVERTISED_CAPABILITIES,
 };
 use flight_proto::{
     command_kind as ck, node_body, orchestrator_body, response_result, Command, ErrorKindCode,
     Goodbye, Heartbeat, NodeFrame, OrchestratorFrame, OrchestratorHello, PaneRefMsg, ProgramCode,
-    ProtocolVersion, Request, ResyncRequest, Validate, CURRENT_VERSION,
+    ProtocolVersion, Request, ResyncRequest, SurfaceKindCode, Validate, CURRENT_VERSION,
 };
 use flight_state::{PaneId, ServerId};
 use std::sync::Mutex;
@@ -22,9 +23,17 @@ struct FakeControl {
     killed: Mutex<Vec<String>>,
     revealed: Mutex<Vec<String>>,
     created: Mutex<Vec<String>>,
+    surfaces: Mutex<Vec<String>>,
 }
 
 impl Control for FakeControl {
+    fn create_surface(&self, r: &SurfaceRequest) -> Result<(), ControlError> {
+        self.surfaces
+            .lock()
+            .unwrap()
+            .push(format!("{}/{}:{:?}", r.host, r.workspace_id, r.kind));
+        Ok(())
+    }
     fn capture(&self, _: &ServerId, pane: &PaneId, lines: u32) -> Result<String, ControlError> {
         Ok(format!("{pane} last {lines} lines"))
     }
@@ -57,6 +66,10 @@ fn killed() -> Vec<String> {
 
 fn created() -> Vec<String> {
     CONTROL.with(|c| c.created.lock().unwrap().clone())
+}
+
+fn surfaces() -> Vec<String> {
+    CONTROL.with(|c| c.surfaces.lock().unwrap().clone())
 }
 
 fn revealed() -> Vec<String> {
@@ -617,4 +630,68 @@ fn a_malformed_create_session_closes_the_stream_before_any_job() {
         assert!(out.close.is_some(), "{bad:?}");
     }
     assert!(created().is_empty());
+}
+
+fn surface(id: u64, workspace: &str, kind: SurfaceKindCode) -> OrchestratorFrame {
+    request(
+        id,
+        ck::Kind::CreateSurface(ck::CreateSurface {
+            workspace_id: workspace.into(),
+            kind: kind as i32,
+        }),
+    )
+}
+
+#[test]
+fn a_create_surface_becomes_a_job_for_this_node_and_that_workspace() {
+    let mut s = ready(&["create_surface_v1"]);
+    let out = s.on_frame(surface(30, "w-abc", SurfaceKindCode::Shell), 1);
+    assert_eq!(out.jobs.len(), 1);
+    assert!(matches!(
+        only_response(out),
+        response_result::Result::Done(_)
+    ));
+    // The host is this node's own, whatever the request said or did not say.
+    assert_eq!(surfaces(), ["node-1/w-abc:Shell"]);
+}
+
+#[test]
+fn an_agent_is_made_with_its_workspace_not_added_to_it() {
+    let mut s = ready(&["create_surface_v1"]);
+    let out = s.on_frame(surface(31, "w-abc", SurfaceKindCode::Agent), 1);
+    assert!(out.jobs.is_empty());
+    assert_eq!(
+        error_kind(only_response(out)),
+        ErrorKindCode::Unsupported as i32
+    );
+    assert!(surfaces().is_empty());
+}
+
+#[test]
+fn a_peer_that_did_not_accept_create_surface_gets_none() {
+    let mut s = ready(&["create_session_v1"]);
+    let out = s.on_frame(surface(32, "w-abc", SurfaceKindCode::Shell), 1);
+    assert!(out.jobs.is_empty());
+    assert_eq!(
+        error_kind(only_response(out)),
+        ErrorKindCode::Unsupported as i32
+    );
+    assert!(surfaces().is_empty());
+}
+
+#[test]
+fn a_malformed_create_surface_closes_the_stream_before_any_job() {
+    let mut s = ready(&["create_surface_v1"]);
+    for bad in ["", "a b", "w:1", "$3", "../x"] {
+        let out = s.on_frame(surface(33, bad, SurfaceKindCode::Shell), 1);
+        assert!(out.jobs.is_empty() && out.close.is_some(), "{bad:?}");
+    }
+    let out = s.on_frame(surface(34, "w-abc", SurfaceKindCode::Unspecified), 1);
+    assert!(out.jobs.is_empty() && out.close.is_some());
+    assert!(surfaces().is_empty());
+}
+
+#[test]
+fn the_node_offers_workspace_surfaces() {
+    assert!(ADVERTISED_CAPABILITIES.contains(&"create_surface_v1"));
 }

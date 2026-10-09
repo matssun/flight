@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-use super::{Program, SessionEnv, SessionRequest};
+use super::{new_id, Program, SessionEnv, SessionRequest};
 use crate::ControlError;
 use flight_proto::{valid_dir, valid_session_name, ErrorKindCode};
-use flight_tmux::{CreateError, Launch, NewSession, Tmux, TmuxRunner};
+use flight_tmux::{CreateError, Launch, NewSession, SurfaceMark, SurfaceTag, Tmux, TmuxRunner};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
@@ -40,10 +40,21 @@ pub(crate) fn create<R: TmuxRunner>(
             argv: claude_argv(request.program, find_program(CLAUDE, env)?),
         },
     };
+    // The new session is a workspace: it gets an identity of its own, kept in the backend, and
+    // its first window is the surface the program makes.
+    let mark = SurfaceMark {
+        workspace_id: new_id('w')?,
+        surface_id: new_id('s')?,
+        kind: match request.program {
+            Program::Shell => SurfaceTag::Shell,
+            Program::Claude | Program::ClaudeSkipPermissions => SurfaceTag::Agent,
+        },
+    };
     let spec = NewSession {
         name: request.name.clone(),
         dir: dir.to_string_lossy().into_owned(),
         launch,
+        mark: Some(mark),
     };
     match tmux.create_session(&spec) {
         Ok(_id) => Ok(()),

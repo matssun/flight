@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-use crate::terminal::{relay, Lease, TerminalEnd};
+use crate::terminal::{relay, Lease, LocalTerminal, TerminalEnd};
 use crate::ClientConfig;
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, size};
 use flight_proto::valid_term;
 use flight_transport::TerminalClient;
+use flight_ui::SurfaceChoice;
 use rustix::event::{poll, PollFd, PollFlags};
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -49,7 +50,11 @@ impl Drop for RawMode {
 
 /// Show the terminal `terminal_id` in the user's terminal until it ends, then restore the
 /// terminal. `Ctrl-Space` then `q` leaves at any time.
-pub fn run_terminal(config: &ClientConfig, terminal_id: &[u8]) -> TerminalEnd {
+pub fn run_terminal(
+    config: &ClientConfig,
+    terminal_id: &[u8],
+    showing: Option<SurfaceChoice>,
+) -> TerminalEnd {
     let Ok(runtime) = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
@@ -98,11 +103,20 @@ pub fn run_terminal(config: &ClientConfig, terminal_id: &[u8]) -> TerminalEnd {
 
     let hint = || {
         let _ = std::io::stderr().write_all(
-            b"\r\n[Ctrl-Space q leaves; Ctrl-Space Ctrl-Space sends a literal Ctrl-Space]\r\n",
+            b"\r\n[Ctrl-Space: q dashboard, a agent, s shell; Ctrl-Space Ctrl-Space sends a literal Ctrl-Space]\r\n",
         );
     };
     let end = runtime.block_on(relay(
-        sender, receiver, input_rx, resize_rx, output_tx, hint, lease,
+        sender,
+        receiver,
+        LocalTerminal {
+            input: input_rx,
+            resizes: resize_rx,
+            output: output_tx,
+        },
+        hint,
+        lease,
+        showing,
     ));
 
     stop.store(true, Ordering::Relaxed);

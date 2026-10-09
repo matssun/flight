@@ -15,7 +15,7 @@ mod switcher;
 
 pub use attach_command::AttachCommand;
 pub use error::SwitchError;
-pub use handoff::Handoff;
+pub use handoff::{Handoff, ShownSurface};
 pub use handoff_slot::HandoffSlot;
 pub use placement::{detect_placement, TmuxEnv, UiPlacement};
 pub use plan::{plan_switch, SwitchPlan, SwitchTarget, UiContext};

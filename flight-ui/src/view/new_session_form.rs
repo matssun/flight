@@ -115,7 +115,7 @@ impl NewSessionForm {
             CreateFailure::AlreadyExists => (
                 Field::Name,
                 format!(
-                    "A session named \"{}\" already exists on {host}. Choose another name.",
+                    "A workspace named \"{}\" already exists on {host}. Choose another name.",
                     self.name
                 ),
             ),
@@ -125,9 +125,10 @@ impl NewSessionForm {
                 Field::Host,
                 format!("{host} is not connected right now. Nothing was created."),
             ),
+            CreateFailure::UnknownWorkspace => (Field::Create, "Unknown workspace.".to_owned()),
             CreateFailure::Unsupported => (
                 Field::Create,
-                "This dashboard is not connected to an orchestrator, so it cannot create sessions."
+                "This dashboard is not connected to an orchestrator, so it cannot create workspaces."
                     .to_owned(),
             ),
             CreateFailure::Other(why) => (Field::Create, why.clone()),
@@ -165,10 +166,10 @@ impl NewSessionForm {
     fn validate(&self) -> Result<NewSessionRequest, (Field, &'static str)> {
         let host = self.hosts.get(self.host).ok_or((
             Field::Host,
-            "No node is connected, so there is nowhere to create a session.",
+            "No node is connected, so there is nowhere to create a workspace.",
         ))?;
         if self.name.is_empty() {
-            return Err((Field::Name, "Enter a name for the session."));
+            return Err((Field::Name, "Enter a name for the workspace."));
         }
         if !valid_session_name(&self.name) {
             return Err((

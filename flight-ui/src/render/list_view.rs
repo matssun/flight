@@ -1,23 +1,27 @@
 // SPDX-License-Identifier: MIT
 
-//! The session list as lines: sessions grouped by how much they want the user, most urgent
-//! first, then any host that is not healthy. A pure function of the view model and a width.
+//! The workspace list as lines: workspaces grouped by how much they want the user, most urgent
+//! first, then any host that is not healthy. The selected workspace opens out to show its
+//! surfaces. A pure function of the view model and a width.
 
 use super::empty_state::empty_state;
-use super::style::{bold, dim, health_look, selected_row, state_icon, state_look, tier_colour};
+use super::style::{
+    bold, dim, health_look, key, selected_row, state_icon, state_look, surface_status, tier_colour,
+};
 use super::text::{cells, fit, pad};
-use crate::snapshot::{HostHealth, PaneView};
+use crate::snapshot::{HostHealth, PaneView, Surface, SurfaceKind, Workspace};
 use crate::view::{Tier, ViewModel};
 use flight_state::PaneRef;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
-/// The lines, which session each belongs to, and where the selection is.
+/// The lines, which workspace each belongs to, and where the selection is.
 pub struct ListView {
     pub lines: Vec<Line<'static>>,
-    /// One entry per line: the session it shows, if it shows one.
+    /// One entry per line: the pane (the workspace's agent, or its shell) it stands for, if it
+    /// shows a workspace.
     pub panes: Vec<Option<PaneRef>>,
-    /// First and last line of the selected session.
+    /// First and last line of the selected workspace.
     pub selected: Option<(usize, usize)>,
 }
 
@@ -45,45 +49,51 @@ pub fn list_view(vm: &ViewModel, width: usize, card: bool) -> ListView {
     }
     let name_w = listed
         .iter()
-        .map(|p| cells(&p.session))
+        .map(|w| cells(&w.name))
         .max()
         .unwrap_or(0)
         .clamp(6, 24);
     let host_w = listed
         .iter()
-        .map(|p| cells(host_label(vm, p)))
+        .map(|w| cells(&w.host_label))
         .max()
         .unwrap_or(0)
         .min(14);
     let mut tier: Option<Tier> = None;
-    for p in &listed {
-        let t = Tier::of(p.state);
+    for w in &listed {
+        let Some(p) = w.anchor_pane() else { continue };
+        let t = Tier::of(w.state());
         if tier != Some(t) {
             if tier.is_some() {
                 out.push(Line::raw(""), None);
             }
-            let n = listed.iter().filter(|q| Tier::of(q.state) == t).count();
+            let n = listed.iter().filter(|q| Tier::of(q.state()) == t).count();
             out.push(tier_header(t, n), None);
             tier = Some(t);
         }
-        let selected = vm.selected() == Some(&p.pane_ref);
+        let selected = vm.selected_key() == Some(&w.key());
         let start = out.lines.len();
         let ctx = Row {
             vm,
+            w,
             p,
             width,
             name_w,
             host_w,
             selected,
         };
+        let pane = Some(p.pane_ref.clone());
         if card {
             let (a, b) = ctx.card();
-            out.push(a, Some(p.pane_ref.clone()));
-            out.push(b, Some(p.pane_ref.clone()));
+            out.push(a, pane.clone());
+            out.push(b, pane.clone());
         } else {
-            out.push(ctx.line(), Some(p.pane_ref.clone()));
+            out.push(ctx.line(), pane.clone());
         }
         if selected {
+            for surface_line in ctx.surfaces() {
+                out.push(surface_line, pane.clone());
+            }
             out.selected = Some((start, out.lines.len().saturating_sub(1)));
         }
     }
@@ -129,15 +139,6 @@ fn host_problems(vm: &ViewModel, out: &mut ListView) {
     }
 }
 
-/// The display name of the host a session lives on.
-pub(super) fn host_label<'a>(vm: &'a ViewModel, p: &'a PaneView) -> &'a str {
-    vm.snapshot()
-        .hosts
-        .iter()
-        .find(|h| h.host == p.pane_ref.host)
-        .map_or(p.pane_ref.host.as_str(), |h| h.label.as_str())
-}
-
 /// The agent's name as the user knows it.
 pub(super) fn agent_name(p: &PaneView) -> String {
     format!("{:?}", p.agent).to_lowercase()
@@ -145,6 +146,8 @@ pub(super) fn agent_name(p: &PaneView) -> String {
 
 struct Row<'a> {
     vm: &'a ViewModel,
+    w: &'a Workspace,
+    /// The workspace's agent pane, or its shell's when it has no agent.
     p: &'a PaneView,
     width: usize,
     name_w: usize,
@@ -196,7 +199,7 @@ impl Row<'_> {
     fn line(&self) -> Line<'static> {
         let (_, label, colour) = state_look(self.p.state);
         let icon = state_icon(self.p.state, self.vm.spinner_frame());
-        let host = host_label(self.vm, self.p);
+        let host = self.w.host_label.as_str();
         // bar, space, icon, space
         let room = self.width.saturating_sub(4);
         let host_w = self.host_w;
@@ -226,7 +229,7 @@ impl Row<'_> {
             Span::raw(" "),
             Span::styled(icon.to_owned(), Style::default().fg(colour)),
             Span::raw(" "),
-            Span::styled(pad(&self.p.session, name_w), self.name_style()),
+            Span::styled(pad(&self.w.name, name_w), self.name_style()),
             Span::raw(" "),
             Span::styled(pad(label, STATE_W), Style::default().fg(colour)),
         ];
@@ -253,6 +256,48 @@ impl Row<'_> {
         self.finish(Line::from(spans))
     }
 
+    /// The selected workspace's surfaces, one line each, with the key that opens each. A
+    /// surface that does not exist yet says so and says how to make it.
+    fn surfaces(&self) -> Vec<Line<'static>> {
+        let room = self.width.saturating_sub(6);
+        let agent = self.w.agent();
+        let shell = self.w.shell();
+        vec![
+            self.surface_line("a", "Agent", agent, "not running", room),
+            self.surface_line("s", "Shell", shell, "none yet · press s to create", room),
+        ]
+    }
+
+    fn surface_line(
+        &self,
+        key_letter: &'static str,
+        title: &'static str,
+        surface: Option<&Surface>,
+        missing: &'static str,
+        room: usize,
+    ) -> Line<'static> {
+        let mut spans = vec![
+            self.bar(),
+            Span::raw("   "),
+            Span::styled(key_letter.to_owned(), key()),
+            Span::raw(" "),
+            Span::styled(pad(title, 6), bold()),
+        ];
+        match surface {
+            Some(s) => {
+                let (label, colour) = surface_status(s);
+                let provider = match s.kind {
+                    SurfaceKind::Agent(_) => agent_name(&s.pane),
+                    SurfaceKind::Shell => String::new(),
+                };
+                spans.push(Span::styled(pad(&provider, 9), dim()));
+                spans.push(Span::styled(label.to_owned(), Style::default().fg(colour)));
+            }
+            None => spans.push(Span::styled(fit(missing, room), dim())),
+        }
+        self.finish(Line::from(spans))
+    }
+
     /// Two lines for a narrow list: the name, then what it is doing and where.
     fn card(&self) -> (Line<'static>, Line<'static>) {
         let (_, label, colour) = state_look(self.p.state);
@@ -263,9 +308,9 @@ impl Row<'_> {
             Span::raw(" "),
             Span::styled(icon.to_owned(), Style::default().fg(colour)),
             Span::raw(" "),
-            Span::styled(fit(&self.p.session, room), self.name_style()),
+            Span::styled(fit(&self.w.name, room), self.name_style()),
         ]);
-        let detail = format!("{label} · {}", host_label(self.vm, self.p));
+        let detail = format!("{label} · {}", self.w.host_label);
         let second = Line::from(vec![
             self.bar(),
             Span::raw("   "),

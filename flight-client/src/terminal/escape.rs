@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+use flight_ui::SurfaceChoice;
+
 /// The local escape byte, `Ctrl-Space`. Handled before anything is forwarded, so a wedged remote
 /// can always be left, and a literal `Ctrl-Space` can still be sent.
 const ESCAPE: u8 = 0x00;
@@ -12,17 +14,30 @@ pub enum EscapeAction {
     Leave,
     /// `Ctrl-Space` then something else: nothing was forwarded; remind the user of the keys.
     Hint,
+    /// `Ctrl-Space` then `a` or `s`: leave this surface for the workspace's other one.
+    Switch(SurfaceChoice),
 }
 
-/// `Ctrl-Space` then `q` leaves; `Ctrl-Space` then `Ctrl-Space` sends one literal `Ctrl-Space`; `Ctrl-Space`
-/// followed by anything else is discarded together with the prefix (and a hint is due), so
-/// nothing is forwarded by accident. The prefix may arrive in a different read from its key.
+/// `Ctrl-Space` then `q` leaves; then `a` or `s` switches to the workspace's agent or shell;
+/// then `Ctrl-Space` again sends one literal `Ctrl-Space`; followed by anything else it is
+/// discarded together with the prefix (and a hint is due), so nothing is forwarded by
+/// accident. The prefix may arrive in a different read from its key.
 #[derive(Debug, Default)]
 pub struct EscapeFilter {
     prefix_seen: bool,
+    /// The surface being shown, if known: asking for it again does nothing.
+    showing: Option<SurfaceChoice>,
 }
 
 impl EscapeFilter {
+    /// A filter for a terminal that shows `showing`.
+    pub fn showing(showing: Option<SurfaceChoice>) -> Self {
+        Self {
+            prefix_seen: false,
+            showing,
+        }
+    }
+
     /// The bytes to forward to the remote, and what else to do. After `Leave`, the rest of
     /// the input is dropped.
     pub fn feed(&mut self, input: &[u8]) -> (Vec<u8>, EscapeAction) {
@@ -33,6 +48,17 @@ impl EscapeFilter {
                 self.prefix_seen = false;
                 match b {
                     b'q' | b'Q' => return (out, EscapeAction::Leave),
+                    b'a' | b'A' | b's' | b'S' => {
+                        let wanted = if matches!(b, b'a' | b'A') {
+                            SurfaceChoice::Agent
+                        } else {
+                            SurfaceChoice::Shell
+                        };
+                        // Already there: nothing to do, and nothing to forward.
+                        if self.showing != Some(wanted) {
+                            return (out, EscapeAction::Switch(wanted));
+                        }
+                    }
                     ESCAPE => out.push(ESCAPE),
                     _ => action = EscapeAction::Hint,
                 }
@@ -88,6 +114,22 @@ mod tests {
         let mut f = EscapeFilter::default();
         f.feed(b"\x00");
         assert_eq!(f.feed(b"\x00"), (vec![0x00], EscapeAction::None));
+    }
+
+    #[test]
+    fn a_and_s_switch_surface_unless_it_is_already_shown() {
+        let mut f = EscapeFilter::showing(Some(SurfaceChoice::Agent));
+        assert_eq!(
+            f.feed(b"x\x00sy"),
+            (b"x".to_vec(), EscapeAction::Switch(SurfaceChoice::Shell))
+        );
+        let mut f = EscapeFilter::showing(Some(SurfaceChoice::Agent));
+        assert_eq!(f.feed(b"\x00ab"), (b"b".to_vec(), EscapeAction::None));
+        let mut f = EscapeFilter::default();
+        assert_eq!(
+            f.feed(b"\x00a"),
+            (Vec::new(), EscapeAction::Switch(SurfaceChoice::Agent))
+        );
     }
 
     #[test]

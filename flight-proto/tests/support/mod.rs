@@ -20,6 +20,7 @@ pub fn pane_state(pane: &str, state: StateCode) -> PaneState {
         path: "/home/u/proj".into(),
         command: "claude".into(),
         pid: 0,
+        ..Default::default()
     }
 }
 

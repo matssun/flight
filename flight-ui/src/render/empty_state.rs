@@ -16,7 +16,7 @@ pub fn empty_state(vm: &ViewModel) -> Vec<Line<'static>> {
     if !vm.filter().trim().is_empty() {
         out.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled(format!("No sessions match “{}”", vm.filter()), bold()),
+            Span::styled(format!("No workspaces match “{}”", vm.filter()), bold()),
         ]));
         out.push(Line::raw(""));
         out.push(hint("  ", &[("Esc", " clears the search")]));
@@ -42,10 +42,10 @@ pub fn empty_state(vm: &ViewModel) -> Vec<Line<'static>> {
     out.push(Line::from(vec![
         Span::raw("  "),
         Span::styled("●", Style::default().fg(Color::Green)),
-        Span::styled(" No Flight sessions yet", bold()),
+        Span::styled(" No Flight workspaces yet", bold()),
     ]));
     out.push(Line::raw(""));
-    out.push(hint("  Press ", &[("n", " to start Claude or a shell")]));
+    out.push(hint("  Press ", &[("n", " to start a workspace")]));
     out.push(Line::styled("  on one of your connected hosts.", dim()));
     out.push(Line::raw(""));
     out.push(Line::styled("  Connected hosts", dim()));

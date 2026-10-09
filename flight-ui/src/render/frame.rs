@@ -7,9 +7,10 @@ use super::help::help_lines;
 use super::layout::{areas, Areas, CARD_BELOW, MIN_HEIGHT, MIN_WIDTH};
 use super::list_view::{list_view, ListView};
 use super::preview_view::preview_view;
+use super::prompt_lines::prompt_lines;
 use super::scroll::scroll_offset;
 use super::style::dim;
-use crate::view::{NewSessionForm, ViewModel};
+use crate::view::{NewSessionForm, ShellPrompt, ViewModel};
 use flight_state::PaneRef;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Style};
@@ -17,7 +18,7 @@ use ratatui::text::Line;
 use ratatui::widgets::{Block, BorderType, Clear, Paragraph};
 use ratatui::Frame;
 
-/// Width of the new-session form.
+/// Width of the new-workspace form.
 const FORM_WIDTH: u16 = 72;
 /// Width of the help overlay.
 const HELP_WIDTH: u16 = 68;
@@ -41,6 +42,8 @@ pub fn render(frame: &mut Frame, vm: &ViewModel) {
     draw_footer(frame, vm, &a);
     if let Some(form) = vm.form() {
         draw_form(frame, form, area);
+    } else if let Some(prompt) = vm.prompt() {
+        draw_prompt(frame, prompt, area);
     } else if vm.help_open() {
         draw_help(frame, area);
     }
@@ -55,7 +58,7 @@ fn pane_block(title: &'static str) -> Block<'static> {
 
 /// The list's lines for this area, and the first one on screen.
 fn list_for(vm: &ViewModel, list_area: Rect) -> (ListView, usize, Rect) {
-    let inner = pane_block("Sessions").inner(list_area);
+    let inner = pane_block("Workspaces").inner(list_area);
     let card = inner.width < CARD_BELOW;
     let view = list_view(vm, usize::from(inner.width), card);
     let offset = scroll_offset(view.selected, usize::from(inner.height), view.lines.len());
@@ -66,7 +69,7 @@ fn draw_list(frame: &mut Frame, vm: &ViewModel, a: &Areas) {
     let (view, offset, _) = list_for(vm, a.list);
     let visible: Vec<Line> = view.lines.into_iter().skip(offset).collect();
     frame.render_widget(
-        Paragraph::new(visible).block(pane_block("Sessions")),
+        Paragraph::new(visible).block(pane_block("Workspaces")),
         a.list,
     );
 }
@@ -131,7 +134,17 @@ fn modal(
 }
 
 fn draw_form(frame: &mut Frame, form: &NewSessionForm, area: Rect) {
-    modal(frame, area, "New session", FORM_WIDTH, form_lines(form));
+    modal(frame, area, "New workspace", FORM_WIDTH, form_lines(form));
+}
+
+fn draw_prompt(frame: &mut Frame, prompt: &ShellPrompt, area: Rect) {
+    modal(
+        frame,
+        area,
+        "Companion shell",
+        FORM_WIDTH,
+        prompt_lines(prompt),
+    );
 }
 
 fn draw_help(frame: &mut Frame, area: Rect) {
@@ -140,7 +153,12 @@ fn draw_help(frame: &mut Frame, area: Rect) {
 
 /// The session drawn at screen cell (`x`, `y`), if any: what a click there means.
 pub fn session_at(vm: &ViewModel, area: Rect, x: u16, y: u16) -> Option<PaneRef> {
-    if area.width < MIN_WIDTH || area.height < MIN_HEIGHT || vm.form().is_some() || vm.help_open() {
+    if area.width < MIN_WIDTH
+        || area.height < MIN_HEIGHT
+        || vm.form().is_some()
+        || vm.prompt().is_some()
+        || vm.help_open()
+    {
         return None;
     }
     let a = areas(area);

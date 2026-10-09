@@ -66,26 +66,26 @@ fn the_layout_follows_the_terminal_size() {
 #[test]
 fn wide_puts_the_list_and_the_preview_side_by_side() {
     let text = render_to_string(&vm_with(fleet()), 120, 30);
-    let line = line_with(&text, "Sessions");
+    let line = line_with(&text, "Workspaces");
     assert!(line.contains("Preview"), "same row: {line}");
-    assert!(line.find("Sessions") < line.find("Preview"));
+    assert!(line.find("Workspaces") < line.find("Preview"));
 }
 
 #[test]
 fn narrow_stacks_the_preview_below_the_list() {
     let text = render_to_string(&vm_with(fleet()), 80, 30);
     assert!(
-        row_of(&text, "Sessions") < row_of(&text, "Preview"),
+        row_of(&text, "Workspaces") < row_of(&text, "Preview"),
         "{text}"
     );
-    assert!(!line_with(&text, "Sessions").contains("Preview"));
+    assert!(!line_with(&text, "Workspaces").contains("Preview"));
 }
 
 #[test]
 fn a_short_terminal_shows_the_list_alone() {
     let text = render_to_string(&vm_with(fleet()), 80, 12);
     assert!(
-        text.contains("Sessions") && !text.contains("Preview"),
+        text.contains("Workspaces") && !text.contains("Preview"),
         "{text}"
     );
     assert!(text.contains("mcp-re"));
@@ -179,7 +179,7 @@ fn the_host_is_shown_on_the_row_but_never_replaces_the_session_name() {
 #[test]
 fn the_selected_session_has_a_marker_and_a_preview() {
     let mut vm = vm_with(fleet());
-    let sel = vm.selected().cloned().expect("selection");
+    let sel = vm.selected().expect("selection");
     vm.apply_preview(Some(PanePreview {
         pane: sel,
         content: Ok(vec!["old line".into(), "Do you want to proceed?".into()]),
@@ -203,7 +203,7 @@ fn the_selected_session_has_a_marker_and_a_preview() {
 #[test]
 fn the_preview_shows_the_bottom_of_a_long_screen_and_not_blank_tail_rows() {
     let mut vm = vm_with(fleet());
-    let sel = vm.selected().cloned().expect("selection");
+    let sel = vm.selected().expect("selection");
     let mut lines: Vec<String> = (0..100).map(|i| format!("row-{i}")).collect();
     lines.extend(std::iter::repeat_n(String::new(), 30));
     vm.apply_preview(Some(PanePreview {
@@ -220,7 +220,7 @@ fn the_preview_shows_the_bottom_of_a_long_screen_and_not_blank_tail_rows() {
 #[test]
 fn a_failed_capture_says_so_in_plain_words() {
     let mut vm = vm_with(fleet());
-    let sel = vm.selected().cloned().expect("selection");
+    let sel = vm.selected().expect("selection");
     vm.apply_preview(Some(PanePreview {
         pane: sel,
         content: Err("host unreachable".into()),
@@ -278,7 +278,7 @@ fn a_search_with_no_match_says_so_and_how_to_leave_it() {
     }
     let text = render_to_string(&vm, 100, 24);
     assert!(
-        text.contains("No sessions match") && text.contains("Esc clears the search"),
+        text.contains("No workspaces match") && text.contains("Esc clears the search"),
         "{text}"
     );
 }
@@ -286,11 +286,8 @@ fn a_search_with_no_match_says_so_and_how_to_leave_it() {
 #[test]
 fn with_no_sessions_a_new_user_is_told_what_to_do() {
     let text = render_to_string(&vm_with(snap(vec![online("dev1", vec![])])), 100, 24);
-    assert!(text.contains("No Flight sessions yet"), "{text}");
-    assert!(
-        text.contains("Press n to start Claude or a shell"),
-        "{text}"
-    );
+    assert!(text.contains("No Flight workspaces yet"), "{text}");
+    assert!(text.contains("Press n to start a workspace"), "{text}");
     assert!(text.contains("connected hosts"));
 }
 
@@ -315,7 +312,7 @@ fn host_failures_are_visible_and_do_not_hide_healthy_hosts() {
     for want in [
         "mini-2  unreachable",
         "mini-3  authentication failed",
-        "mini-4  cannot run sessions",
+        "mini-4  cannot run workspaces",
         "1 of 4 hosts online",
     ] {
         assert!(text.contains(want), "missing {want:?} in:\n{text}");
@@ -332,13 +329,13 @@ fn help_lists_navigation_state_meanings_and_actions() {
         "Help",
         "Moving around",
         "Enter",
-        "Ctrl-Space then q",
+        "Ctrl-Space q",
         "What the symbols mean",
         "needs your approval",
         "has a question for you",
         "finished, your move",
         "Actions",
-        "new session",
+        "new workspace",
     ] {
         assert!(text.contains(want), "missing {want:?}\n{text}");
     }

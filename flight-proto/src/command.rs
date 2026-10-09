@@ -3,7 +3,7 @@
 use crate::command_kind::Kind;
 use crate::validate::non_empty;
 use crate::{valid_dir, valid_session_name};
-use crate::{PaneRefMsg, ProgramCode, Reject, Validate};
+use crate::{PaneRefMsg, ProgramCode, Reject, SurfaceKindCode, Validate};
 
 /// The most preview lines a single request may ask for.
 pub const MAX_PREVIEW_LINES: u32 = 2000;
@@ -12,12 +12,12 @@ pub const MAX_PREVIEW_LINES: u32 = 2000;
 /// `CreateSession` names the host explicitly.
 #[derive(Clone, PartialEq, Eq, prost::Message)]
 pub struct Command {
-    #[prost(oneof = "command_kind::Kind", tags = "1, 3, 4, 6, 7, 8")]
+    #[prost(oneof = "command_kind::Kind", tags = "1, 3, 4, 6, 7, 8, 9")]
     pub kind: Option<command_kind::Kind>,
 }
 
 pub mod command_kind {
-    use crate::{PaneRefMsg, ProgramCode};
+    use crate::{PaneRefMsg, ProgramCode, SurfaceKindCode};
 
     #[derive(Clone, PartialEq, Eq, prost::Message)]
     pub struct GetPreview {
@@ -94,6 +94,17 @@ pub mod command_kind {
         pub program: i32,
     }
 
+    /// A new surface for an existing workspace. The workspace fixes the host and the directory,
+    /// so the request carries neither: the orchestrator routes by `workspace_id` and the node
+    /// resolves the rest from the workspace. At most one surface of each kind per workspace.
+    #[derive(Clone, PartialEq, Eq, prost::Message)]
+    pub struct CreateSurface {
+        #[prost(string, tag = "1")]
+        pub workspace_id: String,
+        #[prost(enumeration = "SurfaceKindCode", tag = "2")]
+        pub kind: i32,
+    }
+
     #[derive(Clone, PartialEq, Eq, prost::Oneof)]
     pub enum Kind {
         #[prost(message, tag = "1")]
@@ -108,6 +119,8 @@ pub mod command_kind {
         OpenTerminal(OpenTerminal),
         #[prost(message, tag = "8")]
         CreateSession(CreateSession),
+        #[prost(message, tag = "9")]
+        CreateSurface(CreateSurface),
     }
 }
 
@@ -116,7 +129,8 @@ fn host_of(p: &Option<PaneRefMsg>) -> Option<&str> {
 }
 
 impl Command {
-    /// The host this command must be routed to, if the command is well-formed enough to say.
+    /// The host this command must be routed to, if the command names one. A `CreateSurface`
+    /// does not: its host is the workspace's, which only the orchestrator can resolve.
     pub fn target_host(&self) -> Option<&str> {
         use command_kind::Kind::*;
         match self.kind.as_ref()? {
@@ -126,6 +140,7 @@ impl Command {
             SendInput(c) => host_of(&c.pane_ref),
             KillPane(c) => host_of(&c.pane_ref),
             CreateSession(c) => Some(c.host.as_str()),
+            CreateSurface(_) => None,
         }
     }
 }
@@ -181,6 +196,12 @@ impl Validate for Command {
                     return Err(Reject::OutOfRange("create_session.dir"));
                 }
                 ProgramCode::decode(c.program, "create_session.program").map(|_| ())
+            }
+            CreateSurface(c) => {
+                if !flight_state::valid_id(&c.workspace_id) {
+                    return Err(Reject::OutOfRange("create_surface.workspace_id"));
+                }
+                SurfaceKindCode::decode(c.kind, "create_surface.kind").map(|_| ())
             }
         }
     }

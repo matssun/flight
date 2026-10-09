@@ -57,6 +57,7 @@ fn a_shell_session_starts_in_the_directory_and_is_marked() {
             name: "work".into(),
             dir: dir.to_string_lossy().into_owned(),
             launch: Launch::DefaultShell,
+            mark: None,
         })
         .unwrap();
     assert!(id.starts_with('$'));
@@ -89,6 +90,7 @@ fn a_program_runs_directly_in_the_directory() {
             launch: Launch::Program {
                 argv: vec![program],
             },
+            mark: None,
         })
         .unwrap();
     let wait = || {
@@ -117,6 +119,7 @@ fn an_existing_session_is_refused_and_left_alone() {
             name: "keep".into(),
             dir: "/tmp".into(),
             launch: Launch::DefaultShell,
+            mark: None,
         })
         .unwrap_err();
     assert!(matches!(err, CreateError::AlreadyExists), "{err}");
@@ -140,6 +143,7 @@ fn a_program_that_fails_at_once_leaves_no_session_and_spares_others() {
             launch: Launch::Program {
                 argv: vec![program],
             },
+            mark: None,
         })
         .unwrap_err();
     assert!(matches!(err, CreateError::Exited), "{err}");
@@ -162,8 +166,93 @@ fn the_only_session_failing_leaves_nothing_and_no_error_about_the_server() {
             launch: Launch::Program {
                 argv: vec![program],
             },
+            mark: None,
         })
         .unwrap_err();
     assert!(matches!(err, CreateError::Exited), "{err}");
     assert!(!s.tmux.has_session("doomed"));
+}
+
+fn mark(workspace: &str, surface: &str, kind: flight_tmux::SurfaceTag) -> flight_tmux::SurfaceMark {
+    flight_tmux::SurfaceMark {
+        workspace_id: workspace.into(),
+        surface_id: surface.into(),
+        kind,
+    }
+}
+
+/// A workspace is one session; its shell is a second window in the same directory. Each is
+/// separately addressable, both carry Flight's ids (never tmux's), and the shell can be
+/// removed without touching the agent.
+#[test]
+fn a_workspace_has_an_agent_window_and_a_companion_shell_in_the_same_directory() {
+    let Some(s) = Server::start("ws") else {
+        return;
+    };
+    let dir = scratch("ws");
+    let id = s
+        .tmux
+        .create_session(&NewSession {
+            name: "nga".into(),
+            dir: dir.to_string_lossy().into_owned(),
+            launch: Launch::Program {
+                argv: vec!["/bin/sleep".into(), "300".into()],
+            },
+            mark: Some(mark("w-1", "s-agent", flight_tmux::SurfaceTag::Agent)),
+        })
+        .unwrap();
+    let window = s
+        .tmux
+        .create_surface_window(
+            &id,
+            &dir.to_string_lossy(),
+            &Launch::DefaultShell,
+            &mark("w-1", "s-shell", flight_tmux::SurfaceTag::Shell),
+        )
+        .unwrap();
+    assert!(window.starts_with('@'));
+    let panes = s.tmux.list_panes().unwrap();
+    assert_eq!(panes.len(), 2);
+    for p in &panes {
+        assert_eq!(p.workspace_id, "w-1");
+        assert_eq!(p.session_path, dir.to_string_lossy());
+        assert!(p.flight_session);
+        assert_eq!(Path::new(&p.current_path).canonicalize().unwrap(), dir);
+    }
+    let mut kinds: Vec<(&str, &str)> = panes
+        .iter()
+        .map(|p| (p.surface_kind.as_str(), p.surface_id.as_str()))
+        .collect();
+    kinds.sort();
+    assert_eq!(kinds, [("agent", "s-agent"), ("shell", "s-shell")]);
+    // Removing the shell leaves the agent running.
+    use flight_tmux::TmuxRunner;
+    s.tmux
+        .runner()
+        .run(&["kill-window", "-t", &window])
+        .unwrap();
+    let panes = s.tmux.list_panes().unwrap();
+    assert_eq!(panes.len(), 1);
+    assert_eq!(panes[0].surface_kind, "agent");
+}
+
+/// A shell for a session that is not there creates nothing.
+#[test]
+fn a_surface_window_for_a_missing_session_creates_nothing() {
+    let Some(s) = Server::start("ws-missing") else {
+        return;
+    };
+    let dir = scratch("ws-missing");
+    s.tmux.new_session("other", "/tmp").unwrap();
+    let err = s
+        .tmux
+        .create_surface_window(
+            "$99",
+            &dir.to_string_lossy(),
+            &Launch::DefaultShell,
+            &mark("w-1", "s-shell", flight_tmux::SurfaceTag::Shell),
+        )
+        .unwrap_err();
+    assert!(matches!(err, CreateError::Tmux(_)), "{err}");
+    assert_eq!(s.tmux.list_panes().unwrap().len(), 1);
 }

@@ -40,6 +40,7 @@ pub fn obs(pane: &str, pid: u32, screen: &str, focused: bool) -> PaneObservation
         title: String::new(),
         focused,
         screen_lines: screen.lines().map(str::to_owned).collect(),
+        placement: Default::default(),
     }
 }
 

@@ -2,10 +2,9 @@
 
 use crate::args::{config_dir, now, Args};
 use crate::join_cmd::join_command;
-use crate::roles::{node_dir, ui_dir};
+use crate::roles::ui_dir;
 use flight_client::{run_terminal, ClientConfig, Handoff, OrchestratedBackend, Switcher};
 use flight_proto::RoleCode;
-use flight_state::HostId;
 use flight_ui::{render_to_string, run_with_notice, Backend, Exit, ViewModel};
 use std::time::Duration;
 
@@ -13,13 +12,12 @@ pub const USAGE: &str = "usage: flight ui <command>
 
   join <bundle> [--name NAME] [--bundle-file PATH] [--config-dir DIR]
         enroll this machine's UI with an orchestrator
-  [run] [--refresh SECS] [--once] [--config-dir DIR] [--node-dir DIR]
+  [run] [--refresh SECS] [--once] [--config-dir DIR]
         the dashboard, reading from the orchestrator this UI joined.
-        Enter on a pane selects it and shows it. A pane of the node on this machine (its
-        identity is read from --node-dir, default <config-dir>/node) is shown through tmux. A
-        pane of any other node is shown in a terminal carried over Flight's own connections
-        (no ssh, no direct path to the node): Ctrl-Space q leaves, Ctrl-Space Ctrl-Space sends a literal
-        Ctrl-Space, and the dashboard comes back when the terminal ends.";
+        Enter on a pane shows it in a terminal carried over Flight's own connections (no ssh,
+        no direct path to the node), on this machine or another: Ctrl-Space q leaves,
+        Ctrl-Space Ctrl-Space sends a literal Ctrl-Space, and the dashboard comes back when the
+        terminal ends.";
 
 pub fn run_ui(args: &[String]) -> Result<(), String> {
     if args.iter().any(|a| a == "--help" || a == "-h") {
@@ -41,11 +39,7 @@ pub fn run_ui(args: &[String]) -> Result<(), String> {
 }
 
 fn dashboard(args: &[String]) -> Result<(), String> {
-    let args = Args::parse(
-        args,
-        &["--refresh", "--config-dir", "--node-dir"],
-        &["--once"],
-    )?;
+    let args = Args::parse(args, &["--refresh", "--config-dir"], &["--once"])?;
     let base = config_dir(&args)?;
     let dir = ui_dir(&base);
     let config = ClientConfig::load(&dir).map_err(|e| {
@@ -55,10 +49,8 @@ fn dashboard(args: &[String]) -> Result<(), String> {
         Some(s) => Duration::from_secs(s.parse().map_err(|_| format!("bad --refresh {s:?}"))?),
         None => Duration::from_secs(1),
     };
-    let node = args
-        .value("--node-dir")
-        .map_or_else(|| node_dir(&base), std::path::PathBuf::from);
-    let switcher = Switcher::new(local_host(&node));
+    // Every session is shown in Flight's own terminal, on this machine or another.
+    let switcher = Switcher::default();
     let start = |config: ClientConfig| -> Result<OrchestratedBackend, String> {
         let mut backend = OrchestratedBackend::start(config).map_err(|e| e.to_string())?;
         backend.set_switching(switcher.clone());
@@ -90,13 +82,6 @@ fn dashboard(args: &[String]) -> Result<(), String> {
             None => return Ok(()),
         }
     }
-}
-
-/// The identity of the node role on this machine, if it has one.
-fn local_host(node_dir: &std::path::Path) -> Option<HostId> {
-    flight_trust::Identity::load(&flight_transport::identity_dir(node_dir))
-        .ok()
-        .map(|i| i.fingerprint().host_id())
 }
 
 /// Wait briefly for the orchestrator's snapshot, then print one frame as text.

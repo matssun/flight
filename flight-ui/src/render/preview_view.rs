@@ -47,7 +47,7 @@ pub fn preview_view(vm: &ViewModel, height: usize, width: usize) -> Vec<Line<'st
     ];
     let action = action_hint(p.state);
     // Rows left for the screen: after the header above, and the rule and hint below.
-    let room = height.saturating_sub(out.len()).saturating_sub(2);
+    let room = height.saturating_sub(out.len()).saturating_sub(3);
     match vm.preview().map(|prev| &prev.content) {
         None => out.push(Line::styled(" Loading preview…", dim())),
         Some(Err(_)) => out.push(Line::styled(
@@ -69,16 +69,19 @@ pub fn preview_view(vm: &ViewModel, height: usize, width: usize) -> Vec<Line<'st
             }
         }
     }
-    // The hint sits at the bottom of the pane.
-    while out.len() < height.saturating_sub(2) {
+    // The hints sit at the bottom of the pane.
+    while out.len() < height.saturating_sub(3) {
         out.push(Line::raw(""));
     }
-    out.truncate(height.saturating_sub(2));
+    out.truncate(height.saturating_sub(3));
     out.push(Line::styled("─".repeat(width), dim()));
     out.push(Line::styled(
         format!(" {action}"),
         Style::default().fg(accent(p.state)),
     ));
+    if p.state != AgentState::Down {
+        out.push(Line::styled(" Ctrl-Space q comes back here.", dim()));
+    }
     out
 }
 

@@ -35,6 +35,7 @@ impl Collector {
         self.prune(&hosts);
         UiSnapshot {
             hosts,
+            saved: Vec::new(),
             taken_at: now,
         }
     }

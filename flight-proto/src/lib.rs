@@ -33,6 +33,7 @@ mod pane_state;
 mod reject;
 mod replication;
 mod response;
+mod saved_workspace;
 mod server_status;
 mod snapshot;
 mod terminal;
@@ -45,15 +46,15 @@ pub mod codec;
 
 pub use codes::{
     AgentKindCode, ErrorKindCode, ExitReasonCode, NodeStatusCode, ProgramCode, RoleCode,
-    SourceCode, StateCode, SurfaceKindCode,
+    SavedHealthCode, SavedRootCode, SourceCode, StateCode, SurfaceKindCode,
 };
 pub use command::{command_kind, Command, Request, MAX_PREVIEW_LINES};
 pub use delta::{delta_change, Delta};
 pub use enroll::{EnrollRequest, EnrollResponse};
 pub use error_info::ErrorInfo;
 pub use fleet::{
-    fleet_change, FleetDelta, FleetSnapshot, NodeRemoved, NodeServerStatus, NodeStatusChanged,
-    NodeView,
+    fleet_change, FleetDelta, FleetSnapshot, NodeRemoved, NodeSavedWorkspaces, NodeServerStatus,
+    NodeStatusChanged, NodeView,
 };
 pub use fleet_image::{FleetImage, FleetNode};
 pub use flight_state::{valid_dir, valid_session_name, MAX_DIR_LEN, MAX_SESSION_NAME_LEN};
@@ -67,6 +68,7 @@ pub use pane_state::PaneState;
 pub use reject::Reject;
 pub use replication::{ReplicationCursor, Step};
 pub use response::{response_result, Preview, Response};
+pub use saved_workspace::{SavedWorkspace, SavedWorkspaces, MAX_DETAIL_LEN, MAX_SAVED};
 pub use server_status::{AvailabilityCode, ServerStatus};
 pub use snapshot::Snapshot;
 pub use terminal::{

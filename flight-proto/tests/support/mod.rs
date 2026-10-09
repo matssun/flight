@@ -37,6 +37,7 @@ pub fn node_hello() -> NodeHello {
 pub fn node_snapshot_frame() -> NodeFrame {
     NodeFrame {
         body: Some(node_body::Body::Snapshot(Snapshot {
+            saved: vec![],
             incarnation: inc(3).as_bytes().to_vec(),
             panes: vec![
                 pane_state("%1", StateCode::Permit),

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 
 use crate::validate::non_empty;
-use crate::{Incarnation, NodeStatusCode, PaneRefMsg, PaneState, Reject, ServerStatus, Validate};
+use crate::{
+    Incarnation, NodeStatusCode, PaneRefMsg, PaneState, Reject, SavedWorkspace, ServerStatus,
+    Validate,
+};
 
 /// One node as the orchestrator presents it to a UI.
 #[derive(Clone, PartialEq, Eq, prost::Message)]
@@ -16,6 +19,9 @@ pub struct NodeView {
     pub servers: Vec<ServerStatus>,
     #[prost(message, repeated, tag = "5")]
     pub panes: Vec<PaneState>,
+    /// The workspaces the node has saved, as it last reported them.
+    #[prost(message, repeated, tag = "6")]
+    pub saved: Vec<SavedWorkspace>,
 }
 
 impl Validate for NodeView {
@@ -23,7 +29,8 @@ impl Validate for NodeView {
         non_empty(&self.node_id, "node_view.node_id")?;
         NodeStatusCode::decode(self.status, "node_view.status")?;
         self.servers.iter().try_for_each(Validate::validate)?;
-        self.panes.iter().try_for_each(Validate::validate)
+        self.panes.iter().try_for_each(Validate::validate)?;
+        crate::saved_workspace::validate_list(&self.saved)
     }
 }
 
@@ -74,6 +81,15 @@ pub struct NodeRemoved {
     pub node_id: String,
 }
 
+/// A node's saved workspaces changed: replaces its whole list.
+#[derive(Clone, PartialEq, Eq, prost::Message)]
+pub struct NodeSavedWorkspaces {
+    #[prost(string, tag = "1")]
+    pub node_id: String,
+    #[prost(message, repeated, tag = "2")]
+    pub items: Vec<SavedWorkspace>,
+}
+
 /// An ordered change to a [`FleetSnapshot`]; same incarnation/sequence rules as a node delta.
 #[derive(Clone, PartialEq, Eq, prost::Message)]
 pub struct FleetDelta {
@@ -81,13 +97,14 @@ pub struct FleetDelta {
     pub incarnation: Vec<u8>,
     #[prost(uint64, tag = "2")]
     pub sequence: u64,
-    #[prost(oneof = "fleet_change::Change", tags = "3, 4, 5, 6, 7, 8")]
+    #[prost(oneof = "fleet_change::Change", tags = "3, 4, 5, 6, 7, 8, 9")]
     pub change: Option<fleet_change::Change>,
 }
 
 pub mod fleet_change {
     use super::{
-        NodeRemoved, NodeServerStatus, NodeStatusChanged, NodeView, PaneRefMsg, PaneState,
+        NodeRemoved, NodeSavedWorkspaces, NodeServerStatus, NodeStatusChanged, NodeView,
+        PaneRefMsg, PaneState,
     };
 
     #[derive(Clone, PartialEq, Eq, prost::Oneof)]
@@ -106,6 +123,9 @@ pub mod fleet_change {
         ServerStatus(NodeServerStatus),
         #[prost(message, tag = "8")]
         NodeRemoved(NodeRemoved),
+        /// Replaces the node's whole saved-workspace list.
+        #[prost(message, tag = "9")]
+        NodeSaved(NodeSavedWorkspaces),
     }
 }
 
@@ -141,6 +161,10 @@ impl Validate for FleetDelta {
                     .validate()
             }
             fleet_change::Change::NodeRemoved(n) => non_empty(&n.node_id, "node_removed.node_id"),
+            fleet_change::Change::NodeSaved(n) => {
+                non_empty(&n.node_id, "node_saved.node_id")?;
+                crate::saved_workspace::validate_list(&n.items)
+            }
         }
     }
 }

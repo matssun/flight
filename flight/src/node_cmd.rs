@@ -11,7 +11,8 @@ use flight_proto::RoleCode;
 use flight_state::ServerId;
 use flight_tmux::{ControlConnection, SystemRunner, TmuxEndpoint};
 use flight_transport::{
-    config_path, identity_dir, run_observer, LinkEnd, NodeLink, NodeLinkConfig,
+    config_path, identity_dir, run_observer, run_saved_reporter, LinkEnd, NodeLink, NodeLinkConfig,
+    SAVED_REPORT_INTERVAL,
 };
 use flight_trust::{ConnectionConfig, Identity};
 use flight_workspaces::RecoveryPolicy;
@@ -183,6 +184,12 @@ fn run_node(args: &[String]) -> Result<(), String> {
             let (link, stop_rx) = (link.clone(), stop_rx.clone());
             async move { link.run(stop_rx).await }
         });
+        let saved = tokio::spawn(run_saved_reporter(
+            link.clone(),
+            servers.clone(),
+            SAVED_REPORT_INTERVAL,
+            stop_rx.clone(),
+        ));
         let observer = tokio::spawn(run_observer(link, observer, interval, stop_rx));
         let mut connection = connection;
         let ended = tokio::select! {
@@ -201,6 +208,7 @@ fn run_node(args: &[String]) -> Result<(), String> {
             }
         };
         let _ = observer.await;
+        let _ = saved.await;
         if unhealthy {
             std::process::exit(EXIT_PROCESS_NETWORK_UNHEALTHY);
         }

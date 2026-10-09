@@ -179,6 +179,7 @@ fn a_pane_claiming_another_nodes_identity_is_a_violation() {
             incarnation: inc(1).as_bytes().to_vec(),
             panes: vec![stolen],
             servers: vec![],
+            saved: vec![],
         })),
     };
     let fx = w.orch.on_node_frame(conn, forged, w.now);

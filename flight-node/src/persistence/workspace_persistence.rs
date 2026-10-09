@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 
+use crate::persistence::saved_report::{capped, saved_workspace};
 use crate::persistence::NodeBackend;
 use crate::{Program, SessionRequest, TmuxServers};
 use flight_tmux::{ConfigMark, SurfaceMark, SurfaceTag};
 use flight_workspaces::{
-    recover, ConfigKey, Document, FsProbe, Origin, RecoveryPolicy, RecoveryReport, RootProbe,
-    RootSpec, Store, SurfaceKind, SurfaceSpec, WorkspaceDefinition,
+    recover, ConfigKey, Document, FsProbe, Observer, Origin, RecoveryPolicy, RecoveryReport,
+    RootProbe, RootSpec, Store, SurfaceKind, SurfaceSpec, WorkspaceDefinition,
 };
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
@@ -159,6 +160,31 @@ impl WorkspacePersistence {
     /// process is touched.
     pub fn remove(&self, key: &ConfigKey) -> Result<(), String> {
         self.mutate(|doc| doc.active_mut().and_then(|p| p.remove(key)).is_some())
+    }
+
+    /// The saved workspaces and how each stands now, for the wire. Reads only: it looks at the
+    /// running workspaces and at the roots and changes nothing, saved or running. Empty when
+    /// persistence is disabled.
+    pub fn report(&self, servers: &TmuxServers) -> Vec<flight_proto::SavedWorkspace> {
+        let guard = self.lock();
+        let State::Active { doc, .. } = &*guard else {
+            return Vec::new();
+        };
+        let Some(profile) = doc.active() else {
+            return Vec::new();
+        };
+        let backend = NodeBackend::new(servers, &self.host);
+        let views = [(self.host.clone(), backend.observe(&self.host))]
+            .into_iter()
+            .collect();
+        let plan =
+            flight_workspaces::plan(profile, &views, &self.probe, &RecoveryPolicy::default());
+        capped(
+            plan.items
+                .iter()
+                .filter_map(|item| Some(saved_workspace(profile.get(&item.key)?, item)))
+                .collect(),
+        )
     }
 
     /// One reconciliation pass of the saved workspaces against this node's tmux servers. The

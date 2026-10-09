@@ -101,6 +101,8 @@ pub struct World {
     /// Operator notes the orchestrator emitted, in order.
     pub notes: Vec<String>,
     /// Terminals the orchestrator ended, with why.
+    /// Resync requests the orchestrator sent to nodes.
+    pub resyncs: usize,
     pub ended: Vec<(
         flight_orchestrator::TerminalId,
         flight_proto::ExitReasonCode,
@@ -124,6 +126,7 @@ impl World {
             responses: Vec::new(),
             notes: Vec::new(),
             ended: Vec::new(),
+            resyncs: 0,
         }
     }
 
@@ -258,6 +261,9 @@ impl World {
             }
         }
         for (conn, frame) in fx.to_nodes {
+            if matches!(frame.body, Some(orchestrator_body::Body::Resync(_))) {
+                self.resyncs += 1;
+            }
             self.node_receives(conn, frame);
         }
     }
@@ -341,5 +347,34 @@ pub fn counting_ids() -> impl FnMut() -> flight_orchestrator::TerminalId + Send 
     move || {
         n += 1;
         [n; 16]
+    }
+}
+
+impl World {
+    /// Node `i` reports its saved workspaces; the change flows to the orchestrator if connected.
+    pub fn observe_saved(&mut self, i: usize, saved: Vec<flight_proto::SavedWorkspace>) {
+        let frames = self.nodes[i].session.observe_saved(saved);
+        if let Some(conn) = self.nodes[i].conn {
+            for f in frames {
+                self.send_to_orch(conn, f);
+            }
+        }
+    }
+}
+
+pub fn saved(
+    key: &str,
+    name: &str,
+    health: flight_proto::SavedHealthCode,
+) -> flight_proto::SavedWorkspace {
+    flight_proto::SavedWorkspace {
+        config_key: key.to_owned(),
+        name: name.to_owned(),
+        root: format!("/work/{name}"),
+        health: health as i32,
+        root_state: flight_proto::SavedRootCode::Verified as i32,
+        detail: String::new(),
+        workspace_id: String::new(),
+        imported: false,
     }
 }

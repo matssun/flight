@@ -23,10 +23,12 @@ use std::sync::Mutex;
 /// Lines captured per agent pane for classification (Fleet's scrape window).
 pub(crate) const SCRAPE_LINES: u32 = 50;
 
-const NO_SERVER_MARKERS: [&str; 3] = [
+const NO_SERVER_MARKERS: [&str; 4] = [
     "no server running",
     "error connecting to",
     "failed to connect to server",
+    // The server went away while the client was talking to it: the same fact, a moment later.
+    "server exited unexpectedly",
 ];
 
 /// The node's tmux servers, each behind an explicit endpoint. This is the adapter that feeds
@@ -68,6 +70,14 @@ impl TmuxServers {
     /// Keep the workspaces created here, and let them be reconciled after a restart.
     pub fn enable_persistence(&mut self, persistence: WorkspacePersistence) {
         self.persistence = Some(persistence);
+    }
+
+    /// The saved workspaces and their health, for the wire; empty without persistence.
+    pub fn saved_report(&self) -> Vec<flight_proto::SavedWorkspace> {
+        self.persistence
+            .as_ref()
+            .map(|p| p.report(self))
+            .unwrap_or_default()
     }
 
     pub fn persistence(&self) -> Option<&WorkspacePersistence> {

@@ -5,7 +5,10 @@ use crate::pane_resolve::{pane_state, resolve_observation};
 use crate::unavailable::available;
 use crate::{Round, ServerOutcome};
 use flight_classify::{AgentKind, Manifest};
-use flight_proto::{delta_change::Change, Delta, Incarnation, PaneRefMsg, ServerStatus, Snapshot};
+use flight_proto::{
+    delta_change::Change, Delta, Incarnation, PaneRefMsg, SavedWorkspace, SavedWorkspaces,
+    ServerStatus, Snapshot,
+};
 use flight_state::{HostId, PaneRef, ServerId};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -20,6 +23,8 @@ pub struct NodeCore {
     next_sequence: u64,
     entries: BTreeMap<PaneRef, Entry>,
     servers: BTreeMap<ServerId, ServerStatus>,
+    /// The workspaces this node has saved, as last reported (ADR-008).
+    saved: Vec<SavedWorkspace>,
     /// Compiled once: building a manifest compiles its regexes.
     manifests: HashMap<AgentKind, Manifest>,
 }
@@ -34,6 +39,7 @@ impl NodeCore {
             next_sequence: 1,
             entries: BTreeMap::new(),
             servers: BTreeMap::new(),
+            saved: Vec::new(),
             manifests: [
                 AgentKind::Claude,
                 AgentKind::Codex,
@@ -80,6 +86,7 @@ impl NodeCore {
             incarnation: self.incarnation.as_bytes().to_vec(),
             panes: self.entries.values().map(|e| e.state.clone()).collect(),
             servers: self.servers.values().cloned().collect(),
+            saved: self.saved.clone(),
         }
     }
 
@@ -138,6 +145,23 @@ impl NodeCore {
             }
         }
         self.sequence(changes)
+    }
+
+    /// Replace the saved-workspace list. Returns the delta that says so, if the list changed
+    /// and `announce` is set. With `announce` unset (the orchestrator did not accept the
+    /// capability) the state is still updated, so a later snapshot has it, but no sequence
+    /// number is consumed: a delta that is never sent would look like a gap.
+    pub fn set_saved(&mut self, saved: Vec<SavedWorkspace>, announce: bool) -> Vec<Delta> {
+        if self.saved == saved {
+            return Vec::new();
+        }
+        self.saved = saved;
+        if !announce {
+            return Vec::new();
+        }
+        self.sequence(vec![Change::Saved(SavedWorkspaces {
+            items: self.saved.clone(),
+        })])
     }
 
     fn set_status(&mut self, server: &ServerId, status: ServerStatus, out: &mut Vec<Change>) {

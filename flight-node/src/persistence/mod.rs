@@ -4,6 +4,7 @@
 //! that let `flight-workspaces` observe and start things through this node's tmux servers.
 
 mod node_backend;
+mod saved_report;
 mod workspace_persistence;
 
 pub(crate) use node_backend::NodeBackend;

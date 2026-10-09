@@ -109,6 +109,37 @@ enum SurfaceKindCode {
   SURFACE_KIND_CODE_SHELL = 2;
 }
 
+// The health of a saved workspace as its node sees it (ADR-008).
+enum SavedHealthCode {
+  SAVED_HEALTH_CODE_UNSPECIFIED = 0;
+  // Running with every saved surface.
+  SAVED_HEALTH_CODE_RUNNING = 1;
+  // Running, with some saved surfaces absent.
+  SAVED_HEALTH_CODE_PARTIAL = 2;
+  // Not running; its root is usable, so it could be started.
+  SAVED_HEALTH_CODE_STOPPED = 3;
+  // Cannot be acted on: its root is unusable or unverified, or the match is ambiguous.
+  SAVED_HEALTH_CODE_BLOCKED = 4;
+}
+
+// What looking at a saved workspace's root found (ADR-008). The failure cases are kept apart
+// because they call for different things from the user.
+enum SavedRootCode {
+  SAVED_ROOT_CODE_UNSPECIFIED = 0;
+  // Present and the directory that was saved.
+  SAVED_ROOT_CODE_VERIFIED = 1;
+  // Present; nothing was recorded about it yet.
+  SAVED_ROOT_CODE_FIRST_SIGHTING = 2;
+  // Absent, with its parent present and readable.
+  SAVED_ROOT_CODE_MISSING = 3;
+  SAVED_ROOT_CODE_NOT_A_DIRECTORY = 4;
+  SAVED_ROOT_CODE_PERMISSION_DENIED = 5;
+  // Could not be confirmed either way (for example an unmounted volume).
+  SAVED_ROOT_CODE_UNVERIFIED = 6;
+  // Present, but not demonstrably the directory that was saved.
+  SAVED_ROOT_CODE_CHANGED = 7;
+}
+
 // Why a terminal session ended (ADR-003).
 enum ExitReasonCode {
   EXIT_REASON_CODE_UNSPECIFIED = 0;
@@ -175,6 +206,29 @@ message PaneState {
   string workspace_root = 18;
 }
 
+// One workspace a node has saved (ADR-008), with how it stands now. Declared intent plus the
+// node's own reading of it; the node is the only party that can verify the root.
+message SavedWorkspace {
+  // The stable saved identity (not a runtime workspace id).
+  string config_key = 1;
+  string name = 2;
+  // The configured root directory on the node.
+  string root = 3;
+  SavedHealthCode health = 4;
+  SavedRootCode root_state = 5;
+  // Failure information, plain text, bounded.
+  string detail = 6;
+  // The running workspace that realizes it, when one does.
+  string workspace_id = 7;
+  // The definition was imported, not made on this node: it starts nothing on its own.
+  bool imported = 8;
+}
+
+// The node's complete list of saved workspaces. Replaces the previous list.
+message SavedWorkspaces {
+  repeated SavedWorkspace items = 1;
+}
+
 message ServerStatus {
   string server = 1;
   AvailabilityCode availability = 2;
@@ -217,6 +271,8 @@ message Snapshot {
   bytes incarnation = 1;
   repeated PaneState panes = 2;
   repeated ServerStatus servers = 3;
+  // Empty from a node that predates saved workspaces (saved_workspaces_v1).
+  repeated SavedWorkspace saved = 4;
 }
 
 message Delta {
@@ -226,6 +282,8 @@ message Delta {
     PaneState pane_upsert = 3;
     PaneRefMsg pane_removed = 4;
     ServerStatus server_status = 5;
+    // Only sent when the orchestrator accepted saved_workspaces_v1.
+    SavedWorkspaces saved = 6;
   }
 }
 
@@ -360,6 +418,7 @@ message NodeView {
   NodeStatusCode status = 3;
   repeated ServerStatus servers = 4;
   repeated PaneState panes = 5;
+  repeated SavedWorkspace saved = 6;
 }
 
 message FleetSnapshot {
@@ -381,6 +440,12 @@ message NodeRemoved {
   string node_id = 1;
 }
 
+// A node's saved workspaces changed: replaces its whole list.
+message NodeSavedWorkspaces {
+  string node_id = 1;
+  repeated SavedWorkspace items = 2;
+}
+
 message FleetDelta {
   bytes incarnation = 1;
   uint64 sequence = 2;
@@ -392,6 +457,7 @@ message FleetDelta {
     PaneRefMsg pane_removed = 6;
     NodeServerStatus server_status = 7;
     NodeRemoved node_removed = 8;
+    NodeSavedWorkspaces node_saved = 9;
   }
 }
 

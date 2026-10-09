@@ -76,6 +76,7 @@ fn item(
 ) -> Item {
     let mut it = Item {
         key: def.key.clone(),
+        runtime: observed.map(|o| o.workspace_id.clone()),
         health: Health::Stopped,
         root: root.clone(),
         actions: Vec::new(),

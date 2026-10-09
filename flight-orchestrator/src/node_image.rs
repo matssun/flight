@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use flight_proto::{
-    delta_change, fleet_change::Change, Delta, NodeServerStatus, PaneRefMsg, PaneState, Reject,
-    ServerStatus, Snapshot, Validate,
+    delta_change, fleet_change::Change, Delta, NodeSavedWorkspaces, NodeServerStatus, PaneRefMsg,
+    PaneState, Reject, SavedWorkspace, ServerStatus, Snapshot, Validate,
 };
 use flight_state::{HostId, PaneRef};
 use std::collections::BTreeMap;
@@ -13,6 +13,8 @@ use std::collections::BTreeMap;
 pub(crate) struct NodeImage {
     pub(crate) servers: BTreeMap<String, ServerStatus>,
     pub(crate) panes: BTreeMap<PaneRef, PaneState>,
+    /// The node's saved workspaces, replaced whole by each report.
+    pub(crate) saved: Vec<SavedWorkspace>,
 }
 
 fn pane_key(node: &HostId, pane: &PaneState) -> Result<PaneRef, Reject> {
@@ -37,6 +39,7 @@ impl NodeImage {
         for status in &snapshot.servers {
             image.servers.insert(status.server.clone(), status.clone());
         }
+        image.saved = snapshot.saved.clone();
         Ok(image)
     }
 
@@ -64,6 +67,9 @@ impl NodeImage {
             if self.panes.get(key) != Some(pane) {
                 changes.push(Change::PaneUpsert(pane.clone()));
             }
+        }
+        if self.saved != new.saved {
+            changes.push(saved_change(node, &new.saved));
         }
         let server_lost = self.servers.keys().any(|s| !new.servers.contains_key(s));
         *self = new;
@@ -96,6 +102,13 @@ impl NodeImage {
                 }
                 vec![Change::PaneRemoved(r.clone())]
             }
+            delta_change::Change::Saved(s) => {
+                if self.saved == s.items {
+                    return Ok(Vec::new());
+                }
+                self.saved = s.items.clone();
+                vec![saved_change(node, &s.items)]
+            }
             delta_change::Change::ServerStatus(s) => {
                 if self.servers.get(&s.server) == Some(s) {
                     return Ok(Vec::new());
@@ -111,5 +124,12 @@ fn server_status(node: &HostId, status: &ServerStatus) -> Change {
     Change::ServerStatus(NodeServerStatus {
         node_id: node.as_str().to_owned(),
         status: Some(status.clone()),
+    })
+}
+
+fn saved_change(node: &HostId, items: &[SavedWorkspace]) -> Change {
+    Change::NodeSaved(NodeSavedWorkspaces {
+        node_id: node.as_str().to_owned(),
+        items: items.to_vec(),
     })
 }

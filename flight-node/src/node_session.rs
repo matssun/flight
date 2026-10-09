@@ -14,13 +14,14 @@ use flight_state::{PaneRef, WorkspaceId};
 
 /// What this node can do. `send_input` is not offered: there is no input path yet. A node
 /// never switches a client (it has none): it reveals a pane in its own tmux hierarchy.
-pub const ADVERTISED_CAPABILITIES: [&str; 6] = [
+pub const ADVERTISED_CAPABILITIES: [&str; 7] = [
     capability::PREVIEW,
     capability::GUARDED_REVEAL,
     capability::TERMINAL,
     capability::KILL,
     capability::CREATE_SESSION,
     capability::CREATE_SURFACE,
+    capability::SAVED_WORKSPACES,
 ];
 
 /// Frames to send, control work to run, and whether the node should close the stream.
@@ -119,6 +120,20 @@ impl NodeSession {
             return Vec::new();
         }
         deltas
+            .into_iter()
+            .map(|d| frame(node_body::Body::Delta(d)))
+            .collect()
+    }
+
+    /// Fold the node's saved-workspace list into the state. Sent as a delta only to an
+    /// orchestrator that accepted `saved_workspaces_v1`; otherwise it waits for a snapshot.
+    pub fn observe_saved(&mut self, saved: Vec<flight_proto::SavedWorkspace>) -> Vec<NodeFrame> {
+        let announce = self
+            .accepted
+            .as_ref()
+            .is_some_and(|a| a.iter().any(|c| c == capability::SAVED_WORKSPACES));
+        self.core
+            .set_saved(saved, announce)
             .into_iter()
             .map(|d| frame(node_body::Body::Delta(d)))
             .collect()

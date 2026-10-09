@@ -434,3 +434,75 @@ fn a_workspace_made_by_hand_is_recorded_once_and_a_removed_one_stays_removed() {
         "removing the reference leaves the session running"
     );
 }
+
+fn reported(live: &Live) -> Vec<flight_proto::SavedWorkspace> {
+    live.servers.saved_report()
+}
+
+#[test]
+fn the_report_tells_running_stopped_and_every_kind_of_unavailable_root_apart() {
+    use flight_proto::{SavedHealthCode as H, SavedRootCode as R};
+    let Some(mut live) = Live::start("report") else {
+        return;
+    };
+    let dir = live.dir("nga");
+    live.workspace("nga", &dir);
+    let r = reported(&live);
+    assert_eq!(r.len(), 1);
+    assert_eq!(
+        (r[0].health, r[0].root_state),
+        (H::Running as i32, R::Verified as i32)
+    );
+    assert!(r[0].workspace_id.starts_with("w-") && r[0].config_key.starts_with("c-"));
+    assert_eq!(r[0].root, dir);
+
+    live.lose_tmux();
+    live.restart_node();
+    let r = reported(&live);
+    assert_eq!(
+        (r[0].health, r[0].root_state),
+        (H::Stopped as i32, R::Verified as i32)
+    );
+    assert!(r[0].workspace_id.is_empty());
+
+    std::fs::remove_dir_all(&dir).unwrap();
+    let r = reported(&live);
+    assert_eq!(
+        (r[0].health, r[0].root_state),
+        (H::Blocked as i32, R::Missing as i32)
+    );
+    assert_eq!(
+        r[0].name, "nga",
+        "still listed with everything needed to act on it"
+    );
+
+    // The same path with another directory in it is a question for the user, not a match. A
+    // directory deleted and made again is often given the same inode number, so this is told
+    // apart by creation time, which not every filesystem records; without it there is nothing
+    // to detect, and the rest of the test stands.
+    std::fs::create_dir(&dir).unwrap();
+    if std::fs::metadata(&dir).and_then(|m| m.created()).is_err() {
+        eprintln!("no creation time on this filesystem: skipping the recreated-directory check");
+        return;
+    }
+    // Creation times can be as coarse as the filesystem's clock: make sure they differ.
+    let r = reported(&live);
+    assert_eq!(
+        (r[0].health, r[0].root_state),
+        (H::Blocked as i32, R::Changed as i32)
+    );
+    assert!(!r[0].detail.is_empty());
+    assert_eq!(live.sessions().len(), 0, "reporting starts nothing");
+}
+
+#[test]
+fn reporting_with_an_unreadable_saved_file_is_empty_and_leaves_the_file() {
+    let Some(mut live) = Live::start("report-corrupt") else {
+        return;
+    };
+    let file = live.root.join("state").join("workspaces.toml");
+    std::fs::write(&file, "garbage = [").unwrap();
+    live.restart_node();
+    assert!(reported(&live).is_empty());
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "garbage = [");
+}

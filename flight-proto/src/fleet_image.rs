@@ -2,8 +2,8 @@
 
 use crate::fleet_change::Change;
 use crate::{
-    ui_event_body, NodeStatusCode, NodeView, PaneState, ReplicationCursor, ServerStatus, Step,
-    UiEvent,
+    ui_event_body, NodeStatusCode, NodeView, PaneState, ReplicationCursor, SavedWorkspace,
+    ServerStatus, Step, UiEvent,
 };
 use flight_state::PaneRef;
 use std::collections::BTreeMap;
@@ -16,6 +16,8 @@ pub struct FleetNode {
     pub status: i32,
     pub servers: BTreeMap<String, ServerStatus>,
     pub panes: BTreeMap<PaneRef, PaneState>,
+    /// The workspaces the node has saved, as it last reported them.
+    pub saved: Vec<SavedWorkspace>,
 }
 
 impl FleetNode {
@@ -51,6 +53,7 @@ fn load(v: &NodeView) -> FleetNode {
             .iter()
             .filter_map(|p| Some((pane_key(p)?, p.clone())))
             .collect(),
+        saved: v.saved.clone(),
     }
 }
 
@@ -131,6 +134,11 @@ impl FleetImage {
                     n.servers.insert(status.server.clone(), status.clone());
                 }
             }
+            Change::NodeSaved(s) => {
+                if let Some(n) = self.nodes.get_mut(&s.node_id) {
+                    n.saved = s.items.clone();
+                }
+            }
             Change::NodeRemoved(n) => {
                 self.nodes.remove(&n.node_id);
             }
@@ -147,6 +155,7 @@ impl FleetImage {
                 status: n.status,
                 servers: n.servers.values().cloned().collect(),
                 panes: n.panes.values().cloned().collect(),
+                saved: n.saved.clone(),
             })
             .collect()
     }

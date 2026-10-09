@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use crate::{Incarnation, PaneRefMsg, PaneState, Reject, ServerStatus, Validate};
+use crate::{Incarnation, PaneRefMsg, PaneState, Reject, SavedWorkspaces, ServerStatus, Validate};
 
 /// One ordered change to the state a [`crate::Snapshot`] established. Applies only to the
 /// snapshot incarnation it names, with `sequence` starting at 1 and increasing by exactly 1.
@@ -10,12 +10,12 @@ pub struct Delta {
     pub incarnation: Vec<u8>,
     #[prost(uint64, tag = "2")]
     pub sequence: u64,
-    #[prost(oneof = "delta_change::Change", tags = "3, 4, 5")]
+    #[prost(oneof = "delta_change::Change", tags = "3, 4, 5, 6")]
     pub change: Option<delta_change::Change>,
 }
 
 pub mod delta_change {
-    use super::{PaneRefMsg, PaneState, ServerStatus};
+    use super::{PaneRefMsg, PaneState, SavedWorkspaces, ServerStatus};
 
     /// `PaneState` is the wire message and is held by value everywhere; boxing it here would
     /// change every pattern that matches a delta for no gain at this size.
@@ -28,6 +28,10 @@ pub mod delta_change {
         PaneRemoved(PaneRefMsg),
         #[prost(message, tag = "5")]
         ServerStatus(ServerStatus),
+        /// The node's whole saved-workspace list. Only sent to an orchestrator that accepted
+        /// `saved_workspaces_v1`.
+        #[prost(message, tag = "6")]
+        Saved(SavedWorkspaces),
     }
 }
 
@@ -51,6 +55,7 @@ impl Validate for Delta {
             delta_change::Change::PaneUpsert(p) => p.validate(),
             delta_change::Change::PaneRemoved(r) => r.validate(),
             delta_change::Change::ServerStatus(s) => s.validate(),
+            delta_change::Change::Saved(s) => s.validate(),
         }
     }
 }

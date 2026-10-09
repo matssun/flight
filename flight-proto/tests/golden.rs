@@ -150,6 +150,7 @@ fn ui_fleet_snapshot_v1() {
             body: Some(ui_event_body::Body::Snapshot(FleetSnapshot {
                 incarnation: inc(1).as_bytes().to_vec(),
                 nodes: vec![NodeView {
+                    saved: vec![],
                     node_id: "node-ab12".into(),
                     display_name: "mini-2".into(),
                     status: NodeStatusCode::Online as i32,

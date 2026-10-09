@@ -42,6 +42,8 @@ const REAP_GRACE: Duration = Duration::from_secs(2);
 /// so that input written just before the goodbye (a key, then a switch to another surface) is
 /// read by the client instead of being discarded with it.
 const CLOSE_SETTLE: Duration = Duration::from_millis(100);
+/// The longest a goodbye waits for a tmux client that has not yet written anything.
+const START_WAIT: Duration = Duration::from_secs(3);
 /// After the orchestrator stops taking output, how long the node keeps reading what it had
 /// already sent.
 const INBOUND_DRAIN: Duration = Duration::from_secs(2);
@@ -361,6 +363,16 @@ fn write_loop(
             Err(mpsc::error::TryRecvError::Disconnected) => {
                 // Everything queued has been written. A client that is still running gets a
                 // moment to read it before it is hung up.
+                // One that has not started yet (a slow machine, a goodbye right after an open)
+                // is waited for first: input written to a client that is hung up before it ever
+                // read is input lost.
+                let give_up = std::time::Instant::now() + START_WAIT;
+                while !process.client_ready()
+                    && process.try_exit_code().is_none()
+                    && std::time::Instant::now() < give_up
+                {
+                    std::thread::sleep(WRITER_POLL);
+                }
                 if process.try_exit_code().is_none() {
                     std::thread::sleep(CLOSE_SETTLE);
                 }
@@ -426,5 +438,47 @@ mod tests {
         let _ = writer.join();
         assert_eq!(code.blocking_recv().ok().flatten(), Some(3));
         drop(opened.reader);
+    }
+
+    #[test]
+    fn a_goodbye_right_after_the_open_does_not_discard_input_a_slow_client_has_not_read_yet() {
+        // The client takes 0.4 s to start (it then takes the terminal over), then copies its input
+        // to a file. The input
+        // and the goodbye arrive at once.
+        let dir = std::env::temp_dir().join(format!("flight-slow-start-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("dir");
+        let file = dir.join("input");
+        let script = format!("sleep 0.4; stty raw -echo; head -n 1 > {}", file.display());
+        let opened = flight_node::TerminalProcess::spawn(
+            "sh",
+            &["-c".to_owned(), script],
+            &[("PATH".to_owned(), std::env::var("PATH").unwrap_or_default())],
+            80,
+            24,
+        )
+        .expect("spawn");
+        let output = Arc::new(Output::default());
+        let reader = {
+            let output = output.clone();
+            let discarded = Arc::new(AtomicU64::new(0));
+            let reader = opened.reader;
+            std::thread::spawn(move || read_loop(reader, &output, Box::new(|| {}), &discarded))
+        };
+        let (commands, receiver) = mpsc::channel::<Command>(4);
+        let (done, _code) = oneshot::channel();
+        let writer = {
+            let output = output.clone();
+            std::thread::spawn(move || write_loop(opened.process, receiver, &output, done))
+        };
+        commands
+            .blocking_send(Command::Write(b"hello\n".to_vec()))
+            .expect("write");
+        drop(commands);
+        let _ = writer.join();
+        let _ = reader.join();
+        let got = std::fs::read_to_string(&file).unwrap_or_default();
+        assert_eq!(got, "hello\n", "the input was discarded with the client");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

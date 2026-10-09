@@ -18,6 +18,7 @@ use flight_tmux::{
 use flight_workspaces::ConfigKey;
 use std::collections::BTreeMap;
 use std::io::ErrorKind;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 /// Lines captured per agent pane for classification (Fleet's scrape window).
@@ -45,6 +46,8 @@ pub struct TmuxServers {
     surfaces: Mutex<()>,
     /// The saved workspaces of this node, when persistence is on (ADR-008).
     persistence: Option<WorkspacePersistence>,
+    /// Bumped by a user's "retry": the saved-workspace reporter looks again at once.
+    retries: AtomicU64,
 }
 
 impl TmuxServers {
@@ -78,6 +81,11 @@ impl TmuxServers {
             .as_ref()
             .map(|p| p.report(self))
             .unwrap_or_default()
+    }
+
+    /// How many times a user has asked to look again; the reporter reports sooner when it grows.
+    pub fn retries(&self) -> u64 {
+        self.retries.load(Ordering::Relaxed)
     }
 
     pub fn persistence(&self) -> Option<&WorkspacePersistence> {
@@ -417,6 +425,25 @@ impl Control for TmuxServers {
         if let Some(p) = &self.persistence {
             log_unsaved(p.record_session(request, &mark, &config));
         }
+        Ok(())
+    }
+
+    fn saved_action(&self, request: &crate::SavedActionRequest) -> Result<(), ControlError> {
+        let persistence = self.persistence.as_ref().ok_or_else(|| {
+            ControlError::new(
+                ErrorKindCode::Unsupported,
+                "workspaces are not being saved on this node",
+            )
+        })?;
+        if let Some(why) = persistence.disabled_reason() {
+            return Err(ControlError::new(
+                ErrorKindCode::Unsupported,
+                format!("the saved workspaces file cannot be used: {why}"),
+            ));
+        }
+        persistence.act(self, request)?;
+        // Whatever was asked, the next report is the answer: bring it forward.
+        self.retries.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 

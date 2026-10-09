@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use crate::{OpenedTerminal, SessionRequest, SurfaceRequest, TerminalSpec};
+use crate::{OpenedTerminal, SavedActionRequest, SessionRequest, SurfaceRequest, TerminalSpec};
 use flight_proto::{
     node_body, response_result, ErrorInfo, ErrorKindCode, NodeFrame, Preview, Response,
 };
@@ -87,6 +87,15 @@ pub trait Control: Send + Sync {
             "creating a surface is not available on this control",
         ))
     }
+
+    /// Operate on one of this node's saved workspaces. Never creates, repairs or deletes
+    /// anything on the filesystem.
+    fn saved_action(&self, _request: &SavedActionRequest) -> Result<(), ControlError> {
+        Err(ControlError::new(
+            ErrorKindCode::Unsupported,
+            "saved workspaces are not available on this control",
+        ))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -108,6 +117,7 @@ enum Op {
     },
     Create(SessionRequest),
     CreateSurface(SurfaceRequest),
+    Saved(SavedActionRequest),
     OpenTerminal(TerminalSpec),
 }
 
@@ -159,6 +169,13 @@ impl ControlJob {
         }
     }
 
+    pub(crate) fn saved_action(request_id: u64, request: SavedActionRequest) -> Self {
+        Self {
+            request_id,
+            op: Op::Saved(request),
+        }
+    }
+
     pub(crate) fn open_terminal(spec: TerminalSpec) -> Self {
         Self {
             request_id: spec.request_id,
@@ -204,6 +221,9 @@ impl ControlJob {
                 .map(|()| response_result::Result::Done(response_result::Done {})),
             Op::CreateSurface(request) => control
                 .create_surface(request)
+                .map(|()| response_result::Result::Done(response_result::Done {})),
+            Op::Saved(request) => control
+                .saved_action(request)
                 .map(|()| response_result::Result::Done(response_result::Done {})),
             // A terminal is opened through `Control::open_terminal`, never through this path.
             Op::OpenTerminal(_) => Err(ControlError::new(

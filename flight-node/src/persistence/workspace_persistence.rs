@@ -2,7 +2,8 @@
 
 use crate::persistence::saved_report::{capped, saved_workspace};
 use crate::persistence::NodeBackend;
-use crate::{Program, SessionRequest, TmuxServers};
+use crate::{ControlError, Program, SavedAction, SavedActionRequest, SessionRequest, TmuxServers};
+use flight_proto::ErrorKindCode;
 use flight_tmux::{ConfigMark, SurfaceMark, SurfaceTag};
 use flight_workspaces::{
     recover, ConfigKey, Document, FsProbe, Observer, Origin, RecoveryPolicy, RecoveryReport,
@@ -187,6 +188,139 @@ impl WorkspacePersistence {
         )
     }
 
+    /// Carry out a user's operation on one saved workspace of this node. `Retry` is handled by
+    /// the caller (it only asks for an earlier report); every other action changes the saved
+    /// file, or starts the workspace, and nothing here touches the filesystem outside it.
+    pub fn act(
+        &self,
+        servers: &TmuxServers,
+        request: &SavedActionRequest,
+    ) -> Result<(), ControlError> {
+        let key = ConfigKey::parse(&request.config_key)
+            .ok_or_else(|| refuse(ErrorKindCode::InvalidRequest, "invalid key"))?;
+        let unknown = || refuse(ErrorKindCode::UnknownWorkspace, "no such saved workspace");
+        match &request.action {
+            SavedAction::Retry => Ok(()),
+            SavedAction::Remove => self.change(&key, |p, k| p.remove(k).map(|_| ())),
+            SavedAction::SetRoot(path) => {
+                self.change(&key, |p, k| p.set_root(k, path.clone()).then_some(()))
+            }
+            SavedAction::Trust => self.change(&key, |p, k| {
+                p.get_mut(k)
+                    .map(|w| w.origin = flight_workspaces::Origin::Local)
+            }),
+            SavedAction::AcceptRoot => self.accept_root(&key),
+            SavedAction::Restore => self.restore(servers, &key),
+        }
+        .and_then(|()| {
+            self.exists_or(&request.action, &key)
+                .ok_or_else(unknown)
+                .map(|_| ())
+        })
+    }
+
+    /// Whether the action's target is (or, for a removal, was) a saved workspace here: the
+    /// answer to an unknown key is the same for every action.
+    fn exists_or(&self, action: &SavedAction, key: &ConfigKey) -> Option<()> {
+        match (action, &*self.lock()) {
+            (SavedAction::Remove | SavedAction::Retry, _) => Some(()),
+            (_, State::Active { doc, .. }) => doc.active()?.get(key).map(|_| ()),
+            _ => None,
+        }
+    }
+
+    fn change(
+        &self,
+        key: &ConfigKey,
+        f: impl FnOnce(&mut flight_workspaces::Profile, &ConfigKey) -> Option<()>,
+    ) -> Result<(), ControlError> {
+        let mut found = false;
+        self.mutate(|doc| match doc.active_mut() {
+            Some(profile) => {
+                found = f(profile, key).is_some();
+                found
+            }
+            None => false,
+        })
+        .map_err(|why| refuse(ErrorKindCode::RemoteCommandFailed, why))?;
+        if found {
+            Ok(())
+        } else {
+            Err(refuse(
+                ErrorKindCode::UnknownWorkspace,
+                "no such saved workspace",
+            ))
+        }
+    }
+
+    /// The directory now at the saved path is the one meant: remember it. Only a directory that
+    /// is there can be accepted, and accepting nothing is created or changed on disk.
+    fn accept_root(&self, key: &ConfigKey) -> Result<(), ControlError> {
+        let path = match &*self.lock() {
+            State::Active { doc, .. } => doc
+                .active()
+                .and_then(|p| p.get(key))
+                .map(|w| w.root.path.clone()),
+            State::Disabled(_) => None,
+        }
+        .ok_or_else(|| refuse(ErrorKindCode::UnknownWorkspace, "no such saved workspace"))?;
+        let state = self.probe.probe(&self.host, &path);
+        if !matches!(state, flight_workspaces::RootState::Present { .. }) {
+            return Err(refuse(
+                ErrorKindCode::InvalidDirectory,
+                format!("{path} is not there to accept"),
+            ));
+        }
+        self.change(key, |p, k| p.get_mut(k).map(|w| w.root.record(&state)))
+    }
+
+    /// Start one saved workspace again, as a replacement process, if its root is verified and
+    /// nothing in the definition needs a permission the user has not given. Idempotent: a
+    /// workspace that already runs is left alone.
+    fn restore(&self, servers: &TmuxServers, key: &ConfigKey) -> Result<(), ControlError> {
+        let mut guard = self.lock();
+        let State::Active { store, doc } = &mut *guard else {
+            return Err(refuse(
+                ErrorKindCode::Unsupported,
+                "workspaces are not being saved on this node",
+            ));
+        };
+        let def = doc
+            .active()
+            .and_then(|p| p.get(key))
+            .cloned()
+            .ok_or_else(|| refuse(ErrorKindCode::UnknownWorkspace, "no such saved workspace"))?;
+        // Only this workspace is considered: a scratch document holds it alone.
+        let mut scratch = flight_workspaces::Document::default();
+        if let Some(p) = scratch.active_mut() {
+            p.workspaces.push(def);
+        }
+        let policy = RecoveryPolicy {
+            start_missing: true,
+            ..RecoveryPolicy::default()
+        };
+        let observer = NodeBackend::new(servers, &self.host);
+        let mut executor = NodeBackend::new(servers, &self.host);
+        let report = recover(
+            &mut scratch,
+            &[self.host.as_str()],
+            &observer,
+            &self.probe,
+            &mut executor,
+            &policy,
+        );
+        let learned = scratch.active().and_then(|p| p.get(key)).cloned();
+        if let (Some(updated), Some(profile)) = (learned, doc.active_mut()) {
+            if profile.get(key) != Some(&updated) {
+                profile.upsert(updated);
+                store
+                    .save(doc)
+                    .map_err(|e| refuse(ErrorKindCode::RemoteCommandFailed, e.to_string()))?;
+            }
+        }
+        restore_verdict(&report)
+    }
+
     /// One reconciliation pass of the saved workspaces against this node's tmux servers. The
     /// lock is held throughout, so two passes cannot interleave. Returns `None` when
     /// persistence is disabled.
@@ -216,4 +350,63 @@ impl WorkspacePersistence {
         }
         Some(Ok(report))
     }
+}
+
+fn refuse(kind: ErrorKindCode, message: impl Into<String>) -> ControlError {
+    ControlError::new(kind, message)
+}
+
+/// What a restore pass amounts to for the user: done, or why it was not.
+fn restore_verdict(report: &RecoveryReport) -> Result<(), ControlError> {
+    use flight_workspaces::{Blocker, Health, Outcome, Refusal};
+    let Some(item) = report.items.first() else {
+        return Err(refuse(
+            ErrorKindCode::UnknownWorkspace,
+            "no such saved workspace",
+        ));
+    };
+    if let Some(r) = item.refusals.first() {
+        return Err(match r {
+            Refusal::ImportedNotTrusted => refuse(
+                ErrorKindCode::NotAuthorized,
+                "this workspace was imported; trust it before it can start anything",
+            ),
+            Refusal::SkipPermissionsNotTrusted => refuse(
+                ErrorKindCode::NotAuthorized,
+                "this workspace runs an agent without permission prompts; create it again to allow that",
+            ),
+            Refusal::RootNotVerified | Refusal::PolicyDoesNotStart => refuse(
+                ErrorKindCode::InvalidDirectory,
+                "the directory is not verified",
+            ),
+        });
+    }
+    if let Health::Blocked(why) = &item.health {
+        return Err(match why {
+            Blocker::Root(_) => refuse(
+                ErrorKindCode::InvalidDirectory,
+                "the directory is missing, unverified or not the one that was saved",
+            ),
+            Blocker::Ambiguous(_) => refuse(
+                ErrorKindCode::AlreadyExists,
+                "more than one running workspace could be this one; not choosing",
+            ),
+            Blocker::HostUnreachable(why) => refuse(ErrorKindCode::NodeUnreachable, why.clone()),
+        });
+    }
+    for (_, _, outcome) in &report.done {
+        match outcome {
+            Outcome::Refused(why) => {
+                return Err(refuse(ErrorKindCode::RemoteCommandFailed, why.clone()))
+            }
+            Outcome::Unknown(why) => {
+                return Err(refuse(
+                    ErrorKindCode::RemoteCommandFailed,
+                    format!("not sure it started ({why}); check again"),
+                ))
+            }
+            _ => {}
+        }
+    }
+    Ok(())
 }

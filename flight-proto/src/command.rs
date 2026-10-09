@@ -3,7 +3,7 @@
 use crate::command_kind::Kind;
 use crate::validate::non_empty;
 use crate::{valid_dir, valid_session_name};
-use crate::{PaneRefMsg, ProgramCode, Reject, SurfaceKindCode, Validate};
+use crate::{PaneRefMsg, ProgramCode, Reject, SavedActionCode, SurfaceKindCode, Validate};
 
 /// The most preview lines a single request may ask for.
 pub const MAX_PREVIEW_LINES: u32 = 2000;
@@ -12,12 +12,12 @@ pub const MAX_PREVIEW_LINES: u32 = 2000;
 /// `CreateSession` names the host explicitly.
 #[derive(Clone, PartialEq, Eq, prost::Message)]
 pub struct Command {
-    #[prost(oneof = "command_kind::Kind", tags = "1, 3, 4, 6, 7, 8, 9")]
+    #[prost(oneof = "command_kind::Kind", tags = "1, 3, 4, 6, 7, 8, 9, 10")]
     pub kind: Option<command_kind::Kind>,
 }
 
 pub mod command_kind {
-    use crate::{PaneRefMsg, ProgramCode, SurfaceKindCode};
+    use crate::{PaneRefMsg, ProgramCode, SavedActionCode, SurfaceKindCode};
 
     #[derive(Clone, PartialEq, Eq, prost::Message)]
     pub struct GetPreview {
@@ -105,6 +105,22 @@ pub mod command_kind {
         pub kind: i32,
     }
 
+    /// An operation on a workspace a node has saved (`saved_actions_v1`, ADR-008). Routed to
+    /// `host`; the node finds the saved workspace by `config_key` among its own. No action
+    /// creates, repairs or deletes anything on the filesystem.
+    #[derive(Clone, PartialEq, Eq, prost::Message)]
+    pub struct SavedAction {
+        #[prost(string, tag = "1")]
+        pub host: String,
+        #[prost(string, tag = "2")]
+        pub config_key: String,
+        #[prost(enumeration = "SavedActionCode", tag = "3")]
+        pub action: i32,
+        /// Only for `SetRoot`.
+        #[prost(string, tag = "4")]
+        pub root: String,
+    }
+
     #[derive(Clone, PartialEq, Eq, prost::Oneof)]
     pub enum Kind {
         #[prost(message, tag = "1")]
@@ -121,6 +137,8 @@ pub mod command_kind {
         CreateSession(CreateSession),
         #[prost(message, tag = "9")]
         CreateSurface(CreateSurface),
+        #[prost(message, tag = "10")]
+        SavedAction(SavedAction),
     }
 }
 
@@ -141,6 +159,7 @@ impl Command {
             KillPane(c) => host_of(&c.pane_ref),
             CreateSession(c) => Some(c.host.as_str()),
             CreateSurface(_) => None,
+            SavedAction(c) => Some(c.host.as_str()),
         }
     }
 }
@@ -202,6 +221,20 @@ impl Validate for Command {
                     return Err(Reject::OutOfRange("create_surface.workspace_id"));
                 }
                 SurfaceKindCode::decode(c.kind, "create_surface.kind").map(|_| ())
+            }
+            SavedAction(c) => {
+                non_empty(&c.host, "saved_action.host")?;
+                if !flight_state::valid_id(&c.config_key) {
+                    return Err(Reject::OutOfRange("saved_action.config_key"));
+                }
+                let action = SavedActionCode::decode(c.action, "saved_action.action")?;
+                // A root only goes with the action that sets one.
+                match (action, c.root.is_empty()) {
+                    (SavedActionCode::SetRoot, false) if valid_dir(&c.root) => Ok(()),
+                    (SavedActionCode::SetRoot, _) => Err(Reject::OutOfRange("saved_action.root")),
+                    (_, true) => Ok(()),
+                    (_, false) => Err(Reject::Mismatch("saved_action.root")),
+                }
             }
         }
     }

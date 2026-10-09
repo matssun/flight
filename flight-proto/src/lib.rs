@@ -46,7 +46,7 @@ pub mod codec;
 
 pub use codes::{
     AgentKindCode, ErrorKindCode, ExitReasonCode, NodeStatusCode, ProgramCode, RoleCode,
-    SavedHealthCode, SavedRootCode, SourceCode, StateCode, SurfaceKindCode,
+    SavedActionCode, SavedHealthCode, SavedRootCode, SourceCode, StateCode, SurfaceKindCode,
 };
 pub use command::{command_kind, Command, Request, MAX_PREVIEW_LINES};
 pub use delta::{delta_change, Delta};

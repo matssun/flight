@@ -112,6 +112,21 @@ Boundary with future worktree management: **Flight's recovery responsibility end
 
 Saved workspaces that are not running are listed under **SAVED · NOT RUNNING**, after the live ones, in the same list and with the same cursor (the key of a saved entry is its `c-…` identity, which can never equal a running workspace's `w-…`). Blocked ones come first. Each row says the host and the reason in the user's words; the selected one opens out to host (with its connection), configured root and the node's failure text, and says that Flight does not create or repair directories. The reason names an unreachable or quiet host before anything about the root, because nothing about a root can be known when its host cannot be asked. The header counts "saved unavailable" (a problem) apart from "saved stopped" (nothing wrong). A running saved workspace is not listed twice. Opening one only explains.
 
+## Actions (increment 4b, wire and node)
+
+`Command.SavedAction { host, config_key, action, root }`, capability `saved_actions_v1`, routed to the node named by `host` (the UI knows it from the report; there is no search by key). The node finds the saved workspace by its stable key among its own and refuses any other (`UnknownWorkspace`, in the same words for every action). Nothing here creates, repairs or deletes anything on the filesystem.
+
+| Action | Effect | Refused when |
+|---|---|---|
+| `Retry` | brings the next report forward (the reporter wakes within 200 ms) | |
+| `Remove` | forgets the saved reference; processes, directories, repositories stay; its runtime id is dismissed so recording what is live does not bring it back | key unknown |
+| `Restore` | one reconciliation pass limited to this workspace with `start_missing`; a replacement process, in a verified root; repeating it changes nothing | root missing/unverified/changed (`InvalidDirectory`), imported and not trusted or an agent saved without permission prompts (`NotAuthorized`), ambiguous match |
+| `AcceptRoot` | records the directory now at the path as the saved identity ("this is the workspace") | nothing is there |
+| `SetRoot(path)` | points the workspace at another directory; clears the recorded identity; creates nothing | invalid path |
+| `Trust` | an imported definition becomes local, so a restore may start it | |
+
+Importing, trusting and starting remain three decisions: `Restore` of an imported workspace is refused until `Trust`, and a workspace saved as skip-permissions is never started by a restore (it has to be created again, which asks). The saved file being unusable refuses every action with the reason and changes nothing.
+
 ## Deferred, with reasons
 
 - Wire protocol: publishing saved-but-not-running workspaces to the dashboard, and the user actions, are the next increment (`SavedWorkspace` messages with capability negotiation, so an older node simply publishes none).

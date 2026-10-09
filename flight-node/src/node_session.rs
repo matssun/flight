@@ -2,19 +2,19 @@
 
 use crate::control::response_frame;
 use crate::{
-    ControlError, ControlJob, NewSurface, NodeCore, Program, Round, SessionRequest, SurfaceRequest,
-    TerminalSpec,
+    ControlError, ControlJob, NewSurface, NodeCore, Program, Round, SavedAction,
+    SavedActionRequest, SessionRequest, SurfaceRequest, TerminalSpec,
 };
 use flight_proto::{
     capability, command_kind::Kind, node_body, orchestrator_body, Command, ErrorKindCode,
     Heartbeat, NodeFrame, NodeHello, OrchestratorFrame, PaneRefMsg, ProgramCode, ProtocolVersion,
-    Request, SurfaceKindCode, Validate, CURRENT_VERSION, TERMINAL_ID_LEN,
+    Request, SavedActionCode, SurfaceKindCode, Validate, CURRENT_VERSION, TERMINAL_ID_LEN,
 };
 use flight_state::{PaneRef, WorkspaceId};
 
 /// What this node can do. `send_input` is not offered: there is no input path yet. A node
 /// never switches a client (it has none): it reveals a pane in its own tmux hierarchy.
-pub const ADVERTISED_CAPABILITIES: [&str; 7] = [
+pub const ADVERTISED_CAPABILITIES: [&str; 8] = [
     capability::PREVIEW,
     capability::GUARDED_REVEAL,
     capability::TERMINAL,
@@ -22,6 +22,7 @@ pub const ADVERTISED_CAPABILITIES: [&str; 7] = [
     capability::CREATE_SESSION,
     capability::CREATE_SURFACE,
     capability::SAVED_WORKSPACES,
+    capability::SAVED_ACTIONS,
 ];
 
 /// Frames to send, control work to run, and whether the node should close the stream.
@@ -272,6 +273,36 @@ impl NodeSession {
                         host: self.core.host().clone(),
                         workspace_id: WorkspaceId::new(&c.workspace_id),
                         kind,
+                    },
+                ))
+            }
+            Some(Kind::SavedAction(c)) => {
+                need(capability::SAVED_ACTIONS)?;
+                if c.host != self.core.host().as_str() {
+                    return Err(ControlError::new(
+                        ErrorKindCode::InvalidRequest,
+                        "wrong host",
+                    ));
+                }
+                let action = match SavedActionCode::try_from(c.action) {
+                    Ok(SavedActionCode::Retry) => SavedAction::Retry,
+                    Ok(SavedActionCode::Remove) => SavedAction::Remove,
+                    Ok(SavedActionCode::Restore) => SavedAction::Restore,
+                    Ok(SavedActionCode::AcceptRoot) => SavedAction::AcceptRoot,
+                    Ok(SavedActionCode::SetRoot) => SavedAction::SetRoot(c.root.clone()),
+                    Ok(SavedActionCode::Trust) => SavedAction::Trust,
+                    _ => {
+                        return Err(ControlError::new(
+                            ErrorKindCode::InvalidRequest,
+                            "unknown action",
+                        ))
+                    }
+                };
+                Ok(ControlJob::saved_action(
+                    id,
+                    SavedActionRequest {
+                        config_key: c.config_key.clone(),
+                        action,
                     },
                 ))
             }

@@ -18,6 +18,7 @@ pub fn plan(
 ) -> Plan {
     let mut plan = Plan::default();
     let mut hosts: Vec<&str> = profile.workspaces.iter().map(|w| w.host.as_str()).collect();
+    hosts.extend(views.keys().map(String::as_str));
     hosts.sort_unstable();
     hosts.dedup();
     let mut accounted: Vec<String> = Vec::new();

@@ -405,6 +405,7 @@ dependencies = [
  "flight-transport",
  "flight-trust",
  "flight-ui",
+ "flight-workspaces",
  "portable-pty",
  "tokio",
 ]
@@ -468,6 +469,7 @@ dependencies = [
  "flight-proto",
  "flight-state",
  "flight-tmux",
+ "flight-workspaces",
  "getrandom",
  "portable-pty",
 ]

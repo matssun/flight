@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::pane_agent;
+use crate::persistence::WorkspacePersistence;
 use crate::round::raw_placement;
 use crate::session_create::{create, new_id};
 use crate::{
@@ -11,8 +12,10 @@ use crate::{
 use flight_proto::ErrorKindCode;
 use flight_state::{HostId, PaneId, ServerId, SurfaceRole, WorkspaceId};
 use flight_tmux::{
-    CreateError, Launch, SurfaceMark, SurfaceTag, Tmux, TmuxEndpoint, TmuxError, TmuxRunner,
+    ConfigMark, CreateError, Launch, SurfaceMark, SurfaceTag, Tmux, TmuxEndpoint, TmuxError,
+    TmuxRunner,
 };
+use flight_workspaces::ConfigKey;
 use std::collections::BTreeMap;
 use std::io::ErrorKind;
 use std::sync::Mutex;
@@ -38,6 +41,8 @@ pub struct TmuxServers {
     /// Surface creation checks "no shell yet" and then adds one: one at a time, so two
     /// requests cannot both pass the check.
     surfaces: Mutex<()>,
+    /// The saved workspaces of this node, when persistence is on (ADR-008).
+    persistence: Option<WorkspacePersistence>,
 }
 
 impl TmuxServers {
@@ -58,6 +63,121 @@ impl TmuxServers {
     /// Replace the environment sessions are created from (the process's, by default).
     pub fn set_session_env(&mut self, env: SessionEnv) {
         self.session_env = env;
+    }
+
+    /// Keep the workspaces created here, and let them be reconciled after a restart.
+    pub fn enable_persistence(&mut self, persistence: WorkspacePersistence) {
+        self.persistence = Some(persistence);
+    }
+
+    pub fn persistence(&self) -> Option<&WorkspacePersistence> {
+        self.persistence.as_ref()
+    }
+
+    /// The panes the node publishes (those of Flight's sessions and those running an agent),
+    /// from every server. A server with no tmux running contributes none; any other failure is
+    /// an error, never an empty answer.
+    pub(crate) fn published_panes(&self) -> Result<Vec<(ServerId, flight_tmux::PaneInfo)>, String> {
+        let mut out = Vec::new();
+        for (server, tmux) in &self.servers {
+            match tmux.list_panes() {
+                Ok(panes) => out.extend(
+                    panes
+                        .into_iter()
+                        .filter(|p| pane_agent(p).is_some())
+                        .map(|p| (server.clone(), p)),
+                ),
+                Err(e) => match unavailable(&e) {
+                    Unavailable::NoServer => {}
+                    other => return Err(format!("{server}: {other:?}")),
+                },
+            }
+        }
+        Ok(out)
+    }
+
+    /// Create a workspace, optionally marked with the saved definition it realizes. Returns the
+    /// server it lives on and the mark of its first surface.
+    pub(crate) fn create_session_marked(
+        &self,
+        request: &SessionRequest,
+        config: Option<ConfigMark>,
+    ) -> Result<(ServerId, SurfaceMark), ControlError> {
+        // The node, not the caller, decides where a session lives: its first backend.
+        let server = self.servers.keys().next().ok_or_else(|| {
+            ControlError::new(
+                ErrorKindCode::TmuxUnavailable,
+                "this node has no session backend",
+            )
+        })?;
+        let tmux = self.tmux(server)?;
+        let mark = create(tmux, request, &self.session_env, config, failed)?;
+        Ok((server.clone(), mark))
+    }
+
+    /// Add the companion shell to a running workspace, marked with the saved surface it
+    /// realizes. The directory is the workspace's own, read live, and must still exist: tmux
+    /// would otherwise quietly start the shell somewhere else. Returns the new mark and the
+    /// saved key of the workspace, if it has one.
+    pub(crate) fn create_shell_marked(
+        &self,
+        host: &HostId,
+        workspace_id: &str,
+        surface: &ConfigKey,
+    ) -> Result<(SurfaceMark, String), ControlError> {
+        let _one_at_a_time = self.surfaces.lock().unwrap_or_else(|p| p.into_inner());
+        let id = WorkspaceId::new(workspace_id);
+        let (server, panes) = self.workspace_panes(host, &id)?;
+        let tmux = self.tmux(&server)?;
+        let is_shell = |p: &flight_tmux::PaneInfo| {
+            let runs_agent = pane_agent(p).is_some_and(|a| a != flight_classify::AgentKind::Other);
+            raw_placement(p).role(runs_agent) == SurfaceRole::Shell
+        };
+        if panes.iter().any(is_shell) {
+            return Err(ControlError::new(
+                ErrorKindCode::AlreadyExists,
+                "this workspace already has a shell",
+            ));
+        }
+        let first = panes.first().ok_or_else(|| unknown_workspace(&id))?;
+        if first.session_path.is_empty() {
+            return Err(ControlError::new(
+                ErrorKindCode::InvalidDirectory,
+                "this workspace has no known root directory",
+            ));
+        }
+        if !std::fs::metadata(&first.session_path).is_ok_and(|m| m.is_dir()) {
+            return Err(ControlError::new(
+                ErrorKindCode::InvalidDirectory,
+                format!("{} does not exist on this node", first.session_path),
+            ));
+        }
+        let mark = SurfaceMark {
+            workspace_id: workspace_id.to_owned(),
+            surface_id: new_id('s')?,
+            kind: SurfaceTag::Shell,
+            config: Some(ConfigMark {
+                workspace: first.config_key.clone(),
+                surface: surface.to_string(),
+            }),
+        };
+        match tmux.create_surface_window(
+            &first.session_id,
+            &first.session_path,
+            &Launch::DefaultShell,
+            &mark,
+        ) {
+            Ok(_window) => Ok((mark, first.config_key.clone())),
+            Err(CreateError::Exited) => Err(ControlError::new(
+                ErrorKindCode::ProgramUnavailable,
+                "the shell exited as soon as it started; nothing was created",
+            )),
+            Err(CreateError::AlreadyExists) => Err(ControlError::new(
+                ErrorKindCode::AlreadyExists,
+                "this workspace already has a shell",
+            )),
+            Err(CreateError::Tmux(e)) => Err(failed(e)),
+        }
     }
 
     pub fn server_ids(&self) -> Vec<ServerId> {
@@ -279,62 +399,46 @@ impl Control for TmuxServers {
     }
 
     fn create_session(&self, request: &SessionRequest) -> Result<(), ControlError> {
-        // The node, not the caller, decides where a session lives: its first backend.
-        let server = self.servers.keys().next().ok_or_else(|| {
-            ControlError::new(
-                ErrorKindCode::TmuxUnavailable,
-                "this node has no session backend",
-            )
-        })?;
-        let tmux = self.tmux(server)?;
-        create(tmux, request, &self.session_env, failed)
+        let config = ConfigMark {
+            workspace: mint_key()?.to_string(),
+            surface: mint_key()?.to_string(),
+        };
+        let (_server, mark) = self.create_session_marked(request, Some(config.clone()))?;
+        if let Some(p) = &self.persistence {
+            log_unsaved(p.record_session(request, &mark, &config));
+        }
+        Ok(())
     }
 
     fn create_surface(&self, request: &SurfaceRequest) -> Result<(), ControlError> {
-        let _one_at_a_time = self.surfaces.lock().unwrap_or_else(|p| p.into_inner());
-        let (server, panes) = self.workspace_panes(&request.host, &request.workspace_id)?;
-        let tmux = self.tmux(&server)?;
-        let is_shell = |p: &flight_tmux::PaneInfo| {
-            let runs_agent = pane_agent(p).is_some_and(|a| a != flight_classify::AgentKind::Other);
-            raw_placement(p).role(runs_agent) == SurfaceRole::Shell
-        };
-        if panes.iter().any(is_shell) {
-            return Err(ControlError::new(
-                ErrorKindCode::AlreadyExists,
-                "this workspace already has a shell",
+        let key = mint_key()?;
+        let (mark, workspace_config) =
+            self.create_shell_marked(&request.host, request.workspace_id.as_str(), &key)?;
+        if let Some(p) = &self.persistence {
+            log_unsaved(p.record_surface(
+                &workspace_config,
+                request.workspace_id.as_str(),
+                &mark,
+                &key,
             ));
         }
-        let first = panes
-            .first()
-            .ok_or_else(|| unknown_workspace(&request.workspace_id))?;
-        if first.session_path.is_empty() {
-            return Err(ControlError::new(
-                ErrorKindCode::InvalidDirectory,
-                "this workspace has no known root directory",
-            ));
-        }
-        let mark = SurfaceMark {
-            workspace_id: request.workspace_id.to_string(),
-            surface_id: new_id('s')?,
-            kind: SurfaceTag::Shell,
-        };
-        match tmux.create_surface_window(
-            &first.session_id,
-            &first.session_path,
-            &Launch::DefaultShell,
-            &mark,
-        ) {
-            Ok(_window) => Ok(()),
-            Err(CreateError::Exited) => Err(ControlError::new(
-                ErrorKindCode::ProgramUnavailable,
-                "the shell exited as soon as it started; nothing was created",
-            )),
-            Err(CreateError::AlreadyExists) => Err(ControlError::new(
-                ErrorKindCode::AlreadyExists,
-                "this workspace already has a shell",
-            )),
-            Err(CreateError::Tmux(e)) => Err(failed(e)),
-        }
+        Ok(())
+    }
+}
+
+fn mint_key() -> Result<ConfigKey, ControlError> {
+    ConfigKey::mint().map_err(|_| {
+        ControlError::new(
+            ErrorKindCode::RemoteCommandFailed,
+            "this node cannot make a new id",
+        )
+    })
+}
+
+/// A workspace that could not be saved still exists; the next reconciliation records it.
+fn log_unsaved(result: Result<(), String>) {
+    if let Err(why) = result {
+        eprintln!("flight-node: workspace created but not saved: {why}");
     }
 }
 

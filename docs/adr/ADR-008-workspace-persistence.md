@@ -2,7 +2,7 @@
 
 # ADR-008: Durable workspaces, recovery as reconciliation
 
-Status: first increment implemented (`flight-workspaces`: schema, store, root verification, planner, recovery driver, with fakes). Not yet wired into the node, the protocol or the dashboard (see the plan, `docs/PLAN-workspace-persistence.md`).
+Status: increments 1 and 2 implemented: `flight-workspaces` (schema, store, root verification, planner, recovery driver) and the node integration (below). Not yet in the protocol or the dashboard (see `docs/PLAN-workspace-persistence.md`).
 
 ## Problem
 
@@ -88,6 +88,16 @@ Retry, inspect, change root and remove are user actions on the saved definition 
 A root is a directory. Plain directories and independent clones are both ordinary. The probe records the `.git` entry's *shape* (`Absent`, `Directory`, `File { gitdir }`, `Unreadable`) by looking at the filesystem; it never runs `git`, never requires a repository, and never assumes `.git` is a directory. A `.git` file (linked worktree, submodule) is recorded with its `gitdir:` text unfollowed; an unparseable pointer is `File { gitdir: None }`, reported and not repaired.
 
 Boundary with future worktree management: **Flight's recovery responsibility ends at "is there a usable directory here, and is it the one we saved".** Creating, relocating, repairing or pruning worktrees is a lifecycle feature that would run *before* a workspace exists (it produces a root) and would be explicit user actions, not recovery. The model needs no change for it: a worktree is a root with a `File` marker; `RootSpec` can later gain `repo_hint` / `branch` fields additively (schema bump with a migration step). Open items for that work, deliberately not decided here: how to discover sibling worktrees (`git worktree list` is a process spawn on the node and must be opt-in), identity of a relocated worktree (inode survives a `mv` on the same filesystem; a copy does not), and what to show when `gitdir` points at a repository that moved.
+
+## Node integration (increment 2)
+
+- **Marks.** `@flight_config` (session) and `@flight_config_surface` (window) carry the saved keys. They are written by the same tmux invocation that creates the session or window, so a start whose reply is lost still leaves the mark. `PANE_FORMAT` gained the two fields (before the title, which stays last); `PaneInfo` carries them. They are not on the wire: reconciliation is node-local.
+- **File.** `<config>/node/workspaces.toml`, opened by `flight node run`. `WorkspacePersistence` loads it once and changes it only under one lock. An unreadable or newer file disables persistence for the run, is left byte for byte as found, and is reported; creation keeps working, unsaved.
+- **Autosave.** `CreateSession` and `CreateSurface` mint the keys, write the marks, and then save the definition (root identity recorded when first seen). Create-then-save is safe in either crash order: an unsaved but marked workspace is recorded by the next pass under its own key. A failed save is logged and never fails the creation.
+- **Startup.** `flight node run` runs one pass with the default policy: bind to what runs, record what is unsaved, start nothing. `--restore` also starts saved workspaces that are not running, in a verified root; this is the operator's explicit decision, and imported definitions and skip-permission agents are still refused.
+- **Observation.** The node reads its own tmux servers (panes of Flight's sessions and of agent panes, as published). A server that is not running contributes nothing; any other failure makes the host unreadable (never an empty answer, which would start duplicates).
+- **Starting.** Only through the existing creation paths. The companion shell is now also refused when the workspace's directory no longer exists (tmux would otherwise start it silently in another directory); this applies to the dashboard's `CreateSurface` too.
+- **Concurrency.** A pass holds the persistence lock throughout, so passes serialize; tmux refuses a duplicate session name; surface creation is already one at a time.
 
 ## Deferred, with reasons
 

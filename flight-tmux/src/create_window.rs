@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use crate::{
-    CreateError, Launch, SurfaceMark, Tmux, TmuxRunner, SURFACE_ID_OPTION, SURFACE_OPTION,
+    CreateError, Launch, SurfaceMark, Tmux, TmuxRunner, CONFIG_SURFACE_OPTION, SURFACE_ID_OPTION,
+    SURFACE_OPTION,
 };
 use std::thread::sleep;
 use std::time::Duration;
@@ -44,10 +45,14 @@ impl<R: TmuxRunner> Tmux<R> {
         if let Launch::Program { argv } = launch {
             args.extend(argv.iter().cloned());
         }
-        for (option, value) in [
+        let mut options = vec![
             (SURFACE_OPTION, name),
             (SURFACE_ID_OPTION, mark.surface_id.as_str()),
-        ] {
+        ];
+        if let Some(config) = &mark.config {
+            options.push((CONFIG_SURFACE_OPTION, config.surface.as_str()));
+        }
+        for (option, value) in options {
             args.extend(
                 [";", "set-option", "-w", "-t", &by_name, option, value].map(str::to_owned),
             );
@@ -162,6 +167,7 @@ mod tests {
             workspace_id: "w-1".into(),
             surface_id: "s-2".into(),
             kind: SurfaceTag::Shell,
+            config: None,
         }
     }
 

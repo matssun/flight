@@ -3,7 +3,9 @@
 use super::{new_id, Program, SessionEnv, SessionRequest};
 use crate::ControlError;
 use flight_proto::{valid_dir, valid_session_name, ErrorKindCode};
-use flight_tmux::{CreateError, Launch, NewSession, SurfaceMark, SurfaceTag, Tmux, TmuxRunner};
+use flight_tmux::{
+    ConfigMark, CreateError, Launch, NewSession, SurfaceMark, SurfaceTag, Tmux, TmuxRunner,
+};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
@@ -19,8 +21,9 @@ pub(crate) fn create<R: TmuxRunner>(
     tmux: &Tmux<R>,
     request: &SessionRequest,
     env: &SessionEnv,
+    config: Option<ConfigMark>,
     tmux_failure: impl Fn(flight_tmux::TmuxError) -> ControlError,
-) -> Result<(), ControlError> {
+) -> Result<SurfaceMark, ControlError> {
     if !valid_session_name(&request.name) {
         return Err(refuse(
             ErrorKindCode::InvalidRequest,
@@ -49,15 +52,16 @@ pub(crate) fn create<R: TmuxRunner>(
             Program::Shell => SurfaceTag::Shell,
             Program::Claude | Program::ClaudeSkipPermissions => SurfaceTag::Agent,
         },
+        config,
     };
     let spec = NewSession {
         name: request.name.clone(),
         dir: dir.to_string_lossy().into_owned(),
         launch,
-        mark: Some(mark),
+        mark: Some(mark.clone()),
     };
     match tmux.create_session(&spec) {
-        Ok(_id) => Ok(()),
+        Ok(_id) => Ok(mark),
         Err(CreateError::AlreadyExists) => Err(refuse(
             ErrorKindCode::AlreadyExists,
             format!("a session named {} already exists", request.name),

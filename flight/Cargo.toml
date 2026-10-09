@@ -14,6 +14,7 @@ flight-state = { path = "../flight-state" }
 flight-ui = { path = "../flight-ui" }
 flight-client = { path = "../flight-client" }
 flight-node = { path = "../flight-node" }
+flight-workspaces = { path = "../flight-workspaces" }
 flight-proto = { path = "../flight-proto" }
 flight-transport = { path = "../flight-transport" }
 flight-trust = { path = "../flight-trust" }

@@ -68,7 +68,9 @@ fn registry_with(
 }
 
 fn pane_line(id: &str, session: &str) -> String {
-    format!("{id}\t{session}\tw\t@1\t0\t/tmp\t7\t1\t1\t1\tzsh\t1700\t0\t\t\t\t/tmp\t$1\ttitle\n")
+    format!(
+        "{id}\t{session}\tw\t@1\t0\t/tmp\t7\t1\t1\t1\tzsh\t1700\t0\t\t\t\t/tmp\t$1\t\t\ttitle\n"
+    )
 }
 
 fn ssh() -> Transport {

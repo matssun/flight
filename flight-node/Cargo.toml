@@ -15,3 +15,5 @@ flight-tmux = { path = "../flight-tmux" }
 flight-workspaces = { path = "../flight-workspaces" }
 getrandom = "0.2"
 portable-pty = "0.8"
+# The terminal settings of the PTY (portable-pty already depends on it, at this version).
+nix = { version = "0.25", default-features = false, features = ["term"] }

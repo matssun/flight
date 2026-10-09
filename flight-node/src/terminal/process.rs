@@ -115,6 +115,16 @@ impl TerminalProcess {
         }
     }
 
+    /// Whether the program on the PTY has taken the terminal over (left line-at-a-time mode, as a
+    /// tmux client does as it starts). Until then input written to the PTY waits in the kernel
+    /// and is read by whatever starts; hanging the child up before it starts discards it.
+    pub fn client_ready(&self) -> bool {
+        self.master.get_termios().is_some_and(|t| {
+            !t.local_flags
+                .contains(nix::sys::termios::LocalFlags::ICANON)
+        })
+    }
+
     /// A handle that can hang the child up without owning the process, so another thread can
     /// end a terminal whose owner is blocked writing to it.
     pub fn hang_up_handle(&self) -> HangUp {

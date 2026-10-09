@@ -773,11 +773,12 @@ fn switching_surface_stays_in_the_session_keeps_both_surfaces_running_and_orders
     if !tmux_available() {
         return;
     }
-    let mut rig = start("switch", "cat", true);
+    // Surfaces are windows (a workspace's agent and shell), as in the product: panes of one
+    // window share their active pane, so two views could not show two of them independently.
+    let mut rig = start_with("switch", "cat", true, true);
     let entered = rig.enter(0);
     let shown = rig.show(&entered);
     rig.wait("tmux client attached", |r| r.clients().len() == 1);
-    assert_eq!(rig.active_pane(), rig.panes[0].0);
 
     // Typed for the agent, then the switch, then typed for the shell, all in one burst: the
     // shell is not attached yet when the second part is typed, and it must still get it.
@@ -805,9 +806,7 @@ fn switching_surface_stays_in_the_session_keeps_both_surfaces_running_and_orders
         "misdelivered"
     );
     // One client, on the shell; the agent's attachment was let go once the shell was up.
-    rig.wait("one client, on the shell", |r| {
-        r.clients().len() == 1 && r.active_pane() == r.panes[1].0
-    });
+    rig.wait("one client left", |r| r.clients().len() == 1);
 
     // And back: both surfaces kept their own state.
     rig.rt

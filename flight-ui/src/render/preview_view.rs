@@ -79,12 +79,15 @@ pub fn preview_view(vm: &ViewModel, height: usize, width: usize) -> Vec<Line<'st
     out.truncate(height.saturating_sub(3));
     out.push(Line::styled("─".repeat(width), dim()));
     out.push(Line::styled(
-        format!(" {action}"),
+        fit(&format!(" {action}"), width),
         Style::default().fg(accent(p.state)),
     ));
     if p.state != AgentState::Down {
         out.push(Line::styled(
-            " In a session: Ctrl-Space a agent · s shell · q back here.",
+            fit(
+                " In a session: Ctrl-Space a agent · s shell · q back here.",
+                width,
+            ),
             dim(),
         ));
     }

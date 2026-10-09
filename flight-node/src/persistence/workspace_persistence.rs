@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: MIT
 
+use crate::agent_resume::{resume_support, AgentSession, Support};
 use crate::persistence::saved_report::{capped, saved_workspace};
 use crate::persistence::NodeBackend;
+use crate::persistence::{canonical_root, NewReference, ResumeContext};
 use crate::{ControlError, Program, SavedAction, SavedActionRequest, SessionRequest, TmuxServers};
 use flight_proto::ErrorKindCode;
 use flight_tmux::{ConfigMark, SurfaceMark, SurfaceTag};
 use flight_workspaces::{
     recover, ConfigKey, Document, FsProbe, Observer, Origin, RecoveryPolicy, RecoveryReport,
-    RootProbe, RootSpec, Store, SurfaceKind, SurfaceSpec, WorkspaceDefinition,
+    ResumeRef, ResumeScope, ResumeStore, RootProbe, RootSpec, Store, SurfaceKind, SurfaceSpec,
+    WorkspaceDefinition,
 };
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
@@ -16,6 +19,9 @@ enum State {
     Active {
         store: Store,
         doc: Box<Document>,
+        /// Agents' session references. `None` when their file cannot be used (newer or
+        /// unreadable): left exactly as found, and nothing can be resumed meanwhile.
+        resume: Option<ResumeStore>,
     },
     /// The saved file could not be used. It is left exactly as found, nothing is saved over it,
     /// and the node carries on without persistence until the user deals with the file.
@@ -28,6 +34,7 @@ enum State {
 pub struct WorkspacePersistence {
     host: String,
     probe: FsProbe,
+    home: Option<std::path::PathBuf>,
     state: Mutex<State>,
     /// Held for as long as this node runs: no other process edits the saved file meanwhile.
     _lock: Option<flight_workspaces::StoreLock>,
@@ -46,6 +53,7 @@ impl WorkspacePersistence {
                 let _ = store.sweep_temporaries();
                 let state = match store.load() {
                     Ok((doc, _how)) => State::Active {
+                        resume: ResumeStore::open(dir).ok(),
                         store,
                         doc: Box::new(doc),
                     },
@@ -56,7 +64,8 @@ impl WorkspacePersistence {
         };
         Self {
             host: host.into(),
-            probe: FsProbe::new(home),
+            probe: FsProbe::new(home.clone()),
+            home,
             state: Mutex::new(state),
             _lock: lock,
         }
@@ -89,7 +98,7 @@ impl WorkspacePersistence {
     fn mutate(&self, f: impl FnOnce(&mut Document) -> bool) -> Result<(), String> {
         match &mut *self.lock() {
             State::Disabled(why) => Err(format!("workspaces are not being saved: {why}")),
-            State::Active { store, doc } => {
+            State::Active { store, doc, .. } => {
                 if f(doc) {
                     store.save(doc).map_err(|e| e.to_string())?;
                 }
@@ -104,6 +113,7 @@ impl WorkspacePersistence {
         request: &SessionRequest,
         mark: &SurfaceMark,
         config: &ConfigMark,
+        session: Option<&AgentSession>,
     ) -> Result<(), String> {
         let (Some(key), Some(surface)) = (
             ConfigKey::parse(&config.workspace),
@@ -114,7 +124,7 @@ impl WorkspacePersistence {
         let mut root = RootSpec::new(request.dir.clone());
         root.record(&self.probe.probe(&self.host, &request.dir));
         let spec = SurfaceSpec {
-            key: surface,
+            key: surface.clone(),
             kind: match mark.kind {
                 SurfaceTag::Agent => SurfaceKind::Agent,
                 SurfaceTag::Shell => SurfaceKind::Shell,
@@ -124,7 +134,7 @@ impl WorkspacePersistence {
             last_surface_id: Some(mark.surface_id.clone()),
         };
         let def = WorkspaceDefinition {
-            key,
+            key: key.clone(),
             name: request.name.clone(),
             host: self.host.clone(),
             root,
@@ -132,7 +142,56 @@ impl WorkspacePersistence {
             origin: Origin::Local,
             last_workspace_id: Some(mark.workspace_id.clone()),
         };
-        self.mutate(|doc| doc.active_mut().map(|p| p.upsert(def)).is_some())
+        self.mutate(|doc| doc.active_mut().map(|p| p.upsert(def)).is_some())?;
+        if let Some(session) = session {
+            self.keep_reference(&key, &surface, session, &request.dir);
+        }
+        Ok(())
+    }
+
+    /// Keep the reference of a session this node chose for an agent. Best effort like every
+    /// record: without it the agent is only ever reconnected or replaced, never resumed.
+    fn keep_reference(
+        &self,
+        workspace: &ConfigKey,
+        surface: &ConfigKey,
+        session: &AgentSession,
+        root: &str,
+    ) {
+        let Some(scope) = self.scope(root) else {
+            return;
+        };
+        let Some(reference) = ResumeRef::new(session.provider, &session.token, scope) else {
+            return;
+        };
+        if let State::Active {
+            resume: Some(resume),
+            ..
+        } = &mut *self.lock()
+        {
+            resume.put(workspace, surface, reference);
+            let _ = resume.save();
+        }
+    }
+
+    fn scope(&self, root: &str) -> Option<ResumeScope> {
+        Some(ResumeScope {
+            host: self.host.clone(),
+            root: canonical_root(root, self.home.as_deref())?,
+            user: effective_user(),
+        })
+    }
+
+    fn resume_context<'a>(&self, resume: &'a Option<ResumeStore>) -> ResumeContext<'a> {
+        ResumeContext {
+            store: resume.as_ref(),
+            user: effective_user(),
+            home: self.home.clone(),
+            config_dir: crate::agent_resume::config_dir(
+                std::env::var_os("CLAUDE_CONFIG_DIR").as_deref(),
+                self.home.as_deref(),
+            ),
+        }
     }
 
     /// Remember a surface added to a running workspace, if that workspace is a saved one.
@@ -212,16 +271,25 @@ impl WorkspacePersistence {
         let unknown = || refuse(ErrorKindCode::UnknownWorkspace, "no such saved workspace");
         match &request.action {
             SavedAction::Retry => Ok(()),
-            SavedAction::Remove => self.change(&key, |p, k| p.remove(k).map(|_| ())),
+            SavedAction::Remove => {
+                let removed = self.change(&key, |p, k| p.remove(k).map(|_| ()));
+                self.forget_references(&key);
+                removed
+            }
             SavedAction::SetRoot(path) => {
-                self.change(&key, |p, k| p.set_root(k, path.clone()).then_some(()))
+                let changed = self.change(&key, |p, k| p.set_root(k, path.clone()).then_some(()));
+                // A conversation belongs to the directory it was held in: a reference to it is
+                // no use in another one, and must not be tried there.
+                self.forget_references(&key);
+                changed
             }
             SavedAction::Trust => self.change(&key, |p, k| {
                 p.get_mut(k)
                     .map(|w| w.origin = flight_workspaces::Origin::Local)
             }),
             SavedAction::AcceptRoot => self.accept_root(&key),
-            SavedAction::Restore => self.restore(servers, &key),
+            SavedAction::Restore => self.restore(servers, &key, false),
+            SavedAction::RestoreFresh => self.restore(servers, &key, true),
         }
         .and_then(|()| {
             self.exists_or(&request.action, &key)
@@ -237,6 +305,18 @@ impl WorkspacePersistence {
             (SavedAction::Remove | SavedAction::Retry, _) => Some(()),
             (_, State::Active { doc, .. }) => doc.active()?.get(key).map(|_| ()),
             _ => None,
+        }
+    }
+
+    /// A forgotten workspace's references go with it.
+    fn forget_references(&self, workspace: &ConfigKey) {
+        if let State::Active {
+            resume: Some(resume),
+            ..
+        } = &mut *self.lock()
+        {
+            resume.remove_workspace(workspace);
+            let _ = resume.save();
         }
     }
 
@@ -288,9 +368,14 @@ impl WorkspacePersistence {
     /// Start one saved workspace again, as a replacement process, if its root is verified and
     /// nothing in the definition needs a permission the user has not given. Idempotent: a
     /// workspace that already runs is left alone.
-    fn restore(&self, servers: &TmuxServers, key: &ConfigKey) -> Result<(), ControlError> {
+    fn restore(
+        &self,
+        servers: &TmuxServers,
+        key: &ConfigKey,
+        fresh: bool,
+    ) -> Result<(), ControlError> {
         let mut guard = self.lock();
-        let State::Active { store, doc } = &mut *guard else {
+        let State::Active { store, doc, resume } = &mut *guard else {
             return Err(refuse(
                 ErrorKindCode::Unsupported,
                 "workspaces are not being saved on this node",
@@ -308,10 +393,16 @@ impl WorkspacePersistence {
         }
         let policy = RecoveryPolicy {
             start_missing: true,
+            resumable: if fresh {
+                Default::default()
+            } else {
+                resumable_surfaces(&scratch, resume)
+            },
             ..RecoveryPolicy::default()
         };
         let observer = NodeBackend::new(servers, &self.host);
-        let mut executor = NodeBackend::new(servers, &self.host);
+        let mut executor =
+            NodeBackend::new(servers, &self.host).with_resume(self.resume_context(resume));
         let report = recover(
             &mut scratch,
             &[self.host.as_str()],
@@ -320,6 +411,9 @@ impl WorkspacePersistence {
             &mut executor,
             &policy,
         );
+        let references = std::mem::take(&mut executor.new_references);
+        drop(executor);
+        keep_new_references(resume, references);
         let learned = scratch.active().and_then(|p| p.get(key)).cloned();
         if let (Some(updated), Some(profile)) = (learned, doc.active_mut()) {
             if profile.get(key) != Some(&updated) {
@@ -341,19 +435,27 @@ impl WorkspacePersistence {
         policy: &RecoveryPolicy,
     ) -> Option<Result<RecoveryReport, String>> {
         let mut guard = self.lock();
-        let State::Active { store, doc } = &mut *guard else {
+        let State::Active { store, doc, resume } = &mut *guard else {
             return None;
         };
         let observer = NodeBackend::new(servers, &self.host);
-        let mut executor = NodeBackend::new(servers, &self.host);
+        let mut executor =
+            NodeBackend::new(servers, &self.host).with_resume(self.resume_context(resume));
+        let mut policy = policy.clone();
+        if policy.resumable.is_empty() {
+            policy.resumable = resumable_surfaces(doc, resume);
+        }
         let report = recover(
             doc,
             &[self.host.as_str()],
             &observer,
             &self.probe,
             &mut executor,
-            policy,
+            &policy,
         );
+        let references = std::mem::take(&mut executor.new_references);
+        drop(executor);
+        keep_new_references(resume, references);
         if report.changed {
             if let Err(e) = store.save(doc) {
                 return Some(Err(e.to_string()));
@@ -361,6 +463,50 @@ impl WorkspacePersistence {
         }
         Some(Ok(report))
     }
+}
+
+/// The agent surfaces of the saved workspaces that can be continued rather than replaced: the
+/// provider supports it and a reference was kept. Whether the conversation is still there is
+/// checked when it is resumed, and a failure then is reported, not turned into a replacement.
+fn resumable_surfaces(
+    doc: &Document,
+    resume: &Option<ResumeStore>,
+) -> std::collections::BTreeSet<ConfigKey> {
+    let Some(resume) = resume else {
+        return Default::default();
+    };
+    let Some(profile) = doc.active() else {
+        return Default::default();
+    };
+    profile
+        .workspaces
+        .iter()
+        .flat_map(|w| w.surfaces.iter().map(move |s| (w, s)))
+        .filter(|(w, s)| {
+            s.kind == SurfaceKind::Agent
+                && s.provider
+                    .as_deref()
+                    .is_some_and(|p| resume_support(p) == Support::Supported)
+                && resume.get(&w.key, &s.key).is_some()
+        })
+        .map(|(_, s)| s.key.clone())
+        .collect()
+}
+
+fn keep_new_references(resume: &mut Option<ResumeStore>, references: Vec<NewReference>) {
+    let Some(store) = resume else { return };
+    if references.is_empty() {
+        return;
+    }
+    for r in references {
+        store.put(&r.workspace, &r.surface, r.reference);
+    }
+    let _ = store.save();
+}
+
+/// The operating-system user this node runs as, as a number.
+fn effective_user() -> String {
+    rustix::process::geteuid().as_raw().to_string()
 }
 
 fn refuse(kind: ErrorKindCode, message: impl Into<String>) -> ControlError {

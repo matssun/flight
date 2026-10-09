@@ -12,7 +12,9 @@ pub struct RecoveryPolicy {
     pub start_imported: bool,
     /// Start an agent that was saved as running without permission prompts.
     pub start_skip_permissions: bool,
-    /// Providers whose sessions can be resumed rather than replaced. Empty today: no provider
-    /// is wired for resumption, so an agent is only ever reconnected or replaced.
-    pub resumable_providers: Vec<String>,
+    /// Agent surfaces whose earlier session can be continued instead of replaced: the caller has
+    /// checked that the provider supports it and holds a reference for the surface. A surface in
+    /// this set is resumed (and, if that fails, reported, never silently replaced); one that is
+    /// not is only ever reconnected or replaced. Leave it empty to always replace.
+    pub resumable: std::collections::BTreeSet<crate::ConfigKey>,
 }

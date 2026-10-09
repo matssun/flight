@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::{new_id, Program, SessionEnv, SessionRequest};
+use crate::agent_resume::{AgentLaunch, AgentSession, Claude};
 use crate::ControlError;
 use flight_proto::{valid_dir, valid_session_name, ErrorKindCode};
 use flight_tmux::{
@@ -16,14 +17,17 @@ fn refuse(kind: ErrorKindCode, message: impl Into<String>) -> ControlError {
 }
 
 /// Create the session. Every check that can fail without touching tmux happens first; what
-/// tmux does after that is [`Tmux::create_session`]'s to undo.
+/// tmux does after that is [`Tmux::create_session`]'s to undo. For an agent the session's
+/// identity is returned: chosen here before the agent starts when it is new, the earlier one
+/// when it continues.
 pub(crate) fn create<R: TmuxRunner>(
     tmux: &Tmux<R>,
     request: &SessionRequest,
     env: &SessionEnv,
     config: Option<ConfigMark>,
+    agent: &AgentLaunch,
     tmux_failure: impl Fn(flight_tmux::TmuxError) -> ControlError,
-) -> Result<SurfaceMark, ControlError> {
+) -> Result<(SurfaceMark, Option<AgentSession>), ControlError> {
     if !valid_session_name(&request.name) {
         return Err(refuse(
             ErrorKindCode::InvalidRequest,
@@ -34,14 +38,30 @@ pub(crate) fn create<R: TmuxRunner>(
         return Err(refuse(ErrorKindCode::InvalidRequest, "invalid directory"));
     }
     let dir = existing_dir(&request.dir, env)?;
-    let launch = match request.program {
-        Program::Shell => Launch::DefaultShell,
-        Program::Claude | Program::ClaudeSkipPermissions => Launch::Program {
+    let (launch, session) = match request.program {
+        Program::Shell => (Launch::DefaultShell, None),
+        Program::Claude | Program::ClaudeSkipPermissions => {
             // Found on the node's PATH, then run by absolute path. tmux gives the session the
             // PATH of its client, which is this process: the node's environment, not
             // whatever the tmux server was started with.
-            argv: claude_argv(request.program, find_program(CLAUDE, env)?),
-        },
+            let claude = find_program(CLAUDE, env)?;
+            let skip = request.program == Program::ClaudeSkipPermissions;
+            let (argv, session) = match agent {
+                AgentLaunch::New => {
+                    let session = Claude::new_session().map_err(|_| {
+                        refuse(
+                            ErrorKindCode::RemoteCommandFailed,
+                            "this node cannot make a new id",
+                        )
+                    })?;
+                    (Claude::new_argv(claude, &session, skip), session)
+                }
+                AgentLaunch::Resume(session) => {
+                    (Claude::resume_argv(claude, session, skip), session.clone())
+                }
+            };
+            (Launch::Program { argv }, Some(session))
+        }
     };
     // The new session is a workspace: it gets an identity of its own, kept in the backend, and
     // its first window is the surface the program makes.
@@ -60,11 +80,17 @@ pub(crate) fn create<R: TmuxRunner>(
         launch,
         mark: Some(mark.clone()),
     };
+    let resuming = matches!(agent, AgentLaunch::Resume(_));
     match tmux.create_session(&spec) {
-        Ok(_id) => Ok(mark),
+        Ok(_id) => Ok((mark, session)),
         Err(CreateError::AlreadyExists) => Err(refuse(
             ErrorKindCode::AlreadyExists,
             format!("a session named {} already exists", request.name),
+        )),
+        Err(CreateError::Exited) if resuming => Err(refuse(
+            ErrorKindCode::ProgramUnavailable,
+            "claude could not continue the earlier session (it exited as soon as it started); \
+             nothing was started and the saved workspace was kept",
         )),
         Err(CreateError::Exited) => Err(refuse(
             ErrorKindCode::ProgramUnavailable,
@@ -76,15 +102,6 @@ pub(crate) fn create<R: TmuxRunner>(
         )),
         Err(CreateError::Tmux(e)) => Err(tmux_failure(e)),
     }
-}
-
-/// The one flag the closed set can add; no other text ever reaches the command line.
-fn claude_argv(program: Program, claude: PathBuf) -> Vec<String> {
-    let mut argv = vec![claude.to_string_lossy().into_owned()];
-    if program == Program::ClaudeSkipPermissions {
-        argv.push("--dangerously-skip-permissions".to_owned());
-    }
-    argv
 }
 
 fn program_name(program: Program) -> &'static str {

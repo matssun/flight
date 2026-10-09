@@ -473,6 +473,7 @@ dependencies = [
  "getrandom",
  "nix",
  "portable-pty",
+ "rustix",
 ]
 
 [[package]]

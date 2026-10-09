@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use crate::agent_resume::{AgentLaunch, AgentSession};
 use crate::pane_agent;
 use crate::persistence::WorkspacePersistence;
 use crate::round::raw_placement;
@@ -120,7 +121,8 @@ impl TmuxServers {
         &self,
         request: &SessionRequest,
         config: Option<ConfigMark>,
-    ) -> Result<(ServerId, SurfaceMark), ControlError> {
+        agent: &AgentLaunch,
+    ) -> Result<(ServerId, SurfaceMark, Option<AgentSession>), ControlError> {
         // The node, not the caller, decides where a session lives: its first backend.
         let server = self.servers.keys().next().ok_or_else(|| {
             ControlError::new(
@@ -129,8 +131,8 @@ impl TmuxServers {
             )
         })?;
         let tmux = self.tmux(server)?;
-        let mark = create(tmux, request, &self.session_env, config, failed)?;
-        Ok((server.clone(), mark))
+        let (mark, session) = create(tmux, request, &self.session_env, config, agent, failed)?;
+        Ok((server.clone(), mark, session))
     }
 
     /// Add the companion shell to a running workspace, marked with the saved surface it
@@ -433,9 +435,10 @@ impl Control for TmuxServers {
             workspace: mint_key()?.to_string(),
             surface: mint_key()?.to_string(),
         };
-        let (_server, mark) = self.create_session_marked(request, Some(config.clone()))?;
+        let (_server, mark, session) =
+            self.create_session_marked(request, Some(config.clone()), &AgentLaunch::New)?;
         if let Some(p) = &self.persistence {
-            log_unsaved(p.record_session(request, &mark, &config));
+            log_unsaved(p.record_session(request, &mark, &config, session.as_ref()));
         }
         Ok(())
     }

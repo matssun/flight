@@ -25,6 +25,11 @@ pub enum ExecError {
 pub trait Executor {
     fn start_workspace(&mut self, def: &WorkspaceDefinition) -> Result<Started, ExecError>;
 
+    /// Start the workspace with its agent continuing the earlier session. Must verify that the
+    /// session can be continued *before* starting anything, and must not fall back to a
+    /// replacement: a replacement is a different agent and is started only by `start_workspace`.
+    fn resume_workspace(&mut self, def: &WorkspaceDefinition) -> Result<Started, ExecError>;
+
     fn start_surface(
         &mut self,
         def: &WorkspaceDefinition,

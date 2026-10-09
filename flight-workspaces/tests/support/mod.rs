@@ -81,6 +81,8 @@ pub struct World {
     pub next: u32,
     /// The next start takes effect but its reply is lost.
     pub lose_reply: bool,
+    /// The next resumption finds no conversation to continue.
+    pub resume_fails: bool,
 }
 
 #[derive(Clone, Default)]
@@ -137,6 +139,16 @@ impl Executor for Fake {
             return Err(ExecError::Unknown("timed out".to_owned()));
         }
         Ok(Started { workspace_id: id })
+    }
+
+    fn resume_workspace(&mut self, def: &WorkspaceDefinition) -> Result<Started, ExecError> {
+        let mut w = self.0.borrow_mut();
+        if w.resume_fails {
+            return Err(ExecError::Refused("no saved conversation".to_owned()));
+        }
+        w.started.push(format!("{}:resumed", def.name));
+        drop(w);
+        self.start_workspace(def)
     }
 
     fn start_surface(

@@ -163,8 +163,12 @@ fn a_terminal_attaches_one_client_to_the_pane_and_carries_input_output_and_size(
     } = live.servers.open_terminal(&live.spec(&pane, pid)).unwrap();
     let rx = output_of(reader);
     let clients = live.wait_clients(1);
-    assert!(clients[0].starts_with("work "), "{clients:?}");
-    assert_eq!(clients[0], "work 90x25");
+    let view = flight_tmux::view_session_name(&[9; 16]);
+    assert_eq!(
+        clients[0],
+        format!("{view} 90x25"),
+        "attached to its own view"
+    );
 
     process.write_all(b"typed-through-flight\r").unwrap();
     wait_for(&rx, "typed-through-flight");
@@ -173,7 +177,7 @@ fn a_terminal_attaches_one_client_to_the_pane_and_carries_input_output_and_size(
 
     process.resize(70, 20).unwrap();
     let deadline = Instant::now() + Duration::from_secs(10);
-    while live.clients()[0] != "work 70x20" {
+    while live.clients()[0] != format!("{view} 70x20") {
         assert!(Instant::now() < deadline, "{:?}", live.clients());
         std::thread::sleep(Duration::from_millis(30));
     }
@@ -234,7 +238,11 @@ fn tmux_itself_refuses_a_wrong_pid_in_the_attach_command() {
     };
     let (pane, pid) = live.session("work");
     for (wrong, expect_client) in [(pid + 1, false), (pid, true)] {
-        let args = tmux_attach_command(&live.endpoint, &pane, wrong);
+        let window = live
+            .raw(&["display-message", "-p", "-t", &pane, "#{window_id}"])
+            .trim()
+            .to_owned();
+        let args = tmux_attach_command(&live.endpoint, &pane, &window, wrong, "flight-view-t1");
         let OpenedTerminal {
             mut process,
             reader,
@@ -254,6 +262,12 @@ fn tmux_itself_refuses_a_wrong_pid_in_the_attach_command() {
             };
             assert_eq!(code, 1, "a failed guard exits 1");
             assert!(live.clients().is_empty(), "nothing attached");
+            assert!(
+                !live
+                    .raw(&["list-sessions", "-F", "#{session_name}"])
+                    .contains("flight-view"),
+                "a refused attach creates no view"
+            );
         }
         process.hang_up(Duration::from_secs(5));
     }
@@ -289,14 +303,15 @@ fn the_terminal_ends_by_itself_when_the_user_detaches_in_tmux() {
     live.wait_clients(1);
     // A client is listed before it is attached to its session; detaching then does nothing.
     let deadline = Instant::now() + Duration::from_secs(10);
-    while !live.clients().iter().any(|c| c.starts_with("work ")) {
+    let view = flight_tmux::view_session_name(&[9; 16]);
+    while !live.clients().iter().any(|c| c.starts_with(&view)) {
         assert!(
             Instant::now() < deadline,
             "client never attached to its session"
         );
         std::thread::sleep(Duration::from_millis(20));
     }
-    live.raw(&["detach-client", "-s", "work"]);
+    live.raw(&["detach-client", "-s", &view]);
     // End of file on the output, then a reapable exit.
     let deadline = Instant::now() + Duration::from_secs(10);
     while rx.recv_timeout(Duration::from_millis(100))
@@ -318,4 +333,150 @@ fn env() -> Vec<(String, String)> {
         ("TERM".to_owned(), "xterm-256color".to_owned()),
         ("LANG".to_owned(), "en_US.UTF-8".to_owned()),
     ]
+}
+
+/// A workspace session with an agent window and a shell window, both running `cat`. Returns
+/// (pane, pid, window) of each.
+fn workspace(live: &Live) -> [(String, u32, String); 2] {
+    live.raw(&[
+        "new-session",
+        "-d",
+        "-s",
+        "ws",
+        "-x",
+        "100",
+        "-y",
+        "30",
+        "-n",
+        "agent",
+        "cat",
+    ]);
+    live.raw(&["new-window", "-t", "=ws:", "-n", "shell", "cat"]);
+    live.raw(&["select-window", "-t", "=ws:agent"]);
+    let listing = live.raw(&[
+        "list-panes",
+        "-s",
+        "-t",
+        "=ws:",
+        "-F",
+        "#{window_name} #{pane_id} #{pane_pid} #{window_id}",
+    ]);
+    let pick = |name: &str| {
+        let line = listing.lines().find(|l| l.starts_with(name)).unwrap();
+        let mut f = line.split_whitespace().skip(1);
+        (
+            f.next().unwrap().to_owned(),
+            f.next().unwrap().parse().unwrap(),
+            f.next().unwrap().to_owned(),
+        )
+    };
+    [pick("agent"), pick("shell")]
+}
+
+fn spec_with(live: &Live, id: u8, pane: &str, pid: u32) -> TerminalSpec {
+    TerminalSpec {
+        terminal_id: [id; 16],
+        ..live.spec(pane, pid)
+    }
+}
+
+#[test]
+fn two_terminals_show_two_surfaces_of_one_workspace_without_moving_each_other() {
+    let Some(live) = Live::start("views") else {
+        return;
+    };
+    let [agent, shell] = workspace(&live);
+    let mut first = live
+        .servers
+        .open_terminal(&spec_with(&live, 1, &agent.0, agent.1))
+        .unwrap();
+    let rx1 = output_of(first.reader);
+    live.wait_clients(1);
+    let mut second = live
+        .servers
+        .open_terminal(&spec_with(&live, 2, &shell.0, shell.1))
+        .unwrap();
+    let rx2 = output_of(second.reader);
+    live.wait_clients(2);
+
+    // Each terminal shows its own window; the workspace's own session is not moved by either.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let current = live.raw(&["list-sessions", "-F", "#{session_name} #{window_name}"]);
+        if current.contains("flight-view-0101010101010101 agent")
+            && current.contains("flight-view-0202020202020202 shell")
+        {
+            break;
+        }
+        assert!(Instant::now() < deadline, "views: {current}");
+        std::thread::sleep(Duration::from_millis(30));
+    }
+
+    // Keys go to the window the terminal shows, and only there.
+    first.process.write_all(b"for-the-agent\r").unwrap();
+    second.process.write_all(b"for-the-shell\r").unwrap();
+    wait_for(&rx1, "for-the-agent");
+    wait_for(&rx2, "for-the-shell");
+    let agent_screen = live.raw(&["capture-pane", "-p", "-t", &agent.0]);
+    let shell_screen = live.raw(&["capture-pane", "-p", "-t", &shell.0]);
+    assert!(agent_screen.contains("for-the-agent") && !agent_screen.contains("for-the-shell"));
+    assert!(shell_screen.contains("for-the-shell") && !shell_screen.contains("for-the-agent"));
+
+    // The node sees each pane once, and sees that both are being looked at.
+    let panes = live.tmux.list_panes().unwrap();
+    assert_eq!(panes.len(), 2, "{panes:?}");
+    assert!(panes.iter().all(|p| p.session_name == "ws"), "{panes:?}");
+    assert!(panes.iter().all(|p| p.focused), "{panes:?}");
+
+    // Sizes are each terminal's own.
+    second.process.resize(60, 15).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !live.clients().iter().any(|c| c.ends_with(" 60x15")) {
+        assert!(Instant::now() < deadline, "{:?}", live.clients());
+        std::thread::sleep(Duration::from_millis(30));
+    }
+    assert!(live.clients().iter().any(|c| c.ends_with(" 90x25")));
+
+    // Letting one go removes its view and nothing else.
+    let child = second.process.process_id().unwrap();
+    assert!(second.process.hang_up(Duration::from_secs(5)).is_some());
+    (second.cleanup)();
+    live.wait_clients(1);
+    let sessions = live.raw(&["list-sessions", "-F", "#{session_name}"]);
+    assert!(!sessions.contains("0202"), "{sessions}");
+    assert!(
+        sessions.contains("ws") && sessions.contains("0101"),
+        "{sessions}"
+    );
+    assert!(!alive(child));
+    assert!(first.process.hang_up(Duration::from_secs(5)).is_some());
+    (first.cleanup)();
+    live.wait_clients(0);
+    let sessions = live.raw(&["list-sessions", "-F", "#{session_name}"]);
+    assert_eq!(sessions.trim(), "ws", "no view is left behind");
+}
+
+#[test]
+fn a_view_is_removed_even_if_its_client_never_attached() {
+    let Some(live) = Live::start("orphan") else {
+        return;
+    };
+    let [agent, _] = workspace(&live);
+    // A view that was made and never attached (the client died first).
+    let view = flight_tmux::view_session_name(&[7; 16]);
+    live.raw(&["new-session", "-d", "-t", &agent.0, "-s", &view]);
+    let opened = live
+        .servers
+        .open_terminal(&spec_with(&live, 7, &agent.0, agent.1));
+    // The id is the same, so the second attempt cannot reuse the name; whichever way tmux
+    // answers, running the cleanup leaves no view behind.
+    if let Ok(opened) = opened {
+        drop(opened.process);
+        (opened.cleanup)();
+    } else {
+        live.raw(&["kill-session", "-t", &format!("={view}")]);
+    }
+    std::thread::sleep(Duration::from_millis(300));
+    let sessions = live.raw(&["list-sessions", "-F", "#{session_name}"]);
+    assert_eq!(sessions.trim(), "ws", "{sessions}");
 }

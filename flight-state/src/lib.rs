@@ -31,7 +31,9 @@ pub use placement::RawPlacement;
 pub use policy::{needs_attention, sort_rank};
 pub use server_id::ServerId;
 pub use session_id::SessionId;
-pub use session_name::{valid_dir, valid_session_name, MAX_DIR_LEN, MAX_SESSION_NAME_LEN};
+pub use session_name::{
+    valid_dir, valid_session_name, MAX_DIR_LEN, MAX_SESSION_NAME_LEN, RESERVED_VIEW_PREFIX,
+};
 pub use session_ref::SessionRef;
 pub use surface_id::SurfaceId;
 pub use surface_role::SurfaceRole;

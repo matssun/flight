@@ -397,8 +397,15 @@ impl Control for TmuxServers {
                 ),
             ));
         }
-        // tmux repeats the check inside the command that attaches.
-        let args = tmux_attach_command(endpoint, spec.pane.as_str(), spec.pid);
+        // tmux repeats the check inside the command that attaches, to a view of its own.
+        let view = flight_tmux::view_session_name(&spec.terminal_id);
+        let args = tmux_attach_command(
+            endpoint,
+            spec.pane.as_str(),
+            &current.window_id,
+            spec.pid,
+            &view,
+        );
         let env = terminal_env(&spec.term);
         let mut opened = TerminalProcess::spawn("tmux", &args, &env, spec.cols, spec.rows)
             .map_err(|e| {
@@ -413,6 +420,11 @@ impl Control for TmuxServers {
                 let _ = tmux.refresh_client_of_pid(client_pid);
             });
         }
+        // The view removes itself with its client; this covers a client that never attached.
+        let tmux = Tmux::new(endpoint.clone());
+        opened.cleanup = Box::new(move || {
+            let _ = tmux.kill_session(&view);
+        });
         Ok(opened)
     }
 

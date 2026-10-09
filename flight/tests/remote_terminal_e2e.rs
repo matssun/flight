@@ -188,7 +188,8 @@ fn enter_on_a_remote_pane_shows_it_over_flight_without_ssh_and_returns_to_the_da
     // Enter: reveal, open a terminal, show it.
     writer.write_all(b"\r").expect("enter");
     wait("a tmux client on the node, carried over Flight", || {
-        clients() == vec!["nga".to_owned()]
+        // The node shows the pane through a view of the session, not the session itself.
+        matches!(clients().as_slice(), [only] if only.starts_with("flight-view-"))
     });
     // Leave with the local escape; the dashboard comes back and says why.
     std::thread::sleep(Duration::from_millis(500));

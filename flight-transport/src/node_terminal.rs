@@ -60,7 +60,10 @@ pub(crate) async fn run(
         process,
         reader,
         redraw,
+        cleanup,
     } = opened;
+    // Whatever the terminal made besides its process goes at every exit, after the process.
+    let _cleanup = CleanupOnDrop(Some(cleanup));
     let killer = process.hang_up_handle();
     let output = Arc::new(Output::default());
     let (cmd_tx, cmd_rx) = mpsc::channel::<Command>(4);
@@ -212,6 +215,18 @@ pub(crate) async fn run(
         "terminal ended: {reason:?} ({} KiB of output discarded while the far end was behind)",
         discarded.load(Ordering::Relaxed) / 1024
     ));
+}
+
+/// Runs a terminal's cleanup when the terminal is over, on a thread of its own so that tmux
+/// being slow never holds the runtime.
+struct CleanupOnDrop(Option<flight_node::Redraw>);
+
+impl Drop for CleanupOnDrop {
+    fn drop(&mut self) {
+        if let Some(cleanup) = self.0.take() {
+            std::thread::spawn(cleanup);
+        }
+    }
 }
 
 /// The bytes a terminal's tmux client wrote, waiting to be sent.

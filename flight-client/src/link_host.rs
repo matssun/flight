@@ -8,12 +8,15 @@ use crate::{ClientConfig, OrchestratedBackend};
 use flight_proto::{
     terminal_body, TerminalClose, TerminalFrame, TerminalResize, MAX_TERMINAL_DATA,
 };
-use flight_transport::TerminalClient;
+use flight_transport::{TerminalClient, TerminalReceiver};
 use flight_ui::{SurfaceChoice, WorkspaceKey};
-use tokio::sync::mpsc;
+use std::time::Duration;
+use tokio::sync::{mpsc, oneshot};
 
 /// Frames queued each way between an attachment's stream and the session.
 const QUEUE: usize = 4;
+/// How long a stream the session has let go of is kept so the far end can read the goodbye.
+const GOODBYE: Duration = Duration::from_secs(2);
 
 /// The surfaces of one workspace, reached over the link the process already holds: no new
 /// control connection, no reveal, and the orchestrator's own checks (identity, limits, the pid
@@ -102,14 +105,22 @@ impl SurfaceHost for LinkHost {
         let (sender, mut receiver) = client.split();
         let (to_remote, mut commands) = mpsc::channel::<ToRemote>(QUEUE);
         let (reports, from_remote) = mpsc::channel::<FromRemote>(QUEUE);
+        let (retired_tx, retired) = oneshot::channel::<()>();
 
         // Stream to session. Ends with the stream, or when the session stops listening.
         tokio::spawn(async move {
+            // The attachment is retired when this task ends, however it ends: the far end has
+            // then read what was sent and finished the stream (or the stream broke).
+            let _retired = retired_tx;
             let end = loop {
                 match receiver.next().await {
                     Ok(Some(frame)) => match frame.body {
                         Some(terminal_body::Body::Data(d)) => {
                             if reports.send(FromRemote::Data(d.payload)).await.is_err() {
+                                // The session let go. Keep the stream until the far end has read
+                                // what was sent and ended it: dropping it now would cancel the
+                                // stream with the goodbye (and the last input) still unsent.
+                                finish_reading(receiver).await;
                                 return;
                             }
                         }
@@ -173,10 +184,19 @@ impl SurfaceHost for LinkHost {
             to_remote,
             from_remote,
             guard: None,
+            retired: Some(retired),
         })
     }
 
     fn renew(&self, attachment: &[u8]) -> Result<(), String> {
         self.link.send_lease(attachment)
     }
+}
+
+/// Read a stream to its end (or for [`GOODBYE`]), discarding what it says.
+async fn finish_reading(mut receiver: TerminalReceiver) {
+    let _ = tokio::time::timeout(GOODBYE, async {
+        while let Ok(Some(_)) = receiver.next().await {}
+    })
+    .await;
 }

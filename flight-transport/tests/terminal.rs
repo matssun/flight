@@ -18,7 +18,7 @@ use flight_transport::{ServerHandle, TerminalClient, UiClient};
 use flight_trust::{Fingerprint, Identity};
 use std::process::Command as Process;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use support::*;
 use tokio::sync::watch;
 
@@ -391,6 +391,62 @@ async fn a_terminal_carries_keystrokes_output_and_size_to_the_pane_and_closes_cl
         .runner()
         .run(&["has-session", "-t", "=work"])
         .expect("the session is untouched");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn input_sent_just_before_the_goodbye_is_delivered_and_dropping_the_end_does_not_lose_it() {
+    if !tmux_available() {
+        return;
+    }
+    // `cat` echoes what it is sent while the pane is also busy, so the node has output to send
+    // at the very moment the goodbye arrives.
+    let (mut rig, pane, pid) = Rig::start(
+        "lastwords",
+        "sh -c 'while :; do echo flood-flood-flood-flood; sleep 0.002; done & exec cat'",
+    )
+    .await;
+    for round in 0..6 {
+        let started = Instant::now();
+        let id = rig.open(&pane, pid).await.expect("terminal opens");
+        let term = rig.attach(&id).await;
+        rig.wait_clients(1).await;
+        // The last keys and the goodbye leave together, and the UI's end is dropped at once
+        // (a switch to another surface does exactly this).
+        term.send(TerminalFrame::data(
+            format!("last-words-{round}\r").into_bytes(),
+        ))
+        .await
+        .unwrap();
+        term.send(TerminalFrame {
+            body: Some(terminal_body::Body::Close(TerminalClose {})),
+        })
+        .await
+        .unwrap();
+        let (sender, receiver) = term.split();
+        drop(sender);
+        // The receiving end is kept until the far end has ended it, as a session does.
+        let mut receiver = receiver;
+        let _ = tokio::time::timeout(Duration::from_secs(5), async {
+            while let Ok(Some(_)) = receiver.next().await {}
+        })
+        .await;
+        // Input is read between output frames, not after the flood: the goodbye is prompt.
+        assert!(
+            started.elapsed() < Duration::from_millis(1500),
+            "round {round} took {:?}",
+            started.elapsed()
+        );
+        let marker = format!("last-words-{round}");
+        wait_until("the last keys reached the pane", || {
+            rig.tmux
+                .runner()
+                .run(&["capture-pane", "-p", "-S", "-5000", "-t", &pane])
+                .is_ok_and(|o| o.stdout.contains(&marker))
+        })
+        .await;
+        rig.wait_clients(0).await;
+        wait_until("terminal forgotten", || rig.server.terminals_open() == 0).await;
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]

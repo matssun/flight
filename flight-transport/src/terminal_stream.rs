@@ -24,6 +24,9 @@ type BoxStream<T> = Pin<Box<dyn Stream<Item = Result<T, Status>> + Send>>;
 
 /// How long a peer has to send its `Attach` after the stream opens.
 const ATTACH_FIRST_FRAME: Duration = Duration::from_secs(10);
+/// After the UI's side ends, how long the node's side has to read what is still queued toward
+/// it (the last keys, the goodbye) before the terminal is torn down regardless.
+const NODE_DRAIN: Duration = Duration::from_secs(3);
 
 fn origin(side: Side) -> Origin {
     match side {
@@ -89,12 +92,29 @@ pub(crate) async fn terminal_stream(
         incoming,
         abort,
         peak,
+        node_ended,
     } = ends;
     let (gone_tx, gone_rx) = oneshot::channel::<()>();
     let pump_state = state.clone();
     tokio::spawn(async move {
+        let aborted = abort.clone();
+        // Kept until this side is finished with: while it exists, the other side's stream
+        // stays open, so what is still queued toward it can be read.
+        let held = forward.clone();
         let reason = pump(&state, side, inbound, forward, abort, peak, gone_rx).await;
+        match side {
+            Side::Node => node_ended.notify_one(),
+            // The UI is done (it said goodbye, or it is gone). Whatever it sent last is still
+            // queued toward the node: tearing the terminal down now would discard it. The node
+            // ends its side by itself when it reads the goodbye, so wait for that, bounded.
+            Side::Ui if aborted.borrow().is_none() => {
+                lock(&pump_state).terminal_closing(&id);
+                let _ = tokio::time::timeout(NODE_DRAIN, node_ended.notified()).await;
+            }
+            Side::Ui => {}
+        }
         lock(&pump_state).finish_terminal(id, side, reason);
+        drop(held);
     });
     let out: BoxStream<TerminalFrame> = Box::pin(Watched {
         inner: ReceiverStream::new(incoming),

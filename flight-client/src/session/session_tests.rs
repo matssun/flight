@@ -31,6 +31,9 @@ struct FakeHost {
     renew_fails: AtomicBool,
     /// Capacity of the channel toward the remote: a small one models a remote that is slow.
     capacity: usize,
+    /// Attachments made while this is set only finish when the test lets them.
+    hold_retirement: AtomicBool,
+    gates: Mutex<Vec<tokio::sync::oneshot::Sender<()>>>,
 }
 
 fn binding(choice: SurfaceChoice, pid: u32) -> Binding {
@@ -55,6 +58,8 @@ impl FakeHost {
             renewals: Mutex::new(Vec::new()),
             renew_fails: AtomicBool::new(false),
             capacity,
+            hold_retirement: AtomicBool::new(false),
+            gates: Mutex::new(Vec::new()),
         });
         (host, rx)
     }
@@ -86,6 +91,11 @@ impl FakeHost {
             to_remote,
             from_remote,
             guard: None,
+            retired: self.hold_retirement.load(Ordering::Relaxed).then(|| {
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                self.gates.lock().unwrap().push(tx);
+                rx
+            }),
         })
     }
 }
@@ -550,4 +560,47 @@ async fn the_lease_is_renewed_for_the_attachment_on_screen_and_a_dead_link_ends_
     assert!(
         matches!(outcome.end, TerminalEnd::Lost(ref why) if why.contains("control connection"))
     );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_surface_is_not_attached_twice_at_once_and_input_stays_in_order_across_the_gap() {
+    let mut rig = rig(b"");
+    let _first_agent = rig.next_remote().await;
+    rig.host.hold_retirement.store(true, Ordering::Relaxed);
+    rig.type_(b"\x00s").await;
+    let mut shell1 = rig.next_remote().await;
+    assert_eq!(shell1.choice, Shell);
+    // Type for the shell, go to the agent and back to the shell, all in one burst.
+    rig.type_(b"one\x00aagent\x00stwo").await;
+    assert_eq!(shell1.data(3).await, b"one");
+    let mut agent = rig.next_remote().await;
+    assert_eq!(agent.data(5).await, b"agent");
+    // The first shell attachment is still finishing, so a second one is not asked for yet.
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    assert!(
+        rig.remotes.try_recv().is_err(),
+        "a second attachment to the shell was made"
+    );
+    // It finishes; the shell is attached again and gets what was typed for it, after what it
+    // already had.
+    for gate in rig.host.gates.lock().unwrap().drain(..) {
+        let _ = gate.send(());
+    }
+    let mut shell2 = rig.next_remote().await;
+    assert_eq!(shell2.choice, Shell);
+    assert_eq!(shell2.data(3).await, b"two");
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_previous_attachment_that_never_finishes_does_not_hold_the_surface_forever() {
+    let mut rig = rig_with(4, b"", |c| c.retire_wait = Duration::from_secs(2));
+    let _first_agent = rig.next_remote().await;
+    rig.host.hold_retirement.store(true, Ordering::Relaxed);
+    rig.type_(b"\x00s").await;
+    let _shell1 = rig.next_remote().await;
+    rig.type_(b"\x00aA\x00sgo").await;
+    let _agent = rig.next_remote().await;
+    // Nothing releases the first one; after the bound the shell is attached anyway.
+    let mut shell2 = rig.next_remote().await;
+    assert_eq!(shell2.data(2).await, b"go");
 }

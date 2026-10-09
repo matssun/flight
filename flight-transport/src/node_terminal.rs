@@ -38,6 +38,13 @@ const EXIT_DRAIN: Duration = Duration::from_millis(150);
 const WRITER_POLL: Duration = Duration::from_millis(10);
 /// How long a hung-up tmux client has to be reaped.
 const REAP_GRACE: Duration = Duration::from_secs(2);
+/// After the UI says it is done, how long the tmux client is left alone before it is hung up,
+/// so that input written just before the goodbye (a key, then a switch to another surface) is
+/// read by the client instead of being discarded with it.
+const CLOSE_SETTLE: Duration = Duration::from_millis(100);
+/// After the orchestrator stops taking output, how long the node keeps reading what it had
+/// already sent.
+const INBOUND_DRAIN: Duration = Duration::from_secs(2);
 
 pub(crate) struct NodeTerminalEnd {
     pub(crate) address: String,
@@ -116,41 +123,55 @@ pub(crate) async fn run(
 
     let mut reason = ExitReasonCode::ClientExited;
     let mut hung_up_by_client = false;
+    // The UI said goodbye, as opposed to vanishing: its last input is let through first.
+    let mut said_goodbye = false;
+    // Output goes to the orchestrator until a send fails. After that the loop still reads what
+    // the orchestrator had already sent (the user's last keys, the goodbye), for a short time,
+    // before it ends: the far end closing its side is not a reason to discard what is queued.
+    let mut sending = true;
+    let mut drain_until: Option<tokio::time::Instant> = None;
     let mut last_send = std::time::Instant::now() - MIN_FRAME_GAP;
     loop {
         tokio::select! {
-            _ = output.wake.notified() => {
-                loop {
-                    // At most ~125 frames a second: a flood is sent in large frames, and
-                    // typing is still sent at once. Many tiny frames would trip HTTP/2's
-                    // protection against floods of small DATA frames on a slow reader.
-                    let since = last_send.elapsed();
-                    if since < MIN_FRAME_GAP {
-                        tokio::time::sleep(MIN_FRAME_GAP - since).await;
+            () = async {
+                match drain_until {
+                    Some(until) => tokio::time::sleep_until(until).await,
+                    None => std::future::pending().await,
+                }
+            } => break,
+            _ = output.wake.notified(), if sending => {
+                // One frame, then back to the select: whatever the user sent meanwhile (a
+                // Ctrl-C to a program flooding the terminal) is read between frames, not after
+                // the flood.
+                //
+                // At most ~125 frames a second: a flood is sent in large frames, and typing is
+                // still sent at once. Many tiny frames would trip HTTP/2's protection against
+                // floods of small DATA frames on a slow reader.
+                let since = last_send.elapsed();
+                if since < MIN_FRAME_GAP {
+                    tokio::time::sleep(MIN_FRAME_GAP - since).await;
+                }
+                let (bytes, done) = output.take();
+                if bytes.is_empty() {
+                    if done {
+                        // The tmux client has gone and everything it said was sent.
+                        hung_up_by_client = true;
                     }
-                    let (bytes, done) = output.take();
-                    if bytes.is_empty() {
-                        if done {
-                            // The tmux client has gone and everything it said was sent.
-                            hung_up_by_client = true;
-                        }
-                        break;
-                    }
+                } else {
                     // A send that cannot complete for the whole stall limit means the far end
                     // is not taking anything: give the terminal up.
                     match tokio::time::timeout(end.stall, client.send(TerminalFrame::data(bytes))).await {
                         Ok(Ok(())) => last_send = std::time::Instant::now(),
                         Ok(Err(_)) => {
                             reason = ExitReasonCode::NodeLost;
-                            break;
+                            sending = false;
+                            let now = tokio::time::Instant::now();
+                            drain_until = Some(now.checked_add(INBOUND_DRAIN).unwrap_or(now));
                         }
-                        Err(_) => {
-                            reason = ExitReasonCode::Stalled;
-                            break;
-                        }
+                        Err(_) => reason = ExitReasonCode::Stalled,
                     }
                 }
-                if hung_up_by_client || reason != ExitReasonCode::ClientExited {
+                if hung_up_by_client || (sending && reason != ExitReasonCode::ClientExited) {
                     break;
                 }
             },
@@ -167,21 +188,29 @@ pub(crate) async fn run(
                     }
                     Some(terminal_body::Body::Close(_)) => {
                         reason = ExitReasonCode::ClosedByUi;
+                        said_goodbye = true;
                         break;
                     }
                     _ => {}
                 },
                 // The stream ended without a close: the orchestrator or the UI is gone.
                 Ok(None) | Err(_) => {
-                    reason = ExitReasonCode::ClosedByUi;
+                    if reason == ExitReasonCode::ClientExited {
+                        reason = ExitReasonCode::ClosedByUi;
+                    }
                     break;
                 }
             },
         }
     }
 
-    hang_up();
-    drop(cmd_tx);
+    if said_goodbye {
+        // The writer sends what is queued, waits a moment, and hangs the client up itself.
+        drop(cmd_tx);
+    } else {
+        hang_up();
+        drop(cmd_tx);
+    }
     let status = tokio::time::timeout(REAP_GRACE * 2, code_rx)
         .await
         .ok()
@@ -255,6 +284,10 @@ impl Output {
         let mut st = self.lock();
         let n = st.buf.len().min(MAX_TERMINAL_DATA);
         let bytes: Vec<u8> = st.buf.drain(..n).collect();
+        // More waiting, or the end to be noticed: come round again.
+        if !st.buf.is_empty() || st.done {
+            self.wake.notify_one();
+        }
         (bytes, st.done)
     }
 }
@@ -325,7 +358,14 @@ fn write_loop(
                     break;
                 }
             }
-            Err(mpsc::error::TryRecvError::Disconnected) => break,
+            Err(mpsc::error::TryRecvError::Disconnected) => {
+                // Everything queued has been written. A client that is still running gets a
+                // moment to read it before it is hung up.
+                if process.try_exit_code().is_none() {
+                    std::thread::sleep(CLOSE_SETTLE);
+                }
+                break;
+            }
             Err(mpsc::error::TryRecvError::Empty) => {
                 // The terminal ends when the tmux client does, not only when the PTY reports
                 // end of file: a stray process holding the PTY open must not keep it alive.

@@ -48,6 +48,12 @@ fn tmux_available() -> bool {
 }
 
 fn start(tag: &str, command: &str, terminals: bool) -> Rig {
+    start_with(tag, command, terminals, false)
+}
+
+/// `windows`: the second pane is a window of its own (a workspace's agent and shell), not a
+/// split of the first.
+fn start_with(tag: &str, command: &str, terminals: bool, windows: bool) -> Rig {
     let serial = ONE_AT_A_TIME.lock().unwrap_or_else(|p| p.into_inner());
     let rt = tokio::runtime::Runtime::new().expect("runtime");
     let name = format!("flight-test-{}-{tag}", std::process::id());
@@ -66,12 +72,24 @@ fn start(tag: &str, command: &str, terminals: bool) -> Rig {
             command,
         ])
         .expect("session");
+    let second = if windows {
+        ["new-window", "-d", "-t", "work:"]
+    } else {
+        ["split-window", "-d", "-t", "work:"]
+    };
     tmux.runner()
-        .run(&["split-window", "-d", "-t", "work:", command])
-        .expect("split");
+        .run(&[second[0], second[1], second[2], second[3], command])
+        .expect("second pane");
     let listing = tmux
         .runner()
-        .run(&["list-panes", "-t", "work:", "-F", "#{pane_id} #{pane_pid}"])
+        .run(&[
+            "list-panes",
+            "-s",
+            "-t",
+            "work:",
+            "-F",
+            "#{pane_id} #{pane_pid}",
+        ])
         .expect("panes")
         .stdout;
     let panes: Vec<(String, u32)> = listing
@@ -876,4 +894,59 @@ fn a_switch_to_a_surface_that_is_gone_keeps_the_user_where_they_are_and_delivers
         .expect("task");
     assert_eq!(outcome.end, TerminalEnd::UserLeft);
     assert_eq!(outcome.undelivered, "not-for-the-agent\r".len());
+}
+
+#[test]
+fn switching_between_windows_never_moves_the_workspace_s_own_session_or_the_other_view() {
+    if !tmux_available() {
+        return;
+    }
+    let mut rig = start_with("windows", "cat", true, true);
+    let own = |r: &Rig| {
+        r.tmux
+            .runner()
+            .run(&["display-message", "-p", "-t", "=work:", "#{window_index}"])
+            .map(|o| o.stdout.trim().to_owned())
+            .unwrap_or_default()
+    };
+    let before = own(&rig);
+    let entered = rig.enter(0);
+    let shown = rig.show(&entered);
+    rig.wait("tmux client attached", |r| r.clients().len() == 1);
+    rig.rt
+        .block_on(
+            shown
+                .input
+                .send(b"in-window-0\r\x00sin-window-1\r\x00ain-window-0-again\r".to_vec()),
+        )
+        .expect("input");
+    rig.wait("every part arrived where it was typed", |r| {
+        pane_text(r, 0).contains("in-window-0-again") && pane_text(r, 1).contains("in-window-1")
+    });
+    let (agent, shell) = (pane_text(&rig, 0), pane_text(&rig, 1));
+    assert!(
+        agent.contains("in-window-0") && !agent.contains("in-window-1"),
+        "{agent}"
+    );
+    assert!(
+        shell.contains("in-window-1") && !shell.contains("in-window-0"),
+        "{shell}"
+    );
+    assert_eq!(own(&rig), before, "the workspace's own session never moved");
+    rig.rt
+        .block_on(shown.input.send(b"\x00q".to_vec()))
+        .expect("input");
+    assert_eq!(finish(&rig, shown), TerminalEnd::UserLeft);
+    rig.wait("no tmux client left", |r| r.clients().is_empty());
+    let sessions = rig
+        .tmux
+        .runner()
+        .run(&["list-sessions", "-F", "#{session_name}"])
+        .unwrap()
+        .stdout;
+    assert_eq!(
+        sessions.trim(),
+        "work",
+        "no view is left behind: {sessions}"
+    );
 }

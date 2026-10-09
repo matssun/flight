@@ -36,6 +36,9 @@ pub enum Exit {
     },
 }
 
+/// Events read in one go when the dashboard lets the keyboard go: more than the terminal
+/// library ever holds at once.
+const DRAIN_EVENTS: u16 = 8192;
 /// Bytes of typed-ahead input kept between asking for a surface and the dashboard letting go.
 /// Beyond it the rest stays in the terminal's own input buffer, unread.
 const TYPED_AHEAD_LIMIT: usize = 4096;
@@ -167,6 +170,20 @@ fn event_loop(
         while let Ok(msg) = worker.rx.try_recv() {
             match &msg {
                 Msg::Switched(Ok(())) => {
+                    // Whatever the keyboard has already given this loop is the user's, and is
+                    // for the surface: read it all now, in order, so none of it is left behind
+                    // in the event queue when the dashboard goes.
+                    let mut drained = 0u16;
+                    while drained < DRAIN_EVENTS && event::poll(Duration::ZERO).unwrap_or(false) {
+                        drained = drained.saturating_add(1);
+                        if let Ok(Event::Key(key)) = event::read() {
+                            if key.kind == KeyEventKind::Press {
+                                if let Some(bytes) = encode_key(&key) {
+                                    typed_ahead.extend(bytes);
+                                }
+                            }
+                        }
+                    }
                     return Ok(Exit::Switched {
                         typed_ahead: std::mem::take(&mut typed_ahead),
                     });

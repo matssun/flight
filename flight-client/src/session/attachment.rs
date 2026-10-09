@@ -2,7 +2,7 @@
 
 use flight_proto::ExitReasonCode;
 use flight_state::PaneRef;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 /// What the user sees is bound to one process in one pane. A reconnect must find the same one:
 /// input typed for an agent is never delivered to the agent that replaced it.
@@ -43,4 +43,9 @@ pub struct Attachment {
     pub from_remote: mpsc::Receiver<FromRemote>,
     /// Whatever keeps the stream's tasks alive; dropped with the attachment.
     pub guard: Option<Box<dyn Send>>,
+    /// Resolves when the far end has finished with this attachment after it was let go: what
+    /// was sent has been read and the stream is over. `None` when there is nothing to wait for.
+    /// A new attachment to the same surface must not deliver input before this, or its keys
+    /// could overtake keys still in flight on this one.
+    pub retired: Option<oneshot::Receiver<()>>,
 }

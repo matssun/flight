@@ -37,6 +37,10 @@ pub(crate) struct Terminal {
     pub(crate) deadline: u64,
     pub(crate) ui_attached: bool,
     pub(crate) node_attached: bool,
+    /// The UI has said goodbye; the node is reading what is left. A closing terminal is not
+    /// replaced by a new one for the same pane (it is allowed to finish) and does not count
+    /// against the UI's limit, but still counts against the node's and the total.
+    pub(crate) closing: bool,
 }
 
 /// The live terminals, by id. An id that is not here is dead: ids are never reissued.

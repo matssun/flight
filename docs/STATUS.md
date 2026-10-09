@@ -150,7 +150,9 @@ driver that reconnects, resumes or replaces under an explicit policy. Not wired 
 
 | 3 | PR #15, merged 68b1091 (code f0589ef) | as above; proto schema test, 6 proto, 6 orchestrator, 4 client, 1 real-TLS and 2 live tests added | saved workspaces replicated node -> orchestrator -> UI as last-known state; capability-gated, no sequence gap for an older orchestrator; bounded and validated | UI does not display them yet (increment 4); the node reports an unusable saved file as nothing |
 
-| 4a | PR (this branch) | as above; 11 new UI tests | saved workspaces that are not running are listed in the dashboard with host, root, reason, selectable, searchable; never hidden because a host, directory or process is gone; opening one explains instead of acting | no actions yet (4b); not clickable |
+| 4a | PR #16, merged eca7e43 (code c92cdd0) | as above; 11 new UI tests | saved workspaces that are not running are listed in the dashboard with host, root, reason, selectable, searchable; never hidden because a host, directory or process is gone; opening one explains instead of acting | no actions yet (4b); not clickable |
+
+| 4b-1 | PR (this branch) | as above; 3 proto, 4 orchestrator, 9 live-tmux tests added | retry / remove / restore / accept root / set root / trust, capability-gated, routed to the named node; restore is idempotent and refuses unverified roots, untrusted imports and unprompted agents | no UI keys yet (4b-2) |
 
 ### Observed failures and resolutions
 

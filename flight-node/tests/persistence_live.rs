@@ -506,3 +506,223 @@ fn reporting_with_an_unreadable_saved_file_is_empty_and_leaves_the_file() {
     assert!(reported(&live).is_empty());
     assert_eq!(std::fs::read_to_string(&file).unwrap(), "garbage = [");
 }
+
+mod actions {
+    use super::*;
+    use flight_node::{SavedAction, SavedActionRequest};
+    use flight_proto::ErrorKindCode;
+
+    fn act(live: &Live, key: &str, action: SavedAction) -> Result<(), flight_node::ControlError> {
+        live.servers.saved_action(&SavedActionRequest {
+            config_key: key.to_owned(),
+            action,
+        })
+    }
+
+    fn key(live: &Live) -> String {
+        first_workspace(live).key.to_string()
+    }
+
+    #[test]
+    fn remove_forgets_the_reference_and_nothing_else() {
+        let Some(live) = Live::start("act-remove") else {
+            return;
+        };
+        let dir = live.dir("nga");
+        std::fs::write(Path::new(&dir).join("keep.txt"), "x").unwrap();
+        live.workspace("nga", &dir);
+        let k = key(&live);
+        act(&live, &k, SavedAction::Remove).unwrap();
+        assert!(live.saved().active().unwrap().workspaces.is_empty());
+        assert_eq!(live.sessions(), vec!["nga"], "the process keeps running");
+        assert!(
+            Path::new(&dir).join("keep.txt").exists(),
+            "the files are untouched"
+        );
+        // A second removal finds nothing to remove and says so.
+        act(&live, &k, SavedAction::Remove).unwrap_err();
+    }
+
+    #[test]
+    fn set_root_changes_where_it_points_and_creates_nothing() {
+        let Some(mut live) = Live::start("act-setroot") else {
+            return;
+        };
+        let dir = live.dir("nga");
+        live.workspace("nga", &dir);
+        live.lose_tmux();
+        live.restart_node();
+        let k = key(&live);
+        let elsewhere = live
+            .root
+            .join("not-made-yet")
+            .to_string_lossy()
+            .into_owned();
+        act(&live, &k, SavedAction::SetRoot(elsewhere.clone())).unwrap();
+        let w = first_workspace(&live);
+        assert_eq!(
+            (w.root.path.as_str(), w.root.identity),
+            (elsewhere.as_str(), None)
+        );
+        assert!(
+            !Path::new(&elsewhere).exists(),
+            "setting a root creates no directory"
+        );
+        let r = reported(&live);
+        assert_eq!(r[0].root_state, flight_proto::SavedRootCode::Missing as i32);
+        // And back to one that exists, which is then restorable.
+        act(&live, &k, SavedAction::SetRoot(dir)).unwrap();
+        act(&live, &k, SavedAction::Restore).unwrap();
+        assert_eq!(live.sessions(), vec!["nga"]);
+    }
+
+    #[test]
+    fn a_changed_root_is_accepted_only_on_request_and_only_if_it_is_there() {
+        let Some(mut live) = Live::start("act-accept") else {
+            return;
+        };
+        let dir = live.dir("nga");
+        live.workspace("nga", &dir);
+        live.lose_tmux();
+        live.restart_node();
+        let k = key(&live);
+        // Gone: there is nothing to accept.
+        std::fs::remove_dir_all(&dir).unwrap();
+        let e = act(&live, &k, SavedAction::AcceptRoot).unwrap_err();
+        assert_eq!(e.kind, ErrorKindCode::InvalidDirectory);
+        // Another directory at the path: restore refuses until it is accepted.
+        std::fs::create_dir(&dir).unwrap();
+        if std::fs::metadata(&dir).and_then(|m| m.created()).is_err() {
+            return; // identity cannot tell them apart on this filesystem
+        }
+        assert_eq!(
+            act(&live, &k, SavedAction::Restore).unwrap_err().kind,
+            ErrorKindCode::InvalidDirectory
+        );
+        assert!(live.sessions().is_empty());
+        act(&live, &k, SavedAction::AcceptRoot).unwrap();
+        act(&live, &k, SavedAction::Restore).unwrap();
+        assert_eq!(live.sessions(), vec!["nga"]);
+    }
+
+    #[test]
+    fn restore_starts_once_and_repeating_it_changes_nothing() {
+        let Some(mut live) = Live::start("act-restore") else {
+            return;
+        };
+        let dir = live.dir("nga");
+        live.workspace("nga", &dir);
+        live.lose_tmux();
+        live.restart_node();
+        let k = key(&live);
+        for _ in 0..3 {
+            act(&live, &k, SavedAction::Restore).unwrap();
+        }
+        assert_eq!(live.sessions(), vec!["nga"]);
+        assert_eq!(live.windows(), 1);
+        assert!(first_workspace(&live).last_workspace_id.is_some());
+    }
+
+    #[test]
+    fn restore_refuses_a_missing_directory_and_never_makes_it() {
+        let Some(mut live) = Live::start("act-missing") else {
+            return;
+        };
+        let dir = live.dir("nga");
+        live.workspace("nga", &dir);
+        live.lose_tmux();
+        std::fs::remove_dir_all(&dir).unwrap();
+        live.restart_node();
+        let k = key(&live);
+        let e = act(&live, &k, SavedAction::Restore).unwrap_err();
+        assert_eq!(e.kind, ErrorKindCode::InvalidDirectory);
+        assert!(!Path::new(&dir).exists() && live.sessions().is_empty());
+    }
+
+    #[test]
+    fn an_imported_workspace_needs_trust_before_it_starts_anything() {
+        let Some(mut live) = Live::start("act-trust") else {
+            return;
+        };
+        let dir = live.dir("nga");
+        live.workspace("nga", &dir);
+        live.lose_tmux();
+        live.restart_node();
+        let k = key(&live);
+        // Make it look imported, as an import would leave it.
+        let file = live.root.join("state").join("workspaces.toml");
+        let text = std::fs::read_to_string(&file).unwrap();
+        std::fs::write(
+            &file,
+            format!("{text}\n").replace("origin = \"local\"", "origin = \"imported\""),
+        )
+        .unwrap();
+        live.restart_node();
+        assert!(reported(&live)[0].imported);
+        let e = act(&live, &k, SavedAction::Restore).unwrap_err();
+        assert_eq!(e.kind, ErrorKindCode::NotAuthorized);
+        assert!(live.sessions().is_empty());
+        act(&live, &k, SavedAction::Trust).unwrap();
+        act(&live, &k, SavedAction::Restore).unwrap();
+        assert_eq!(live.sessions(), vec!["nga"]);
+    }
+
+    #[test]
+    fn an_agent_saved_without_permission_prompts_is_not_started_by_a_restore() {
+        let Some(mut live) = Live::start("act-skip") else {
+            return;
+        };
+        let dir = live.dir("nga");
+        live.servers
+            .create_session(&SessionRequest {
+                name: "nga".to_owned(),
+                dir,
+                program: Program::ClaudeSkipPermissions,
+            })
+            .unwrap();
+        live.lose_tmux();
+        live.restart_node();
+        let e = act(&live, &key(&live), SavedAction::Restore).unwrap_err();
+        assert_eq!(e.kind, ErrorKindCode::NotAuthorized);
+        assert!(live.sessions().is_empty());
+    }
+
+    #[test]
+    fn unknown_keys_and_unusable_files_are_refused_in_the_same_words_for_every_action() {
+        let Some(mut live) = Live::start("act-unknown") else {
+            return;
+        };
+        let dir = live.dir("nga");
+        live.workspace("nga", &dir);
+        for action in [
+            SavedAction::Restore,
+            SavedAction::AcceptRoot,
+            SavedAction::Trust,
+            SavedAction::SetRoot("/tmp".to_owned()),
+            SavedAction::Remove,
+        ] {
+            let e = act(&live, "c-nope", action).unwrap_err();
+            assert_eq!(e.kind, ErrorKindCode::UnknownWorkspace);
+        }
+        act(&live, &key(&live), SavedAction::Retry).unwrap();
+        // With the file unusable, nothing is changed and the user is told why.
+        let file = live.root.join("state").join("workspaces.toml");
+        std::fs::write(&file, "broken = [").unwrap();
+        live.restart_node();
+        let e = act(&live, "c-any", SavedAction::Remove).unwrap_err();
+        assert_eq!(e.kind, ErrorKindCode::Unsupported);
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "broken = [");
+    }
+
+    #[test]
+    fn any_action_brings_the_next_report_forward() {
+        let Some(live) = Live::start("act-retry") else {
+            return;
+        };
+        let dir = live.dir("nga");
+        live.workspace("nga", &dir);
+        let before = live.servers.retries();
+        act(&live, &key(&live), SavedAction::Retry).unwrap();
+        assert!(live.servers.retries() > before);
+    }
+}

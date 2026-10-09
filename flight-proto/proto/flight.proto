@@ -140,6 +140,24 @@ enum SavedRootCode {
   SAVED_ROOT_CODE_CHANGED = 7;
 }
 
+// What a user asks of a saved workspace (ADR-008). None of these creates, repairs or deletes
+// anything on the filesystem.
+enum SavedActionCode {
+  SAVED_ACTION_CODE_UNSPECIFIED = 0;
+  // Look again now instead of at the next periodic check.
+  SAVED_ACTION_CODE_RETRY = 1;
+  // Forget the saved reference. Running processes and files are not touched.
+  SAVED_ACTION_CODE_REMOVE = 2;
+  // Start the workspace again (a replacement process) in its verified root.
+  SAVED_ACTION_CODE_RESTORE = 3;
+  // The directory now at the path is the one meant: remember it as the saved identity.
+  SAVED_ACTION_CODE_ACCEPT_ROOT = 4;
+  // Point the saved workspace at another directory (`root`).
+  SAVED_ACTION_CODE_SET_ROOT = 5;
+  // An imported definition is trusted: it may now start processes.
+  SAVED_ACTION_CODE_TRUST = 6;
+}
+
 // Why a terminal session ended (ADR-003).
 enum ExitReasonCode {
   EXIT_REASON_CODE_UNSPECIFIED = 0;
@@ -339,6 +357,15 @@ message Command {
     string workspace_id = 1;
     SurfaceKindCode kind = 2;
   }
+  // An operation on a workspace a node has saved (saved_actions_v1). Routed to `host`; the node
+  // finds the saved workspace by `config_key` among its own and refuses any other.
+  message SavedAction {
+    string host = 1;
+    string config_key = 2;
+    SavedActionCode action = 3;
+    // Only for SET_ROOT: an absolute path or `~`-relative, at most 4096 bytes.
+    string root = 4;
+  }
   reserved 2, 5;
   oneof kind {
     GetPreview get_preview = 1;
@@ -348,6 +375,7 @@ message Command {
     OpenTerminal open_terminal = 7;
     CreateSession create_session = 8;
     CreateSurface create_surface = 9;
+    SavedAction saved_action = 10;
   }
 }
 

@@ -7,15 +7,15 @@ use crate::switch::{
 use crate::terminal::terminal_request_shape;
 use flight_proto::{
     command_kind as ck, response_result, ui_event_body, ui_request_body, Command, ErrorKindCode,
-    FleetImage, PaneRefMsg, ProgramCode, Request, Step, Subscribe, SurfaceKindCode, UiEvent,
-    UiRequest,
+    FleetImage, PaneRefMsg, ProgramCode, Request, SavedActionCode, Step, Subscribe,
+    SurfaceKindCode, UiEvent, UiRequest,
 };
 use flight_state::PaneRef;
 use flight_transport::UiClient;
 use flight_trust::{ConnectionConfig, Fingerprint, Identity, TrustError};
 use flight_ui::{
     Backend, CreateFailure, NewSessionRequest, NewSurfaceRequest, PanePreview, PaneView, Program,
-    SurfaceChoice, UiSnapshot, WorkspaceKey,
+    SavedActionKind, SavedActionRequest, SurfaceChoice, UiSnapshot, WorkspaceKey,
 };
 use std::collections::HashMap;
 use std::path::Path;
@@ -227,6 +227,27 @@ impl Backend for OrchestratedBackend {
                 SurfaceChoice::Shell => SurfaceKindCode::Shell,
                 SurfaceChoice::Agent => SurfaceKindCode::Agent,
             } as i32,
+        });
+        self.runtime
+            .block_on(call(&self.requests, kind, CREATE_TIMEOUT))
+            .map(drop)
+            .map_err(create_failure)
+    }
+
+    fn saved_action(&mut self, request: &SavedActionRequest) -> Result<(), CreateFailure> {
+        let (action, root) = match &request.action {
+            SavedActionKind::Retry => (SavedActionCode::Retry, String::new()),
+            SavedActionKind::Remove => (SavedActionCode::Remove, String::new()),
+            SavedActionKind::Restore => (SavedActionCode::Restore, String::new()),
+            SavedActionKind::AcceptRoot => (SavedActionCode::AcceptRoot, String::new()),
+            SavedActionKind::SetRoot(path) => (SavedActionCode::SetRoot, path.clone()),
+            SavedActionKind::Trust => (SavedActionCode::Trust, String::new()),
+        };
+        let kind = ck::Kind::SavedAction(ck::SavedAction {
+            host: request.host.as_str().to_owned(),
+            config_key: request.config_key.clone(),
+            action: action as i32,
+            root,
         });
         self.runtime
             .block_on(call(&self.requests, kind, CREATE_TIMEOUT))

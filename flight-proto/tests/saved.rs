@@ -134,3 +134,73 @@ fn the_capability_is_known_and_negotiated_away_by_an_old_orchestrator() {
         vec!["terminal_v1".to_owned()]
     );
 }
+
+mod saved_action {
+    use flight_proto::{command_kind::Kind, command_kind::SavedAction, Command, SavedActionCode};
+    use flight_proto::{Reject, Validate};
+
+    fn command(action: SavedActionCode, root: &str) -> Command {
+        Command {
+            kind: Some(Kind::SavedAction(SavedAction {
+                host: "node-a".to_owned(),
+                config_key: "c-0123456789abcdef".to_owned(),
+                action: action as i32,
+                root: root.to_owned(),
+            })),
+        }
+    }
+
+    #[test]
+    fn it_names_its_host_and_is_valid_for_every_action() {
+        for a in [
+            SavedActionCode::Retry,
+            SavedActionCode::Remove,
+            SavedActionCode::Restore,
+            SavedActionCode::AcceptRoot,
+            SavedActionCode::Trust,
+        ] {
+            let c = command(a, "");
+            assert_eq!(c.target_host(), Some("node-a"));
+            c.validate().unwrap();
+        }
+        command(SavedActionCode::SetRoot, "~/dev/nga")
+            .validate()
+            .unwrap();
+    }
+
+    #[test]
+    fn a_root_goes_only_with_set_root_and_must_be_a_directory_path() {
+        let bad: Vec<(SavedActionCode, &str)> = vec![
+            (SavedActionCode::SetRoot, ""),
+            (SavedActionCode::SetRoot, "relative/dir"),
+            (SavedActionCode::SetRoot, "/bad\ndir"),
+            (SavedActionCode::Restore, "/surprise"),
+            (SavedActionCode::Remove, "/surprise"),
+        ];
+        for (a, root) in bad {
+            let r: Result<(), Reject> = command(a, root).validate();
+            assert!(r.is_err(), "{a:?} {root:?}");
+        }
+    }
+
+    #[test]
+    fn unknown_or_unspecified_actions_and_bad_keys_are_refused() {
+        for action in [0, 99] {
+            let mut c = command(SavedActionCode::Retry, "");
+            if let Some(Kind::SavedAction(s)) = c.kind.as_mut() {
+                s.action = action;
+            }
+            assert!(c.validate().is_err());
+        }
+        let mut c = command(SavedActionCode::Retry, "");
+        if let Some(Kind::SavedAction(s)) = c.kind.as_mut() {
+            s.config_key = "has space".to_owned();
+        }
+        assert!(c.validate().is_err());
+        let mut c = command(SavedActionCode::Retry, "");
+        if let Some(Kind::SavedAction(s)) = c.kind.as_mut() {
+            s.host.clear();
+        }
+        assert!(c.validate().is_err());
+    }
+}

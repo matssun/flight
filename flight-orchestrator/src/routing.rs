@@ -16,6 +16,7 @@ fn required_capability(kind: &Kind) -> &'static str {
         Kind::KillPane(_) => capability::KILL,
         Kind::CreateSession(_) => capability::CREATE_SESSION,
         Kind::CreateSurface(_) => capability::CREATE_SURFACE,
+        Kind::SavedAction(_) => capability::SAVED_ACTIONS,
     }
 }
 

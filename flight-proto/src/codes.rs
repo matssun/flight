@@ -67,6 +67,11 @@ wire_enum! {
 }
 
 wire_enum! {
+    /// What a user asks of a saved workspace (ADR-008).
+    SavedActionCode { Retry = 1, Remove = 2, Restore = 3, AcceptRoot = 4, SetRoot = 5, Trust = 6 }
+}
+
+wire_enum! {
     /// Why a terminal session ended (ADR-003).
     ExitReasonCode {
         ClientExited = 1,

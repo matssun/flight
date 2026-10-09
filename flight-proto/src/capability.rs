@@ -26,8 +26,12 @@ pub const CREATE_SURFACE: &str = "create_surface_v1";
 /// accepted, a node sends no `Delta.saved` (an older orchestrator could not decode one).
 pub const SAVED_WORKSPACES: &str = "saved_workspaces_v1";
 
+/// Operate on a saved workspace: retry, remove, restore, accept a changed root, set a root,
+/// trust an import (ADR-008). Named separately from `saved_workspaces_v1`, which only reports.
+pub const SAVED_ACTIONS: &str = "saved_actions_v1";
+
 /// Every capability this build knows about.
-pub const KNOWN: [&str; 8] = [
+pub const KNOWN: [&str; 9] = [
     PREVIEW,
     GUARDED_REVEAL,
     TERMINAL,
@@ -36,6 +40,7 @@ pub const KNOWN: [&str; 8] = [
     CREATE_SESSION,
     CREATE_SURFACE,
     SAVED_WORKSPACES,
+    SAVED_ACTIONS,
 ];
 
 /// The offered capabilities that `supported` also contains, in offered order, without

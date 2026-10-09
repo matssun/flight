@@ -22,5 +22,6 @@ pub use snapshot::{
 pub use view::{
     unavailable, workspaces, Action, Effect, Field, FilterInput, FormInput, FormOutcome,
     HostChoice, InputMode, NewSessionForm, NewSessionRequest, NewSurfaceRequest, Program,
-    PromptButton, PromptInput, PromptOutcome, ShellPrompt, Summary, SurfaceChoice, Tier, ViewModel,
+    PromptButton, PromptInput, PromptOutcome, SavedActionKind, SavedActionRequest, ShellPrompt,
+    Summary, SurfaceChoice, Tier, ViewModel,
 };

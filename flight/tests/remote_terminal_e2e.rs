@@ -193,7 +193,7 @@ fn enter_on_a_remote_pane_shows_it_over_flight_without_ssh_and_returns_to_the_da
     // Leave with the local escape; the dashboard comes back and says why.
     std::thread::sleep(Duration::from_millis(500));
     let at_escape = screen.lock().unwrap_or_else(|p| p.into_inner()).len();
-    writer.write_all(b"\x1dq").expect("escape");
+    writer.write_all(b"\x00q").expect("escape");
     wait("the node's tmux client to go", || clients().is_empty());
     wait("the dashboard to come back with the reason", || {
         let all = screen.lock().unwrap_or_else(|p| p.into_inner()).clone();

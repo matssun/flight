@@ -384,12 +384,12 @@ fn enter_reveals_the_pane_opens_a_terminal_and_the_escape_leaves_cleanly() {
             .is_ok_and(|o| o.stdout.trim() == "70x20")
     });
 
-    // A literal Ctrl-] reaches the remote; Ctrl-] q leaves.
+    // A literal Ctrl-Space reaches the remote; Ctrl-Space q leaves.
     rig.rt
-        .block_on(shown.input.send(b"\x1d\x1d".to_vec()))
+        .block_on(shown.input.send(b"\x00\x00".to_vec()))
         .expect("input");
     rig.rt
-        .block_on(shown.input.send(b"\x1dq".to_vec()))
+        .block_on(shown.input.send(b"\x00q".to_vec()))
         .expect("input");
     assert_eq!(finish(&rig, shown), TerminalEnd::UserLeft);
     rig.wait("no tmux client left", |r| r.clients().is_empty());
@@ -447,7 +447,7 @@ fn the_escape_works_while_the_users_terminal_accepts_nothing_and_memory_stays_bo
 
     // The local escape still works.
     rig.rt
-        .block_on(shown.input.send(b"\x1dq".to_vec()))
+        .block_on(shown.input.send(b"\x00q".to_vec()))
         .expect("input");
     assert_eq!(finish(&rig, shown), TerminalEnd::UserLeft);
     rig.wait("no tmux client left", |r| r.clients().is_empty());
@@ -675,7 +675,7 @@ fn a_presenter_whose_control_connection_dies_stops_renewing_and_the_terminal_goe
         let shown = rig.show(&id);
         rig.wait("tmux client attached", |r| r.clients().len() == 1);
         rig.rt
-            .block_on(shown.input.send(b"\x1dq".to_vec()))
+            .block_on(shown.input.send(b"\x00q".to_vec()))
             .expect("input");
         assert_eq!(finish(&rig, shown), TerminalEnd::UserLeft, "terminal {n}");
         rig.wait("no tmux client left", |r| r.clients().is_empty());

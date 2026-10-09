@@ -13,7 +13,7 @@ That is all. The first run sets Flight up on this machine (about a second), then
 
 Older, tmux-reading mode (no creating sessions): `flight --once`, `flight --ssh ALIAS`, `flight --socket NAME`.
 
-Create sessions from the dashboard: press `n`, choose the machine and directory, pick Claude or Shell, Create. Enter opens a session; `Ctrl-]` then `q` returns to the dashboard and the session keeps running. Flight uses its own private tmux server and never touches your default one. Keys: arrows or j/k, Enter open, n new, / search, ? help, r refresh, q quit; the mouse selects (second click opens) and scrolls.
+Create sessions from the dashboard: press `n`, choose the machine and directory, pick Claude or Shell, Create. Enter opens a session; `Ctrl-Space` then `q` returns to the dashboard and the session keeps running. Flight uses its own private tmux server and never touches your default one. Keys: arrows or j/k, Enter open, n new, / search, ? help, r refresh, q quit; the mouse selects (second click opens) and scrolls.
 
 ## Distributed mode
 

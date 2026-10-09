@@ -12,7 +12,7 @@ pub fn help_lines() -> Vec<Line<'static>> {
     for (k, text) in [
         ("↑ ↓  j k", "move between sessions"),
         ("Enter", "open the selected session"),
-        ("Ctrl-] then q", "leave a session; it keeps running"),
+        ("Ctrl-Space then q", "leave a session; it keeps running"),
         ("/", "search by name, host or agent"),
         ("Esc", "clear the search, or quit"),
     ] {

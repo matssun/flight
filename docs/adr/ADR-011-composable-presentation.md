@@ -2,7 +2,7 @@
 
 # ADR-011: Composable presentation over persistent surfaces
 
-Status: model implemented (`flight-present`); compositor and multi-surface session follow (see "Order"). Builds on ADR-007 (surfaces), ADR-009 (attachments, views, the surface session).
+Status: model (`flight-present`) and compositor (`ScreenModel`, `paint`) implemented; the multi-surface session follows (see "Order"). Builds on ADR-007 (surfaces), ADR-009 (attachments, views, the surface session).
 
 ## The requirement
 
@@ -64,7 +64,7 @@ Region  = Surface(SurfaceId)
 ## Order
 
 1. `flight-present`: the model, geometry, focus, edits, saved form, property tests. (this change)
-2. The compositor: `vt100` adapter, region drawing, cursor, a fidelity test of the adapter against tmux's own capture, a bound on the cost of a screen model.
+2. The compositor: `vt100` adapter, region drawing, cursor, a fidelity test of the adapter against tmux's own capture, a bound on the cost of a screen model. (done, below)
 3. The multi-surface session: one attachment per visible tile, focus as the keyboard owner, per-tile resize, `Ctrl-Space` controls for split, close, tabs and moving focus, and the saved layout.
 
 ## Limits
@@ -72,3 +72,14 @@ Region  = Surface(SurfaceId)
 - A surface appears once per layout. Two views of the same surface are not offered (they would be two attachments to one window, which tmux can do but the session's one-at-a-time rule forbids).
 - No scrollback in the compositor: scrolling back is tmux's, inside the surface.
 - Surfaces are windows; panes of one window cannot be shown independently (they share an active pane).
+
+## The compositor (`flight-client::screens`)
+
+`ScreenModel` wraps `vt100::Parser` (no scrollback); `paint` draws a solved layout into a ratatui `Buffer`: each tile's cells with their colours and attributes, wide characters kept whole (and not drawn if they would spill into the next tile), one-cell lines between tiles (the ones next to the focused tile marked), tab strips, and the focused screen's cursor for the caller to place. It is a few hundred lines; the terminal is parsed by `vt100` and diffed to the real terminal by ratatui, neither of which is ours.
+
+**Findings that shaped it.**
+
+- **The version is 0.15.2, not 0.16.2.** `vt100` 0.16 asks for `unicode-width` 0.2.1 or newer and ratatui 0.29 pins 0.2.0 exactly, so they cannot be built together; 0.15.2 (which uses 0.1.x alongside) passes the same fidelity checks. Revisit when ratatui moves.
+- **The parser panics on two things, and the model keeps both from reaching the dashboard.** Fed random bytes (200 runs of 120 KB at each of ten sizes, escape bytes over-represented) it never panicked on a screen of at least 2x2, but it panicked on every run at any screen of one row (1x1, 2x1, 80x1), and **resizing a populated screen panicked in about 80% of runs** (in both 0.15.2 and 0.16.2, in release builds too). So: the model never gives the parser fewer than 2x2; it never resizes a parser (a resize starts a new blank screen and keeps showing the old picture until the surface, which repaints everything when its size changes, writes the first bytes of the new one: tested with a real tmux client resized from 100x30 to 60x20); and `feed` is wrapped in `catch_unwind`, so a parser failure that is neither of those empties that one surface's picture and asks for a redraw instead of ending the dashboard. What a program writes is untrusted input to a parser that is not ours.
+- **Fidelity.** Against a real tmux client: rows equal `tmux capture-pane` for text, double-width, combining characters, box drawing, a wrapped line and 40 lines of scrolling; bold, reverse, underline, italic and colours reach the cells; after a resize the repainted picture equals tmux's capture at the new size (`flight-client/tests/screen_fidelity.rs`).
+- **Cost.** One model holds both the normal and the alternate screen: about 150 KiB at 80x24, 870 KiB at 200x60, 2.9 MB at 400x100 when both are completely full of attributed text (16 models: 2.3, 14, 46 MB). With at most 16 showing surfaces per layout this is bounded; a hidden surface has no model.

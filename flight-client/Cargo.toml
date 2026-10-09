@@ -16,10 +16,14 @@ flight-transport = { path = "../flight-transport" }
 flight-trust = { path = "../flight-trust" }
 flight-ui = { path = "../flight-ui" }
 crossterm = { workspace = true }
+ratatui = { workspace = true }
+vt100 = "0.15"
+flight-present = { path = "../flight-present" }
 rustix = { version = "0.38", features = ["event", "stdio", "fs", "pipe", "termios"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 
 [dev-dependencies]
+portable-pty = "0.8"
 flight-control = { path = "../flight-control" }
 flight-orchestrator = { path = "../flight-orchestrator" }
 flight-node = { path = "../flight-node" }

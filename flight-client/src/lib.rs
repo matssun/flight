@@ -8,6 +8,7 @@
 
 mod link_host;
 mod orchestrated;
+mod screens;
 mod session;
 mod snapshot_view;
 mod switch;
@@ -15,6 +16,7 @@ mod terminal;
 
 pub use link_host::LinkHost;
 pub use orchestrated::{ClientConfig, OrchestratedBackend};
+pub use screens::{paint, CellView, Colour, Modes, MouseMode, Painted, ScreenModel, Theme};
 pub use session::{
     Attachment, Binding, FromRemote, InputEvent, InputQueue, OpenFailure, OpenRequest,
     SessionConfig, SessionOutcome, SessionStart, SurfaceHost, SurfaceSession, ToRemote,

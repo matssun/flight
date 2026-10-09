@@ -332,7 +332,7 @@ fn help_lists_navigation_state_meanings_and_actions() {
         "Help",
         "Moving around",
         "Enter",
-        "Ctrl-] then q",
+        "Ctrl-Space then q",
         "What the symbols mean",
         "needs your approval",
         "has a question for you",

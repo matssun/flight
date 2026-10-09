@@ -18,8 +18,8 @@ pub const USAGE: &str = "usage: flight ui <command>
         Enter on a pane selects it and shows it. A pane of the node on this machine (its
         identity is read from --node-dir, default <config-dir>/node) is shown through tmux. A
         pane of any other node is shown in a terminal carried over Flight's own connections
-        (no ssh, no direct path to the node): Ctrl-] q leaves, Ctrl-] Ctrl-] sends a literal
-        Ctrl-], and the dashboard comes back when the terminal ends.";
+        (no ssh, no direct path to the node): Ctrl-Space q leaves, Ctrl-Space Ctrl-Space sends a literal
+        Ctrl-Space, and the dashboard comes back when the terminal ends.";
 
 pub fn run_ui(args: &[String]) -> Result<(), String> {
     if args.iter().any(|a| a == "--help" || a == "-h") {

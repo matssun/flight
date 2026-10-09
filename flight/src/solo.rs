@@ -76,7 +76,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     children.0.push(spawn(&exe, &node_args, &log)?);
 
     // A node dir that does not exist makes every pane "remote" to the dashboard, so Enter
-    // always opens Flight's own terminal and `Ctrl-] q` always comes back here.
+    // always opens Flight's own terminal and `Ctrl-Space q` always comes back here.
     let no_local = path(&base.join("no-local-node"));
     crate::ui_cmd::run_ui(&[
         "run".into(),

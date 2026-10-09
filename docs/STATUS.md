@@ -101,7 +101,7 @@ configuration and no direct UI-to-node path; everything travels over the authent
   PTY it owns (the pid is checked again inside the tmux command that attaches), and the terminal bytes travel
   node -> orchestrator -> UI on their own streams. The orchestrator mints single-use ids bound to the asking identity and
   the node connection, enforces limits (4 per node, 2 per UI, 32 total), and copies the bytes without interpreting them.
-  `Ctrl-]` `q` leaves, `Ctrl-]` `Ctrl-]` sends a literal `Ctrl-]`; the dashboard returns with the reason.
+  `Ctrl-Space` `q` leaves, `Ctrl-Space` `Ctrl-Space` sends a literal `Ctrl-Space`; the dashboard returns with the reason.
 - Output is bounded and lossy under sustained backpressure (the node keeps draining tmux, discards, then asks tmux to
   repaint); input is never dropped. Measured: without this a wedged UI grew the tmux server by about 23 MB a second.
 - Verified with real tmux, real mutual TLS and the real binaries (a dashboard in a pty, a fake `ssh` that records any
@@ -116,7 +116,7 @@ Usable now, from the dashboard alone, with no tmux knowledge:
 - `n` opens New session (host, name, directory, Claude or Shell); the node creates it all or nothing and it appears selected.
 - The dashboard is one urgency-ordered session list with a live preview, a summary header, a legend and visible controls;
   `/` searches, `?` explains the symbols, the mouse selects (second click opens) and scrolls; narrow terminals stack or use cards.
-- Enter opens a session, `Ctrl-]` then `q` returns to the dashboard, the session keeps running, Enter opens it again.
+- Enter opens a session, `Ctrl-Space` then `q` returns to the dashboard, the session keeps running, Enter opens it again.
 
 Run for real against an orchestrator and two nodes on this machine (private sockets), driving the UI in a terminal.
 Not yet run on the two physical machines. Known gaps: a created shell session reads as `idle · other`; nothing on screen

@@ -48,7 +48,7 @@ impl Drop for RawMode {
 }
 
 /// Show the terminal `terminal_id` in the user's terminal until it ends, then restore the
-/// terminal. `Ctrl-]` then `q` leaves at any time.
+/// terminal. `Ctrl-Space` then `q` leaves at any time.
 pub fn run_terminal(config: &ClientConfig, terminal_id: &[u8]) -> TerminalEnd {
     let Ok(runtime) = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
@@ -97,8 +97,9 @@ pub fn run_terminal(config: &ClientConfig, terminal_id: &[u8]) -> TerminalEnd {
     });
 
     let hint = || {
-        let _ = std::io::stderr()
-            .write_all(b"\r\n[Ctrl-] q leaves; Ctrl-] Ctrl-] sends a literal Ctrl-]]\r\n");
+        let _ = std::io::stderr().write_all(
+            b"\r\n[Ctrl-Space q leaves; Ctrl-Space Ctrl-Space sends a literal Ctrl-Space]\r\n",
+        );
     };
     let end = runtime.block_on(relay(
         sender, receiver, input_rx, resize_rx, output_tx, hint, lease,

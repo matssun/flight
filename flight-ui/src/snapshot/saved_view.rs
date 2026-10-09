@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-use super::HostHealth;
-use flight_state::HostId;
+use super::{HostHealth, WorkspaceKey};
+use flight_state::{HostId, WorkspaceId};
 
 /// How a saved workspace stands, as its node reads it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,4 +48,20 @@ pub struct SavedView {
     /// The running workspace that realizes it, when one does.
     pub running: Option<String>,
     pub imported: bool,
+}
+
+impl SavedView {
+    /// How the dashboard points at it. A saved identity (`c-…`) never equals a running
+    /// workspace's (`w-…`), so one key type serves both without confusing them.
+    pub fn key(&self) -> WorkspaceKey {
+        WorkspaceKey {
+            host: self.host.clone(),
+            workspace: WorkspaceId::new(&self.config_key),
+        }
+    }
+
+    /// Whether it is listed as unavailable: not running. A running one is a workspace already.
+    pub fn is_unavailable(&self) -> bool {
+        matches!(self.health, SavedHealth::Stopped | SavedHealth::Blocked)
+    }
 }

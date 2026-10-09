@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use super::lists::workspaces;
+use super::lists::{unavailable, workspaces};
 use super::opening::Opening;
 use super::{
     Action, Effect, FilterInput, FormOutcome, HostChoice, InputMode, NewSessionForm,
@@ -8,7 +8,7 @@ use super::{
 };
 use crate::collect::CreateFailure;
 use crate::snapshot::HostHealth;
-use crate::snapshot::{PanePreview, UiSnapshot, Workspace, WorkspaceKey};
+use crate::snapshot::{PanePreview, SavedView, UiSnapshot, Workspace, WorkspaceKey};
 use flight_state::{HostId, PaneRef};
 
 /// Presentation state: the latest snapshot plus what the user is pointing at. Selection is
@@ -99,6 +99,18 @@ impl ViewModel {
     /// The workspaces on screen: most urgent first, narrowed by the search.
     pub fn listed(&self) -> Vec<Workspace> {
         workspaces(&self.snapshot, &self.filter)
+    }
+
+    /// Saved workspaces that are not running, narrowed by the search: listed after the live
+    /// ones, and selectable like them.
+    pub fn unavailable(&self) -> Vec<SavedView> {
+        unavailable(&self.snapshot, &self.filter)
+    }
+
+    /// The selected saved workspace, if the cursor is on one.
+    pub fn selected_saved(&self) -> Option<SavedView> {
+        let want = self.selected.as_ref()?;
+        self.unavailable().into_iter().find(|v| &v.key() == want)
     }
 
     pub fn selected_workspace(&self) -> Option<Workspace> {
@@ -303,6 +315,8 @@ impl ViewModel {
     }
 
     pub(super) fn keys(&self) -> Vec<WorkspaceKey> {
-        self.listed().iter().map(Workspace::key).collect()
+        let mut keys: Vec<WorkspaceKey> = self.listed().iter().map(Workspace::key).collect();
+        keys.extend(self.unavailable().iter().map(SavedView::key));
+        keys
     }
 }

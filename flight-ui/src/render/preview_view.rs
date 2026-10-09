@@ -12,6 +12,9 @@ use ratatui::text::{Line, Span};
 /// The preview pane's content: what the selected session is and does, its recent screen, and
 /// what Enter will do. `height` is the rows available inside the pane.
 pub fn preview_view(vm: &ViewModel, height: usize, width: usize) -> Vec<Line<'static>> {
+    if let Some(saved) = vm.selected_saved() {
+        return super::saved_list::saved_preview(&saved, width);
+    }
     let Some(w) = vm.selected_workspace() else {
         return vec![
             Line::raw(""),

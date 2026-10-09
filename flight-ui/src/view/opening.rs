@@ -26,6 +26,13 @@ impl ViewModel {
     /// silently made.
     pub(super) fn open(&mut self, choice: SurfaceChoice) -> Effect {
         self.pending = None;
+        if let Some(saved) = self.selected_saved() {
+            self.message = Some(format!(
+                "{} is not running; nothing to open. Its details are on the right.",
+                saved.name
+            ));
+            return Effect::None;
+        }
         let Some(workspace) = self.selected_workspace() else {
             return Effect::None;
         };

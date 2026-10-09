@@ -28,7 +28,7 @@ pub use filter_input::FilterInput;
 pub use form_input::FormInput;
 pub use host_choice::HostChoice;
 pub use input_mode::InputMode;
-pub use lists::workspaces;
+pub use lists::{unavailable, workspaces};
 pub use new_session_form::{FormOutcome, NewSessionForm};
 pub use new_session_request::NewSessionRequest;
 pub use new_surface_request::NewSurfaceRequest;

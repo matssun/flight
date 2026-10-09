@@ -39,6 +39,24 @@ pub fn help_lines() -> Vec<Line<'static>> {
         ]));
     }
     out.push(Line::raw(""));
+    out.push(heading("Saved workspaces"));
+    for (k, text) in [
+        (
+            "SAVED · NOT RUNNING",
+            "kept even when the host, directory or process is gone",
+        ),
+        (
+            "⚠  host unreachable",
+            "the machine cannot be asked; shown as last known",
+        ),
+        (
+            "⚠  directory …",
+            "missing, unverified, changed or not readable; never recreated",
+        ),
+    ] {
+        out.push(entry(k, text));
+    }
+    out.push(Line::raw(""));
     out.push(heading("Actions"));
     for (k, text) in [
         ("n", "new workspace (host, folder, Claude)"),

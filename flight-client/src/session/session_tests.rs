@@ -142,6 +142,7 @@ fn rig_with(capacity: usize, typed_ahead: &[u8], tweak: impl FnOnce(&mut Session
     let start = SessionStart {
         id: vec![1],
         choice: Agent,
+        binding: binding(Agent, 100),
         typed_ahead: typed_ahead.to_vec(),
         size: (80, 24),
     };

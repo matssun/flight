@@ -6,19 +6,18 @@
 
 use flight_classify::AgentKind;
 use flight_client::{
-    relay, ClientConfig, Handoff, Lease, LocalTerminal, OrchestratedBackend, RemoteOps, Switcher,
-    TerminalEnd,
+    Attachment, Binding, ClientConfig, Handoff, LinkHost, LocalTerminal, OpenFailure, OpenRequest,
+    OrchestratedBackend, RemoteOps, SessionConfig, SessionOutcome, SessionStart, SurfaceHost,
+    SurfaceSession, Switcher, TerminalEnd,
 };
 use flight_node::{NodeCore, NodeSession, PaneObservation, Round, ServerOutcome, TmuxServers};
 use flight_orchestrator::OrchestratorConfig;
 use flight_proto::{ui_request_body, ExitReasonCode, Incarnation, TerminalLease, UiRequest};
 use flight_state::{AgentState, HostId, PaneId, PaneRef, ServerId};
 use flight_tmux::{SystemRunner, Tmux, TmuxEndpoint, TmuxRunner};
-use flight_transport::{
-    serve, NodeLink, NodeLinkConfig, ServerConfig, ServerHandle, TerminalClient, UiClient,
-};
+use flight_transport::{serve, NodeLink, NodeLinkConfig, ServerConfig, ServerHandle, UiClient};
 use flight_trust::{Identity, Role, TrustStore};
-use flight_ui::{Backend, PaneView};
+use flight_ui::{Backend, PaneView, SurfaceChoice, WorkspaceKey};
 use std::process::Command;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -38,6 +37,8 @@ struct Rig {
     tmux: Tmux,
     host: HostId,
     stop: watch::Sender<bool>,
+    link: Arc<NodeLink>,
+    observed: Vec<PaneObservation>,
     /// (pane id, pid) of the two panes of session `work`.
     panes: Vec<(String, u32)>,
 }
@@ -135,9 +136,11 @@ fn start(tag: &str, command: &str, terminals: bool) -> Rig {
         let link = link.clone();
         rt.spawn(async move { link.run(stop_rx).await });
     }
+    // One workspace with an agent surface (the first pane) and a shell surface (the second).
     let observed: Vec<PaneObservation> = panes
         .iter()
-        .map(|(id, pid)| PaneObservation {
+        .enumerate()
+        .map(|(n, (id, pid))| PaneObservation {
             pane: PaneId::new(id.as_str()),
             pid: *pid,
             agent: AgentKind::Claude,
@@ -148,7 +151,14 @@ fn start(tag: &str, command: &str, terminals: bool) -> Rig {
             title: String::new(),
             focused: false,
             screen_lines: vec!["Done!".into(), String::new(), "❯".into()],
-            placement: Default::default(),
+            placement: flight_state::RawPlacement {
+                workspace_id: "w-test".into(),
+                surface_id: format!("s-{n}"),
+                surface_kind: if n == 0 { "agent" } else { "shell" }.into(),
+                window_id: "@0".into(),
+                session_id: "$0".into(),
+                session_path: "/tmp".into(),
+            },
         })
         .collect();
     let deadline = Instant::now() + Duration::from_secs(10);
@@ -164,7 +174,7 @@ fn start(tag: &str, command: &str, terminals: bool) -> Rig {
     link.observe(vec![Round {
         server: ServerId::new("flight"),
         now: 1,
-        outcome: ServerOutcome::Observed(observed),
+        outcome: ServerOutcome::Observed(observed.clone()),
     }]);
 
     let config = ClientConfig {
@@ -200,6 +210,8 @@ fn start(tag: &str, command: &str, terminals: bool) -> Rig {
         tmux,
         host,
         stop,
+        link,
+        observed,
         panes,
     }
 }
@@ -261,50 +273,60 @@ impl Rig {
         }
     }
 
-    /// Enter on pane `i`: the id of the terminal the dashboard hands over.
-    fn enter(&mut self, i: usize) -> Vec<u8> {
+    /// Enter on pane `i`: the terminal the dashboard hands over, and the process it is for.
+    fn enter(&mut self, i: usize) -> (Vec<u8>, Binding) {
         let view = self.view(i, 0);
         self.backend.switch_to(&view).expect("switch");
         match self.backend.handoff().take() {
-            Some(Handoff::Terminal { id, .. }) => id,
+            Some(Handoff::Terminal { id, binding, .. }) => (id, binding),
             other => panic!("expected a terminal handoff, got {other:?}"),
         }
     }
 
-    /// Attach the relay to terminal `id` with plain channels.
-    fn show(&self, id: &[u8]) -> Shown {
-        let lease = self
-            .rt
-            .block_on(Lease::connect(&self.config, id))
-            .expect("lease");
-        self.show_with(id, lease)
+    fn workspace(&self) -> WorkspaceKey {
+        WorkspaceKey {
+            host: self.host.clone(),
+            workspace: flight_state::WorkspaceId::new("w-test"),
+        }
     }
 
-    fn show_with(&self, id: &[u8], lease: Lease) -> Shown {
-        let client = self
-            .rt
-            .block_on(TerminalClient::connect_ui(
-                &self.config.address,
-                &self.config.identity,
-                &self.config.orchestrator,
-                id,
-            ))
-            .expect("terminal");
-        let (sender, receiver) = client.split();
+    /// Show terminal `id` in a session over the real link, with plain channels.
+    fn show(&self, (id, binding): &(Vec<u8>, Binding)) -> Shown {
+        let host = Arc::new(LinkHost::new(
+            self.backend.clone(),
+            self.config.clone(),
+            self.workspace(),
+        ));
+        self.show_with(host, id, binding, |_| {})
+    }
+
+    fn show_with<H: SurfaceHost>(
+        &self,
+        host: Arc<H>,
+        id: &[u8],
+        binding: &Binding,
+        tweak: impl FnOnce(&mut SessionConfig),
+    ) -> Shown {
         let (input_tx, input_rx) = mpsc::channel(8);
         let (resize_tx, resize_rx) = mpsc::channel(4);
         let (output_tx, output_rx) = mpsc::channel(2);
-        let task = self.rt.spawn(relay(
-            sender,
-            receiver,
+        let mut config = SessionConfig::new(Arc::new(|_| {}));
+        tweak(&mut config);
+        let session = SurfaceSession::new(host, config);
+        let start = SessionStart {
+            id: id.to_vec(),
+            choice: SurfaceChoice::Agent,
+            binding: binding.clone(),
+            typed_ahead: Vec::new(),
+            size: (100, 30),
+        };
+        let task = self.rt.spawn(session.run(
             LocalTerminal {
                 input: input_rx,
                 resizes: resize_rx,
                 output: output_tx,
             },
-            || {},
-            lease,
-            None,
+            start,
         ));
         Shown {
             input: input_tx,
@@ -319,7 +341,7 @@ struct Shown {
     input: mpsc::Sender<Vec<u8>>,
     resize: mpsc::Sender<(u16, u16)>,
     output: mpsc::Receiver<Vec<u8>>,
-    task: tokio::task::JoinHandle<TerminalEnd>,
+    task: tokio::task::JoinHandle<SessionOutcome>,
 }
 
 impl Rig {
@@ -360,8 +382,9 @@ fn read_until(rig: &Rig, shown: &mut Shown, needle: &str) {
 fn finish(rig: &Rig, shown: Shown) -> TerminalEnd {
     rig.rt
         .block_on(async { tokio::time::timeout(Duration::from_secs(10), shown.task).await })
-        .expect("the relay ends")
+        .expect("the session ends")
         .expect("task")
+        .end
 }
 
 #[test]
@@ -372,17 +395,17 @@ fn enter_reveals_the_pane_opens_a_terminal_and_the_escape_leaves_cleanly() {
     let mut rig = start("enter", "cat", true);
     // Pane 0 is shown first; Enter on pane 1 must select it before the terminal attaches.
     assert_ne!(rig.active_pane(), rig.panes[1].0);
-    let id = rig.enter(1);
+    let entered = rig.enter(1);
     assert_eq!(rig.active_pane(), rig.panes[1].0, "the pane was revealed");
 
-    let mut shown = rig.show(&id);
+    let mut shown = rig.show(&entered);
     rig.wait("tmux client attached", |r| {
         r.clients() == vec!["work".to_owned()]
     });
     rig.rt
-        .block_on(shown.input.send(b"typed-through-the-relay\r".to_vec()))
+        .block_on(shown.input.send(b"typed-through-the-session\r".to_vec()))
         .expect("input");
-    read_until(&rig, &mut shown, "typed-through-the-relay");
+    read_until(&rig, &mut shown, "typed-through-the-session");
     rig.rt
         .block_on(shown.resize.send((70, 20)))
         .expect("resize");
@@ -419,8 +442,8 @@ fn the_escape_works_while_the_users_terminal_accepts_nothing_and_memory_stays_bo
         "sh -c 'while :; do echo flood-flood-flood-flood-flood-flood; done'",
         true,
     );
-    let id = rig.enter(0);
-    let shown = rig.show(&id);
+    let entered = rig.enter(0);
+    let shown = rig.show(&entered);
     rig.wait("tmux client attached", |r| r.clients().len() == 1);
     // Nobody reads `shown.output`: the user's terminal is stuck. Let it run.
     std::thread::sleep(Duration::from_secs(3));
@@ -464,13 +487,13 @@ fn the_escape_works_while_the_users_terminal_accepts_nothing_and_memory_stays_bo
 }
 
 #[test]
-fn a_remote_detach_ends_the_relay_with_the_reason() {
+fn a_remote_detach_ends_the_session_with_the_reason() {
     if !tmux_available() {
         return;
     }
     let mut rig = start("detach", "cat", true);
-    let id = rig.enter(0);
-    let mut shown = rig.show(&id);
+    let entered = rig.enter(0);
+    let mut shown = rig.show(&entered);
     // The user's terminal is reading, so the relay can get to the end of the stream.
     let mut output = std::mem::replace(&mut shown.output, mpsc::channel(1).1);
     rig.rt
@@ -581,13 +604,13 @@ fn a_pane_id_reused_by_a_restarted_tmux_is_refused_even_though_the_node_has_not_
 }
 
 #[test]
-fn losing_the_orchestrator_mid_session_ends_the_relay_and_hangs_the_node_up() {
+fn losing_the_orchestrator_mid_session_ends_the_session_and_hangs_the_node_up() {
     if !tmux_available() {
         return;
     }
     let mut rig = start("orchgone", "cat", true);
-    let id = rig.enter(0);
-    let shown = rig.show(&id);
+    let entered = rig.enter(0);
+    let shown = rig.show(&entered);
     rig.wait("tmux client attached", |r| r.clients().len() == 1);
     rig.stop_orchestrator();
     match finish(&rig, shown) {
@@ -609,7 +632,7 @@ fn a_presenter_whose_control_connection_dies_stops_renewing_and_the_terminal_goe
         return;
     }
     let mut rig = start("leasectl", "cat", true);
-    // The presenter's dedicated control connection, which the test can kill. Its lease is
+    // A presenter whose lease rides a control connection the test can kill. Its lease is
     // renewed every second; the orchestrator's lifetime (15 s) and stall limit (30 s) are
     // far away, so only the presenter noticing can end this quickly.
     let control = Arc::new(std::sync::Mutex::new(Some(
@@ -621,28 +644,16 @@ fn a_presenter_whose_control_connection_dies_stops_renewing_and_the_terminal_goe
             ))
             .expect("control"),
     )));
-    let id = rig.enter(0);
+    let entered = rig.enter(0);
     let renewals = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let lease = {
-        let (control, renewals, id) = (control.clone(), renewals.clone(), id.clone());
-        Lease {
-            period: Duration::from_secs(1),
-            renew: Box::new(move || {
-                let guard = control.lock().unwrap_or_else(|p| p.into_inner());
-                let client = guard.as_ref().ok_or("it was dropped")?;
-                client
-                    .send(UiRequest {
-                        body: Some(ui_request_body::Body::TerminalLease(TerminalLease {
-                            terminal_id: id.clone(),
-                        })),
-                    })
-                    .map_err(|e| e.to_string())?;
-                renewals.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                Ok(())
-            }),
-        }
-    };
-    let mut shown = rig.show_with(&id, lease);
+    let host = Arc::new(KillableLease {
+        inner: LinkHost::new(rig.backend.clone(), rig.config.clone(), rig.workspace()),
+        control: control.clone(),
+        renewals: renewals.clone(),
+    });
+    let mut shown = rig.show_with(host, &entered.0, &entered.1, |c| {
+        c.lease_period = Duration::from_secs(1);
+    });
     rig.wait("tmux client attached", |r| {
         r.clients() == vec!["work".to_owned()]
     });
@@ -680,8 +691,8 @@ fn a_presenter_whose_control_connection_dies_stops_renewing_and_the_terminal_goe
 
     // No node slot was consumed: the node's limit is four, and five more terminals open.
     for n in 0..5 {
-        let id = rig.enter(0);
-        let shown = rig.show(&id);
+        let entered = rig.enter(0);
+        let shown = rig.show(&entered);
         rig.wait("tmux client attached", |r| r.clients().len() == 1);
         rig.rt
             .block_on(shown.input.send(b"\x00q".to_vec()))
@@ -691,4 +702,175 @@ fn a_presenter_whose_control_connection_dies_stops_renewing_and_the_terminal_goe
         rig.wait("table empty", |r| r.terminals_open() == 0);
     }
     rig.wait("relays released", |r| r.relays_open() == 0);
+}
+
+/// A host that attaches over the real link but renews its lease on a connection of its own, so
+/// that the test can make the renewal fail the way a dead control connection does.
+struct KillableLease {
+    inner: LinkHost,
+    control: Arc<std::sync::Mutex<Option<UiClient>>>,
+    renewals: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl SurfaceHost for KillableLease {
+    async fn open(&self, request: OpenRequest) -> Result<Attachment, OpenFailure> {
+        self.inner.open(request).await
+    }
+
+    async fn connect(
+        &self,
+        id: Vec<u8>,
+        choice: SurfaceChoice,
+        binding: Binding,
+    ) -> Result<Attachment, OpenFailure> {
+        self.inner.connect(id, choice, binding).await
+    }
+
+    fn renew(&self, attachment: &[u8]) -> Result<(), String> {
+        let guard = self.control.lock().unwrap_or_else(|p| p.into_inner());
+        let client = guard.as_ref().ok_or("it was dropped")?;
+        client
+            .send(UiRequest {
+                body: Some(ui_request_body::Body::TerminalLease(TerminalLease {
+                    terminal_id: attachment.to_vec(),
+                })),
+            })
+            .map_err(|e| e.to_string())?;
+        self.renewals
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        Ok(())
+    }
+}
+
+/// Text on the screen of pane `i`.
+fn pane_text(rig: &Rig, i: usize) -> String {
+    rig.tmux
+        .runner()
+        .run(&["capture-pane", "-p", "-t", rig.panes[i].0.as_str()])
+        .map(|o| o.stdout)
+        .unwrap_or_default()
+}
+
+#[test]
+fn switching_surface_stays_in_the_session_keeps_both_surfaces_running_and_orders_input() {
+    if !tmux_available() {
+        return;
+    }
+    let mut rig = start("switch", "cat", true);
+    let entered = rig.enter(0);
+    let shown = rig.show(&entered);
+    rig.wait("tmux client attached", |r| r.clients().len() == 1);
+    assert_eq!(rig.active_pane(), rig.panes[0].0);
+
+    // Typed for the agent, then the switch, then typed for the shell, all in one burst: the
+    // shell is not attached yet when the second part is typed, and it must still get it.
+    rig.rt
+        .block_on(
+            shown
+                .input
+                .send(b"for-the-agent\r\x00sfor-the-shell\r".to_vec()),
+        )
+        .expect("input");
+    rig.wait("the shell has what was typed for it", |r| {
+        pane_text(r, 1).contains("for-the-shell")
+    });
+    assert!(pane_text(&rig, 0).contains("for-the-agent"));
+    assert!(
+        !pane_text(&rig, 0).contains("for-the-shell"),
+        "misdelivered"
+    );
+    assert!(
+        !pane_text(&rig, 1).contains("for-the-agent"),
+        "misdelivered"
+    );
+    // One client, on the shell; the agent's attachment was let go once the shell was up.
+    rig.wait("one client, on the shell", |r| {
+        r.clients().len() == 1 && r.active_pane() == r.panes[1].0
+    });
+
+    // And back: both surfaces kept their own state.
+    rig.rt
+        .block_on(shown.input.send(b"\x00aagain-agent\r".to_vec()))
+        .expect("input");
+    rig.wait("the agent has what was typed for it", |r| {
+        pane_text(r, 0).contains("again-agent")
+    });
+    assert!(pane_text(&rig, 0).contains("for-the-agent"));
+    assert!(pane_text(&rig, 1).contains("for-the-shell"));
+    assert!(!pane_text(&rig, 1).contains("again-agent"), "misdelivered");
+
+    rig.rt
+        .block_on(shown.input.send(b"\x00q".to_vec()))
+        .expect("input");
+    let outcome = rig
+        .rt
+        .block_on(async { tokio::time::timeout(Duration::from_secs(10), shown.task).await })
+        .expect("ends")
+        .expect("task");
+    assert_eq!(outcome.end, TerminalEnd::UserLeft);
+    assert_eq!(outcome.shown, Some(SurfaceChoice::Agent));
+    assert_eq!(outcome.undelivered, 0);
+    rig.wait("no tmux client left", |r| r.clients().is_empty());
+    rig.wait("table empty", |r| r.terminals_open() == 0);
+}
+
+#[test]
+fn a_switch_to_a_surface_that_is_gone_keeps_the_user_where_they_are_and_delivers_nothing_wrong() {
+    if !tmux_available() {
+        return;
+    }
+    let mut rig = start("gone", "cat", true);
+    let entered = rig.enter(0);
+    let shown = rig.show(&entered);
+    rig.wait("tmux client attached", |r| r.clients().len() == 1);
+    // The shell goes away, and the node tells the orchestrator.
+    rig.tmux
+        .runner()
+        .run(&["kill-pane", "-t", rig.panes[1].0.as_str()])
+        .expect("kill");
+    rig.link.observe(vec![Round {
+        server: ServerId::new("flight"),
+        now: 2,
+        outcome: ServerOutcome::Observed(rig.observed.iter().take(1).cloned().collect()),
+    }]);
+    let mut link = rig.backend.clone();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while link
+        .snapshot(0)
+        .hosts
+        .iter()
+        .map(|h| h.panes.len())
+        .sum::<usize>()
+        != 1
+    {
+        assert!(
+            Instant::now() < deadline,
+            "the link never dropped the shell"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    rig.rt
+        .block_on(shown.input.send(b"\x00snot-for-the-agent\r".to_vec()))
+        .expect("input");
+    std::thread::sleep(Duration::from_millis(500));
+    rig.rt
+        .block_on(shown.input.send(b"for-the-agent\r".to_vec()))
+        .expect("input");
+    rig.wait("the agent has what was typed for it", |r| {
+        pane_text(r, 0).contains("for-the-agent")
+    });
+    assert!(
+        !pane_text(&rig, 0).contains("not-for-the-agent"),
+        "input typed for a surface that could not be reached went to another one"
+    );
+    rig.rt
+        .block_on(shown.input.send(b"\x00q".to_vec()))
+        .expect("input");
+    let outcome = rig
+        .rt
+        .block_on(async { tokio::time::timeout(Duration::from_secs(10), shown.task).await })
+        .expect("ends")
+        .expect("task");
+    assert_eq!(outcome.end, TerminalEnd::UserLeft);
+    assert_eq!(outcome.undelivered, "not-for-the-agent\r".len());
 }

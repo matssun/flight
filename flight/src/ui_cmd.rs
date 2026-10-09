@@ -4,7 +4,7 @@ use crate::args::{config_dir, now, Args};
 use crate::join_cmd::join_command;
 use crate::roles::ui_dir;
 use flight_client::{
-    run_terminal, ClientConfig, Handoff, OrchestratedBackend, Switcher, TerminalEnd,
+    run_session, ClientConfig, Handoff, OrchestratedBackend, SessionRequest, Switcher,
 };
 use flight_proto::RoleCode;
 use flight_ui::{render_to_string, run_with_start, Backend, Exit, Start, ViewModel};
@@ -53,46 +53,56 @@ fn dashboard(args: &[String]) -> Result<(), String> {
     };
     // Every session is shown in Flight's own terminal, on this machine or another.
     let switcher = Switcher::default();
-    let start = |config: ClientConfig| -> Result<OrchestratedBackend, String> {
-        let mut backend = OrchestratedBackend::start(config).map_err(|e| e.to_string())?;
+    let handle = |link: &OrchestratedBackend| {
+        let mut backend = link.clone();
         backend.set_switching(switcher.clone());
-        Ok(backend)
+        backend
     };
+    let link = OrchestratedBackend::start(config.clone()).map_err(|e| e.to_string())?;
     if args.switch("--once") {
-        return once(start(config)?);
+        return once(handle(&link));
     }
-    // A remote pane is shown in a terminal over Flight; when it ends the dashboard comes
-    // back, with the reason on its status line.
+    // A surface is shown in a terminal session over Flight; when it ends the dashboard comes
+    // back, with the reason on its status line. The link to the orchestrator is the same one
+    // throughout: showing a surface and coming back rebuilds nothing.
     let mut begin = Start::default();
     loop {
-        let backend = start(config.clone())?;
+        let backend = handle(&link);
         let handoff = backend.handoff();
         let exit = run_with_start(backend, refresh, std::mem::take(&mut begin))
             .map_err(|e| e.to_string())?;
-        if exit != Exit::Switched {
+        let Exit::Switched { typed_ahead } = exit else {
             return Ok(());
-        }
+        };
         match handoff.take() {
             Some(Handoff::Attach(attach)) => {
                 // Only returns if the program could not be started: the pane is already selected.
                 let why = attach.exec();
                 return Err(format!("pane selected, but cannot attach: {why}"));
             }
-            Some(Handoff::Terminal { id, shown }) => {
-                let end = run_terminal(&config, &id, Some(shown.choice));
-                begin = match end {
-                    // Ctrl-Space a / s: the dashboard comes back only long enough to open the
-                    // workspace's other surface.
-                    TerminalEnd::SwitchTo(choice) => Start {
-                        resume: Some((shown.workspace, choice)),
-                        ..Start::default()
+            Some(Handoff::Terminal { id, shown, binding }) => {
+                let outcome = run_session(
+                    &link,
+                    &config,
+                    SessionRequest {
+                        id,
+                        shown: shown.clone(),
+                        binding,
+                        typed_ahead,
                     },
-                    // Back on the workspace that was just left.
-                    other => Start {
-                        notice: Some(format!("terminal: {other}")),
-                        select: Some(shown.workspace),
-                        ..Start::default()
-                    },
+                );
+                let mut notice = format!("terminal: {}", outcome.end);
+                if outcome.undelivered > 0 {
+                    notice.push_str(&format!(
+                        " ({} typed bytes were not delivered)",
+                        outcome.undelivered
+                    ));
+                }
+                // Back on the workspace that was just shown.
+                begin = Start {
+                    notice: Some(notice),
+                    select: Some(shown.workspace),
+                    ..Start::default()
                 };
             }
             None => return Ok(()),

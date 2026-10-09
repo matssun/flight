@@ -38,6 +38,7 @@ pub trait SurfaceHost: Send + Sync + 'static {
         &self,
         id: Vec<u8>,
         choice: SurfaceChoice,
+        binding: Binding,
     ) -> impl Future<Output = Result<Attachment, OpenFailure>> + Send;
 
     /// Say the presentation of this terminal is alive (ADR-004). An error means the link is

@@ -61,6 +61,8 @@ impl SessionConfig {
 pub struct SessionStart {
     pub id: Vec<u8>,
     pub choice: SurfaceChoice,
+    /// The pane and process the terminal was asked for.
+    pub binding: Binding,
     /// Input that arrived before the session could read the keyboard, in the order typed.
     pub typed_ahead: Vec<u8>,
     pub size: (u16, u16),
@@ -138,7 +140,7 @@ impl<H: SurfaceHost> SurfaceSession<H> {
             undelivered: 0,
             blocked_until: None,
         };
-        run.connect_first(start.id, start.choice);
+        run.connect_first(start.id, start.choice, start.binding);
         for event in run.filter.events(&start.typed_ahead) {
             run.queue.push(event);
         }
@@ -241,7 +243,7 @@ impl<H: SurfaceHost> Run<H> {
         &mut self,
         choice: SurfaceChoice,
         expect: Option<Binding>,
-        connect: Option<Vec<u8>>,
+        connect: Option<(Vec<u8>, Binding)>,
     ) {
         let (host, timeout, size) = (self.host.clone(), self.cfg.open_timeout, self.size);
         let request = OpenRequest {
@@ -253,7 +255,7 @@ impl<H: SurfaceHost> Run<H> {
         let task = tokio::spawn(async move {
             let attach = async {
                 match connect {
-                    Some(id) => host.connect(id, choice).await,
+                    Some((id, binding)) => host.connect(id, choice, binding).await,
                     None => host.open(request).await,
                 }
             };
@@ -272,8 +274,8 @@ impl<H: SurfaceHost> Run<H> {
         });
     }
 
-    fn connect_first(&mut self, id: Vec<u8>, choice: SurfaceChoice) {
-        self.spawn_open(choice, None, Some(id));
+    fn connect_first(&mut self, id: Vec<u8>, choice: SurfaceChoice, binding: Binding) {
+        self.spawn_open(choice, None, Some((id, binding)));
     }
 
     /// Apply the events at the front of the input that need no attachment. A switch is applied

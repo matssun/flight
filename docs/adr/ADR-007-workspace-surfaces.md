@@ -28,7 +28,7 @@ Workspace                      Surface
 ```
 
 - `WorkspaceId` and `SurfaceId` are distinct typed ids (`flight-state`). A display name never stands in for either, and neither is a tmux id. Minted by the node (64 random bits, `w-…`, `s-…`); 1 to 64 bytes of `[A-Za-z0-9_.-]`, validated at the edge like every other wire string.
-- A workspace is **derived, never stored**. There is no workspace table: the dashboard groups the panes the nodes publish by workspace id. Flight still has no durable central live state.
+- A workspace is **derived, never stored**. There is no workspace table for *live* state (a durable record of intent is ADR-008): the dashboard groups the panes the nodes publish by workspace id. Flight still has no durable central live state.
 - Attention is derived from the Agent surface only. The workspace's summary state, its sort order and its "needs you" are its agent's. Each surface keeps its own state (`Agent: Question`, `Shell: ready`); a shell never asks for the user. A workspace with no agent is as urgent as a shell.
 - At most one surface of each kind per workspace in v1. Asking for a second shell is refused (`AlreadyExists`), and the dashboard simply opens the one that exists.
 

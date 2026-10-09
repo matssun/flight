@@ -3,7 +3,7 @@
 # Status
 
 Short and factual. Design decisions live in the ADRs; this file says where the work stands.
-Last updated: 2026-10-08.
+Last updated: 2026-10-09.
 
 ## Merged baseline (main)
 
@@ -132,6 +132,14 @@ directory: the orchestrator routes by the workspace and the node resolves the re
 
 Not done: side-by-side presentation (needs terminal emulation in the client; see ADR-007), more than one shell, and any other
 surface kind.
+
+## Current branch: workspace-persistence (ADR-008, ADR-009)
+
+`workspace-shell` (PR #11) is merged. `flight-workspaces` is the first increment: versioned `workspaces.toml` with atomic
+fsynced saves, snapshots, profiles, migration steps; root verification that distinguishes missing, unmounted/unverified,
+permission, not-a-directory and changed roots and never creates or repairs anything; a pure planner and an idempotent recovery
+driver that reconnects, resumes or replaces under an explicit policy. Not wired into the node, protocol or dashboard yet
+(see `docs/PLAN-workspace-persistence.md`).
 
 ## Open limitations
 

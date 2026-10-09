@@ -18,6 +18,7 @@ members = [
     "flight-state",    # Agent state engine: hook + event + scrape fusion, 7-state model
     "flight-control",  # Host registry: routes PaneRef to a runner per host (local, SSH), typed host errors
     "flight-sessions", # Session sources (tmux, zoxide, config, tmuxinator), dedup, naming, connect
+    "flight-workspaces", # Durable workspace definitions: versioned store, root verification, non-destructive reconciliation (ADR-008)
     "flight-ui",       # Dashboard: snapshot, pure view model, ratatui rendering, terminal loop
     "flight",          # The binary
     "tools/flight-load", # Measurement tool for the control plane (test tooling, not shipped)

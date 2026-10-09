@@ -1,0 +1,13 @@
+[package]
+name = "flight-workspaces"
+description = "Flight: durable workspace definitions, atomic store, root verification and non-destructive reconciliation (ADR-008)"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+getrandom = "0.2"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"

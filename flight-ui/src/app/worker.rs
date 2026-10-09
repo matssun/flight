@@ -2,7 +2,7 @@
 
 use crate::collect::{Backend, CreateFailure};
 use crate::snapshot::{PanePreview, PaneView, UiSnapshot};
-use crate::{NewSessionRequest, NewSurfaceRequest};
+use crate::{NewSessionRequest, NewSurfaceRequest, SavedActionRequest};
 use flight_state::PaneRef;
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::thread::{self, JoinHandle};
@@ -14,6 +14,7 @@ pub enum Cmd {
     Switch(PaneView),
     Create(NewSessionRequest),
     CreateSurface(NewSurfaceRequest),
+    SavedAction(SavedActionRequest),
     Shutdown,
 }
 
@@ -23,6 +24,7 @@ pub enum Msg {
     Switched(Result<(), String>),
     Created(NewSessionRequest, Result<(), CreateFailure>),
     SurfaceCreated(NewSurfaceRequest, Result<(), CreateFailure>),
+    SavedActionDone(SavedActionRequest, Result<(), CreateFailure>),
 }
 
 pub struct Worker {
@@ -66,6 +68,12 @@ impl Worker {
                     Ok(Cmd::CreateSurface(request)) => {
                         let r = collector.create_surface(&request);
                         msg_tx.send(Msg::SurfaceCreated(request, r)).is_ok()
+                            && refresh(&mut *collector, &target, &msg_tx)
+                    }
+                    Ok(Cmd::SavedAction(request)) => {
+                        let r = collector.saved_action(&request);
+                        // What was done shows in the next snapshot: ask for it now.
+                        msg_tx.send(Msg::SavedActionDone(request, r)).is_ok()
                             && refresh(&mut *collector, &target, &msg_tx)
                     }
                     Ok(Cmd::Shutdown) | Err(RecvTimeoutError::Disconnected) => false,

@@ -11,6 +11,7 @@ mod list_view;
 mod preview_view;
 mod prompt_lines;
 mod saved_list;
+mod saved_prompt_lines;
 mod scroll;
 mod style;
 mod text;

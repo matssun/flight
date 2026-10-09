@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use crate::view::{NewSessionRequest, NewSurfaceRequest};
+use crate::view::{NewSessionRequest, NewSurfaceRequest, SavedActionRequest};
 use crate::PaneView;
 use flight_state::PaneRef;
 
@@ -19,4 +19,6 @@ pub enum Effect {
     Create(NewSessionRequest),
     /// Ask the workspace's node to add a surface to it.
     CreateSurface(NewSurfaceRequest),
+    /// Ask a node to act on one of its saved workspaces.
+    SavedAction(SavedActionRequest),
 }

@@ -28,7 +28,7 @@ impl ViewModel {
         self.pending = None;
         if let Some(saved) = self.selected_saved() {
             self.message = Some(format!(
-                "{} is not running; nothing to open. Its details are on the right.",
+                "{} is not running; there is nothing to open. Enter starts it.",
                 saved.name
             ));
             return Effect::None;

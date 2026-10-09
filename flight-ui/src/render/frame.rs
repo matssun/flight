@@ -8,9 +8,10 @@ use super::layout::{areas, Areas, CARD_BELOW, MIN_HEIGHT, MIN_WIDTH};
 use super::list_view::{list_view, ListView};
 use super::preview_view::preview_view;
 use super::prompt_lines::prompt_lines;
+use super::saved_prompt_lines::{saved_prompt_lines, title as saved_title};
 use super::scroll::scroll_offset;
 use super::style::dim;
-use crate::view::{NewSessionForm, ShellPrompt, ViewModel};
+use crate::view::{NewSessionForm, SavedPrompt, ShellPrompt, ViewModel};
 use flight_state::PaneRef;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Style};
@@ -42,6 +43,8 @@ pub fn render(frame: &mut Frame, vm: &ViewModel) {
     draw_footer(frame, vm, &a);
     if let Some(form) = vm.form() {
         draw_form(frame, form, area);
+    } else if let Some(prompt) = vm.saved_prompt() {
+        draw_saved_prompt(frame, prompt, area);
     } else if let Some(prompt) = vm.prompt() {
         draw_prompt(frame, prompt, area);
     } else if vm.help_open() {
@@ -147,6 +150,16 @@ fn draw_prompt(frame: &mut Frame, prompt: &ShellPrompt, area: Rect) {
     );
 }
 
+fn draw_saved_prompt(frame: &mut Frame, prompt: &SavedPrompt, area: Rect) {
+    modal(
+        frame,
+        area,
+        saved_title(prompt),
+        FORM_WIDTH,
+        saved_prompt_lines(prompt),
+    );
+}
+
 fn draw_help(frame: &mut Frame, area: Rect) {
     modal(frame, area, "Help", HELP_WIDTH, help_lines());
 }
@@ -157,6 +170,7 @@ pub fn session_at(vm: &ViewModel, area: Rect, x: u16, y: u16) -> Option<PaneRef>
         || area.height < MIN_HEIGHT
         || vm.form().is_some()
         || vm.prompt().is_some()
+        || vm.saved_prompt().is_some()
         || vm.help_open()
     {
         return None;

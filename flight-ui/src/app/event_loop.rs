@@ -192,6 +192,9 @@ fn handle(worker: &Worker, effect: Effect) -> Option<Exit> {
         Effect::CreateSurface(request) => {
             let _ = worker.tx.send(Cmd::CreateSurface(request));
         }
+        Effect::SavedAction(request) => {
+            let _ = worker.tx.send(Cmd::SavedAction(request));
+        }
     }
     None
 }
@@ -213,6 +216,10 @@ fn on_message(vm: &mut ViewModel, worker: &Worker, msg: Msg) -> Option<Exit> {
         Msg::SurfaceCreated(request, result) => {
             let effect = vm.apply_surface_created(&request, result);
             handle(worker, effect)
+        }
+        Msg::SavedActionDone(request, result) => {
+            vm.apply_saved_action(&request, result);
+            None
         }
         Msg::Switched(Ok(())) => Some(Exit::Switched),
         Msg::Switched(Err(e)) => {

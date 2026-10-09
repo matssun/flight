@@ -87,10 +87,11 @@ fn selecting_it_shows_the_root_the_failure_and_that_nothing_is_repaired() {
     ] {
         assert!(screen.contains(want), "{want:?} missing from\n{screen}");
     }
-    // Opening it explains instead of doing something.
-    let effect = vm.apply(Action::Switch);
+    // Opening a surface of it explains instead of doing something; Enter is the way to start it.
+    let effect = vm.apply(Action::Open(flight_ui::SurfaceChoice::Agent));
     assert_eq!(effect, Effect::None);
     assert!(vm.message().unwrap().contains("not running"));
+    assert!(matches!(vm.apply(Action::Switch), Effect::SavedAction(_)));
 }
 
 #[test]

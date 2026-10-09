@@ -40,6 +40,22 @@ pub fn hints_line(vm: &ViewModel, width: usize) -> Line<'static> {
             Span::styled(format!(" {label}"), dim()),
         ]
     };
+    if let Some(saved) = vm.selected_saved() {
+        // What can be done to a saved workspace, most useful first.
+        let mut items = vec![
+            hint("Enter", "Start"),
+            hint("r", "Retry"),
+            hint("c", "Change dir"),
+        ];
+        if saved.root_state == crate::snapshot::SavedRoot::Changed {
+            items.push(hint("v", "Accept dir"));
+        }
+        if saved.imported {
+            items.push(hint("t", "Trust"));
+        }
+        items.extend([hint("x", "Forget"), hint("?", "Help"), hint("↑↓", "Move")]);
+        return fitted(items, "   ", width, vec![Span::raw(" ")]);
+    }
     // Most important first: what does not fit is dropped from the right.
     let items = vec![
         hint("n", "New"),

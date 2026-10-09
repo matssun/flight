@@ -152,7 +152,9 @@ driver that reconnects, resumes or replaces under an explicit policy. Not wired 
 
 | 4a | PR #16, merged eca7e43 (code c92cdd0) | as above; 11 new UI tests | saved workspaces that are not running are listed in the dashboard with host, root, reason, selectable, searchable; never hidden because a host, directory or process is gone; opening one explains instead of acting | no actions yet (4b); not clickable |
 
-| 4b-1 | PR (this branch) | as above; 3 proto, 4 orchestrator, 9 live-tmux tests added | retry / remove / restore / accept root / set root / trust, capability-gated, routed to the named node; restore is idempotent and refuses unverified roots, untrusted imports and unprompted agents | no UI keys yet (4b-2) |
+| 4b-1 | PR #17, merged a3f26ca (code bc32261) | as above; 3 proto, 4 orchestrator, 9 live-tmux tests added | retry / remove / restore / accept root / set root / trust, capability-gated, routed to the named node; restore is idempotent and refuses unverified roots, untrusted imports and unprompted agents | no UI keys yet (4b-2) |
+
+| 4b-2 | PR (this branch) | as above; 12 new UI tests | Enter starts a saved workspace, `r` looks again, `c` changes its directory, `x` forgets, `v` accepts a changed directory, `t` trusts an import; destructive or trust-granting ones ask first and default to No; a refusal keeps the question open with the reason | not clickable; no export/import UI yet (increment 5) |
 
 ### Observed failures and resolutions
 

@@ -57,6 +57,18 @@ pub fn help_lines() -> Vec<Line<'static>> {
         out.push(entry(k, text));
     }
     out.push(Line::raw(""));
+    out.push(heading("On a saved workspace that is not running"));
+    for (k, text) in [
+        ("Enter", "start it again, in its saved directory"),
+        ("r", "look again now"),
+        ("c", "change its directory (nothing is created)"),
+        ("v", "accept a changed directory as the right one"),
+        ("t", "trust an imported workspace"),
+        ("x", "forget it; nothing on disk is deleted"),
+    ] {
+        out.push(entry(k, text));
+    }
+    out.push(Line::raw(""));
     out.push(heading("Actions"));
     for (k, text) in [
         ("n", "new workspace (host, folder, Claude)"),

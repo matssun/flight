@@ -127,6 +127,10 @@ Saved workspaces that are not running are listed under **SAVED · NOT RUNNING**,
 
 Importing, trusting and starting remain three decisions: `Restore` of an imported workspace is refused until `Trust`, and a workspace saved as skip-permissions is never started by a restore (it has to be created again, which asks). The saved file being unusable refuses every action with the reason and changes nothing.
 
+## Dashboard actions (increment 4b-2)
+
+On a selected saved workspace: **Enter** starts it (explicit and idempotent, so it asks nothing; the node refuses with the reason whatever is not safe), **r** looks again now, **c** changes its directory (typed, validated as a path, nothing is created), **x** forgets it, **v** accepts a changed directory as the right one (offered only when the node reports a changed root), **t** trusts an import (offered only for imported entries). Forgetting, accepting and trusting ask first, with the focus on No, so a stray Enter does nothing; each says what it does not do ("only the saved entry goes", "nothing is created or changed in it"). A refusal from the node keeps the question open with the reason, and the same words are used in the footer line when no question was asked. These keys do nothing on a live workspace.
+
 ## Deferred, with reasons
 
 - Wire protocol: publishing saved-but-not-running workspaces to the dashboard, and the user actions, are the next increment (`SavedWorkspace` messages with capability negotiation, so an older node simply publishes none).

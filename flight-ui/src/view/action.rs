@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use super::{FilterInput, FormInput, PromptInput, SurfaceChoice};
+use super::{FilterInput, FormInput, PromptInput, SavedOp, SavedPromptInput, SurfaceChoice};
 use flight_state::PaneRef;
 
 /// What the user asked for, independent of which key was pressed.
@@ -24,6 +24,10 @@ pub enum Action {
     Form(FormInput),
     /// Something done in the companion-shell prompt while it is open.
     Prompt(PromptInput),
+    /// An operation on the selected saved workspace that first asks.
+    SavedOp(SavedOp),
+    /// Something done in a saved-workspace prompt while it is open.
+    SavedPrompt(SavedPromptInput),
     /// Start typing a search.
     Search,
     /// Something done while typing a search, or to drop one.

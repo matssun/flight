@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-use crate::view::{Action, FilterInput, FormInput, InputMode, PromptInput, SurfaceChoice};
+use crate::view::{
+    Action, FilterInput, FormInput, InputMode, PromptInput, SavedOp, SavedPromptInput,
+    SurfaceChoice,
+};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 /// Terminal keys to actions, by where keys are going: while the new-session form is open or a
@@ -12,6 +15,8 @@ pub fn action_for(key: KeyEvent, mode: InputMode) -> Option<Action> {
     match mode {
         InputMode::Form => form_action(key).map(Action::Form),
         InputMode::Prompt => prompt_action(key).map(Action::Prompt),
+        InputMode::SavedConfirm => saved_confirm_action(key).map(Action::SavedPrompt),
+        InputMode::SavedInput => saved_input_action(key).map(Action::SavedPrompt),
         InputMode::Help => Some(Action::CloseHelp),
         InputMode::Search => search_action(key),
         InputMode::Dashboard => dashboard_action(key),
@@ -27,6 +32,11 @@ fn dashboard_action(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('s') => Some(Action::Open(SurfaceChoice::Shell)),
         KeyCode::Char('r') => Some(Action::Refresh),
         KeyCode::Char('n') => Some(Action::NewSession),
+        // These act only on a selected saved workspace.
+        KeyCode::Char('c') => Some(Action::SavedOp(SavedOp::ChangeRoot)),
+        KeyCode::Char('x') => Some(Action::SavedOp(SavedOp::Remove)),
+        KeyCode::Char('v') => Some(Action::SavedOp(SavedOp::AcceptRoot)),
+        KeyCode::Char('t') => Some(Action::SavedOp(SavedOp::Trust)),
         KeyCode::Char('/') => Some(Action::Search),
         KeyCode::Char('?') => Some(Action::Help),
         KeyCode::Char('q') => Some(Action::Quit),
@@ -54,6 +64,29 @@ fn prompt_action(key: KeyEvent) -> Option<PromptInput> {
         KeyCode::Char('y' | 'Y') => Some(PromptInput::Yes),
         KeyCode::Enter => Some(PromptInput::Enter),
         KeyCode::Tab | KeyCode::BackTab | KeyCode::Left | KeyCode::Right => Some(PromptInput::Next),
+        _ => None,
+    }
+}
+
+fn saved_confirm_action(key: KeyEvent) -> Option<SavedPromptInput> {
+    match key.code {
+        KeyCode::Esc | KeyCode::Char('n' | 'N') => Some(SavedPromptInput::Cancel),
+        KeyCode::Char('y' | 'Y') => Some(SavedPromptInput::Yes),
+        KeyCode::Enter => Some(SavedPromptInput::Enter),
+        KeyCode::Tab | KeyCode::BackTab | KeyCode::Left | KeyCode::Right => {
+            Some(SavedPromptInput::Next)
+        }
+        _ => None,
+    }
+}
+
+fn saved_input_action(key: KeyEvent) -> Option<SavedPromptInput> {
+    match key.code {
+        KeyCode::Esc => Some(SavedPromptInput::Cancel),
+        KeyCode::Enter => Some(SavedPromptInput::Enter),
+        KeyCode::Tab | KeyCode::BackTab => Some(SavedPromptInput::Next),
+        KeyCode::Backspace => Some(SavedPromptInput::Backspace),
+        KeyCode::Char(c) => Some(SavedPromptInput::Char(c)),
         _ => None,
     }
 }
@@ -103,7 +136,11 @@ mod tests {
             dash(KeyCode::Char('s')),
             Some(Action::Open(SurfaceChoice::Shell))
         );
-        assert_eq!(dash(KeyCode::Char('x')), None);
+        assert_eq!(
+            dash(KeyCode::Char('x')),
+            Some(Action::SavedOp(SavedOp::Remove))
+        );
+        assert_eq!(dash(KeyCode::Char('z')), None);
     }
 
     #[test]
@@ -169,6 +206,30 @@ mod tests {
         assert_eq!(
             action_for(k(KeyCode::Char('x')), InputMode::Help),
             Some(Action::CloseHelp)
+        );
+    }
+
+    #[test]
+    fn saved_workspace_questions_take_yes_no_and_typing() {
+        let c = |code| action_for(k(code), InputMode::SavedConfirm);
+        assert_eq!(
+            c(KeyCode::Char('y')),
+            Some(Action::SavedPrompt(SavedPromptInput::Yes))
+        );
+        assert_eq!(
+            c(KeyCode::Char('n')),
+            Some(Action::SavedPrompt(SavedPromptInput::Cancel))
+        );
+        assert_eq!(c(KeyCode::Char('x')), None, "no accidental letters");
+        // While a directory is typed, letters type (including y and n).
+        let t = |code| action_for(k(code), InputMode::SavedInput);
+        assert_eq!(
+            t(KeyCode::Char('y')),
+            Some(Action::SavedPrompt(SavedPromptInput::Char('y')))
+        );
+        assert_eq!(
+            t(KeyCode::Esc),
+            Some(Action::SavedPrompt(SavedPromptInput::Cancel))
         );
     }
 }

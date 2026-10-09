@@ -2,6 +2,7 @@
 
 use super::lists::{unavailable, workspaces};
 use super::opening::Opening;
+use super::SavedPrompt;
 use super::{
     Action, Effect, FilterInput, FormOutcome, HostChoice, InputMode, NewSessionForm,
     NewSessionRequest, ShellPrompt, SurfaceChoice,
@@ -27,6 +28,8 @@ pub struct ViewModel {
     pub(super) form: Option<NewSessionForm>,
     /// The companion-shell prompt, while it is open.
     pub(super) prompt: Option<ShellPrompt>,
+    /// A question about a saved workspace, while it is open.
+    pub(super) saved_prompt: Option<SavedPrompt>,
     /// A workspace just created: select it when it shows up in a snapshot.
     pub(super) pending: Option<Pending>,
     /// A surface to open as soon as it shows up in a snapshot (just created, or asked for by
@@ -71,6 +74,7 @@ impl ViewModel {
             loaded: false,
             form: None,
             prompt: None,
+            saved_prompt: None,
             pending: None,
             opening: None,
             pointing: None,
@@ -139,6 +143,12 @@ impl ViewModel {
     pub fn input_mode(&self) -> InputMode {
         if self.form.is_some() {
             InputMode::Form
+        } else if let Some(p) = &self.saved_prompt {
+            if p.typing() {
+                InputMode::SavedInput
+            } else {
+                InputMode::SavedConfirm
+            }
         } else if self.prompt.is_some() {
             InputMode::Prompt
         } else if self.help {
@@ -211,7 +221,7 @@ impl ViewModel {
             Action::Quit => Effect::Quit,
             Action::Back if self.filter.is_empty() => Effect::Quit,
             Action::Back => self.filter_input(FilterInput::Clear),
-            Action::Refresh => Effect::Refresh,
+            Action::Refresh => self.retry_selected().unwrap_or(Effect::Refresh),
             Action::Up => self.step(-1),
             Action::Down => self.step(1),
             Action::Select(pane) => self.select(&pane),
@@ -230,7 +240,12 @@ impl ViewModel {
                 self.help = false;
                 Effect::None
             }
-            Action::Switch => self.open(SurfaceChoice::Agent),
+            Action::Switch => match self.restore_selected() {
+                Some(effect) => effect,
+                None => self.open(SurfaceChoice::Agent),
+            },
+            Action::SavedOp(op) => self.saved_op(op),
+            Action::SavedPrompt(input) => self.apply_saved_prompt(input),
             Action::NewSession => {
                 self.open_form();
                 Effect::None

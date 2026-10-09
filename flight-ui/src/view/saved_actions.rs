@@ -9,7 +9,7 @@ use super::{
     SavedPromptKind, SavedPromptOutcome, ViewModel,
 };
 use crate::collect::CreateFailure;
-use crate::snapshot::{SavedRoot, SavedView};
+use crate::snapshot::{SavedResume, SavedRoot, SavedView};
 
 impl ViewModel {
     pub fn saved_prompt(&self) -> Option<&SavedPrompt> {
@@ -23,6 +23,7 @@ impl ViewModel {
             config_key: saved.config_key.clone(),
             name: saved.name.clone(),
             action,
+            resume: saved.resume.clone(),
         }
     }
 
@@ -30,7 +31,10 @@ impl ViewModel {
     /// the node refuses, with the reason, whatever is not safe to start.
     pub(super) fn restore_selected(&mut self) -> Option<Effect> {
         let saved = self.selected_saved()?;
-        self.message = Some(format!("Starting {}…", saved.name));
+        self.message = Some(match saved.resume {
+            SavedResume::Continues => format!("Continuing {}…", saved.name),
+            _ => format!("Starting {}…", saved.name),
+        });
         Some(Effect::SavedAction(Self::saved_request(
             &saved,
             SavedActionKind::Restore,
@@ -67,6 +71,18 @@ impl ViewModel {
                 ));
                 return Effect::None;
             }
+            SavedOp::Fresh if matches!(saved.resume, SavedResume::Unknown) => {
+                self.message = Some(format!(
+                    "{}: this host cannot continue a conversation; Enter already starts a new one.",
+                    saved.name
+                ));
+                return Effect::None;
+            }
+            SavedOp::Fresh if !saved.is_unavailable() => {
+                self.message = Some(format!("{} is running; nothing to start.", saved.name));
+                return Effect::None;
+            }
+            SavedOp::Fresh => SavedPromptKind::Fresh,
             SavedOp::Trust if saved.imported => SavedPromptKind::Trust,
             SavedOp::Trust => {
                 self.message = Some(format!("{} was made here; nothing to trust.", saved.name));
@@ -125,7 +141,23 @@ fn done_text(request: &SavedActionRequest) -> String {
             "Forgot {name}. Nothing on {} was deleted.",
             request.host_label
         ),
-        SavedActionKind::Restore => format!("Started {name} on {}.", request.host_label),
+        // Worded from what the node reported, never from hope: a continuation is claimed only
+        // when the node said it would continue, and a refusal never reaches here.
+        SavedActionKind::Restore => match &request.resume {
+            SavedResume::Continues => format!(
+                "Continued {name}'s earlier conversation on {}.",
+                request.host_label
+            ),
+            SavedResume::Unknown => format!("Started {name} on {}.", request.host_label),
+            _ => format!(
+                "Started {name} on {} as a new conversation.",
+                request.host_label
+            ),
+        },
+        SavedActionKind::RestoreFresh => format!(
+            "Started {name} on {} as a new conversation; the earlier one was not continued.",
+            request.host_label
+        ),
         SavedActionKind::AcceptRoot => format!("{name}: that directory is now the saved one."),
         SavedActionKind::SetRoot(path) => format!("{name} now points at {path}."),
         SavedActionKind::Trust => format!("{name} is trusted and may be started."),

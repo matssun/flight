@@ -23,4 +23,6 @@ pub enum SavedOp {
     Remove,
     AcceptRoot,
     Trust,
+    /// Start a new conversation instead of continuing the earlier one.
+    Fresh,
 }

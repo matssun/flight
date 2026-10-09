@@ -15,7 +15,7 @@ pub use host_health::HostHealth;
 pub use host_view::HostView;
 pub use pane_view::PaneView;
 pub use preview::PanePreview;
-pub use saved_view::{SavedHealth, SavedRoot, SavedView};
+pub use saved_view::{SavedHealth, SavedResume, SavedRoot, SavedView};
 pub use surface::Surface;
 pub use surface_kind::SurfaceKind;
 pub use ui_snapshot::UiSnapshot;

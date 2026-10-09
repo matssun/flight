@@ -376,5 +376,7 @@ pub fn saved(
         detail: String::new(),
         workspace_id: String::new(),
         imported: false,
+        resume: 0,
+        resume_detail: String::new(),
     }
 }

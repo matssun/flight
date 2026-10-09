@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use crate::snapshot::SavedResume;
 use flight_state::HostId;
 
 /// What a user can do to a saved workspace. None of these creates, repairs or deletes anything
@@ -10,8 +11,11 @@ pub enum SavedActionKind {
     Retry,
     /// Forget the saved reference. Running processes, directories and repositories stay.
     Remove,
-    /// Start it again as a replacement process, in its verified directory.
+    /// Start it again in its verified directory: the earlier conversation is continued where
+    /// the node reports it can be, and otherwise this is refused or a new conversation.
     Restore,
+    /// Start it again as a NEW conversation, on purpose: the earlier one is not continued.
+    RestoreFresh,
     /// The directory now at the path is the one meant.
     AcceptRoot,
     /// Point it at another directory (nothing is created there).
@@ -29,4 +33,7 @@ pub struct SavedActionRequest {
     pub config_key: String,
     pub name: String,
     pub action: SavedActionKind,
+    /// What the node said starting it would do, when the request was made: what the answer is
+    /// worded from.
+    pub resume: SavedResume,
 }

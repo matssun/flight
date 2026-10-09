@@ -6,7 +6,7 @@
 use super::list_view::ListView;
 use super::style::{bold, dim, selected_row};
 use super::text::{cells, fit, pad};
-use crate::snapshot::{HostHealth, SavedHealth, SavedRoot, SavedView};
+use crate::snapshot::{HostHealth, SavedHealth, SavedResume, SavedRoot, SavedView};
 use crate::view::ViewModel;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
@@ -116,6 +116,16 @@ fn details(v: &SavedView, width: usize) -> Vec<Line<'static>> {
     if !v.detail.is_empty() {
         lines.push(row("found", v.detail.clone()));
     }
+    let (headline, why, hint) = agent_lines(v);
+    if let Some(headline) = headline {
+        lines.push(row("agent", headline));
+        for part in wrap(&why, width.saturating_sub(12)) {
+            lines.push(Line::styled(format!("            {part}"), dim()));
+        }
+        if let Some(hint) = hint {
+            lines.push(Line::styled(format!("            {hint}"), dim()));
+        }
+    }
     lines.push(Line::styled(
         fit(
             "    Kept as saved. Flight does not create or repair directories.",
@@ -123,6 +133,52 @@ fn details(v: &SavedView, width: usize) -> Vec<Line<'static>> {
         ),
         dim(),
     ));
+    lines
+}
+
+/// What starting it again does about the agent's conversation, in the words the node's report
+/// supports and no stronger: a headline, the node's reason (if any, to be wrapped) and a hint.
+fn agent_lines(v: &SavedView) -> (Option<String>, String, Option<&'static str>) {
+    if v.health != SavedHealth::Stopped {
+        return (None, String::new(), None);
+    }
+    match &v.resume {
+        SavedResume::Unknown => (None, String::new(), None),
+        SavedResume::New => (
+            Some("Enter starts a new conversation (none was saved)".to_owned()),
+            String::new(),
+            None,
+        ),
+        SavedResume::Continues => (
+            Some("Enter continues the earlier conversation".to_owned()),
+            String::new(),
+            Some("f starts a new conversation instead"),
+        ),
+        SavedResume::CannotContinue(why) => (
+            Some("cannot continue the earlier conversation".to_owned()),
+            why.clone(),
+            Some("f starts a new conversation instead"),
+        ),
+        SavedResume::Unsupported(why) => (
+            Some("Enter starts a new conversation".to_owned()),
+            why.clone(),
+            None,
+        ),
+    }
+}
+
+/// `text` in lines of at most `width` cells, broken at spaces.
+fn wrap(text: &str, width: usize) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    for word in text.split_whitespace() {
+        match lines.last_mut() {
+            Some(last) if cells(last) + 1 + cells(word) <= width => {
+                last.push(' ');
+                last.push_str(word);
+            }
+            _ => lines.push(fit(word, width.max(1))),
+        }
+    }
     lines
 }
 

@@ -190,6 +190,8 @@ async fn saved_workspaces_reach_the_ui_over_mutual_tls_and_survive_a_reconnect()
         detail: "no such directory".to_owned(),
         workspace_id: String::new(),
         imported: false,
+        resume: 0,
+        resume_detail: String::new(),
     };
     let node_id = Arc::new(Identity::generate().expect("node"));
     let ui_id = Identity::generate().expect("ui");

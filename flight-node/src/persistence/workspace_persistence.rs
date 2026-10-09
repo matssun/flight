@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 
 use crate::agent_resume::{resume_support, AgentSession, Support};
-use crate::persistence::saved_report::{capped, saved_workspace};
+use crate::persistence::saved_report::{capped, saved_workspace, ResumeStatus};
 use crate::persistence::NodeBackend;
 use crate::persistence::{canonical_root, NewReference, ResumeContext};
 use crate::{ControlError, Program, SavedAction, SavedActionRequest, SessionRequest, TmuxServers};
 use flight_proto::ErrorKindCode;
+use flight_proto::SavedResumeCode;
 use flight_tmux::{ConfigMark, SurfaceMark, SurfaceTag};
 use flight_workspaces::{
     recover, ConfigKey, Document, FsProbe, Observer, Origin, RecoveryPolicy, RecoveryReport,
@@ -174,6 +175,44 @@ impl WorkspacePersistence {
         }
     }
 
+    /// What starting `def` again would do about its agent's conversation, as far as can be told
+    /// without starting anything: whether a reference was kept for a provider that can continue
+    /// one, and whether the provider still has the conversation.
+    fn resume_status(
+        &self,
+        def: &WorkspaceDefinition,
+        store: &Option<ResumeStore>,
+    ) -> ResumeStatus {
+        let say = |code, detail: &str| ResumeStatus {
+            code,
+            detail: detail.to_owned(),
+        };
+        let Some(agent) = def.surfaces.iter().find(|s| s.kind == SurfaceKind::Agent) else {
+            return say(SavedResumeCode::None, "");
+        };
+        if let Some(Support::Unsupported(why)) = agent.provider.as_deref().map(resume_support) {
+            return say(SavedResumeCode::Unsupported, why);
+        }
+        let Some(reference) = store.as_ref().and_then(|s| s.get(&def.key, &agent.key)) else {
+            return say(SavedResumeCode::None, "");
+        };
+        let Some(scope) = self.scope(&def.root.path) else {
+            return say(
+                SavedResumeCode::Unavailable,
+                "the directory cannot be resolved",
+            );
+        };
+        let config = crate::agent_resume::config_dir(
+            std::env::var_os("CLAUDE_CONFIG_DIR").as_deref(),
+            self.home.as_deref(),
+        );
+        match crate::agent_resume::Claude::check_conversation(reference, &scope, config.as_deref())
+        {
+            Ok(_) => say(SavedResumeCode::Available, ""),
+            Err(why) => say(SavedResumeCode::Unavailable, &why),
+        }
+    }
+
     fn scope(&self, root: &str) -> Option<ResumeScope> {
         Some(ResumeScope {
             host: self.host.clone(),
@@ -238,7 +277,7 @@ impl WorkspacePersistence {
     /// persistence is disabled.
     pub fn report(&self, servers: &TmuxServers) -> Vec<flight_proto::SavedWorkspace> {
         let guard = self.lock();
-        let State::Active { doc, .. } = &*guard else {
+        let State::Active { doc, resume, .. } = &*guard else {
             return Vec::new();
         };
         let Some(profile) = doc.active() else {
@@ -253,7 +292,10 @@ impl WorkspacePersistence {
         capped(
             plan.items
                 .iter()
-                .filter_map(|item| Some(saved_workspace(profile.get(&item.key)?, item)))
+                .filter_map(|item| {
+                    let def = profile.get(&item.key)?;
+                    Some(saved_workspace(def, item, self.resume_status(def, resume)))
+                })
                 .collect(),
         )
     }

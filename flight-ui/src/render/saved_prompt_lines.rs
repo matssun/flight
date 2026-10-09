@@ -17,6 +17,7 @@ pub fn title(prompt: &SavedPrompt) -> &'static str {
         SavedPromptKind::AcceptRoot => "Accept this directory",
         SavedPromptKind::Trust => "Trust imported workspace",
         SavedPromptKind::ChangeRoot(_) => "Change directory",
+        SavedPromptKind::Fresh => "Start a new conversation",
     }
 }
 
@@ -66,6 +67,17 @@ pub fn saved_prompt_lines(prompt: &SavedPrompt) -> Vec<Line<'static>> {
                 dim(),
             ));
         }
+        SavedPromptKind::Fresh => {
+            lines.push(Line::styled(
+                "  Start this workspace with a NEW agent conversation?",
+                plain,
+            ));
+            lines.push(Line::styled(
+                "  The earlier conversation is not continued, and the agent",
+                dim(),
+            ));
+            lines.push(Line::styled("  will not know what was said in it.", dim()));
+        }
         SavedPromptKind::ChangeRoot(text) => {
             lines.push(Line::styled("  Point it at this directory:", plain));
             lines.push(Line::from(vec![
@@ -112,6 +124,7 @@ fn confirm_label(prompt: &SavedPrompt) -> &'static str {
         SavedPromptKind::AcceptRoot => "Accept",
         SavedPromptKind::Trust => "Trust",
         SavedPromptKind::ChangeRoot(_) => "Change",
+        SavedPromptKind::Fresh => "Start new",
     }
 }
 

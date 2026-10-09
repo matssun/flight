@@ -59,7 +59,11 @@ pub fn help_lines() -> Vec<Line<'static>> {
     out.push(Line::raw(""));
     out.push(heading("On a saved workspace that is not running"));
     for (k, text) in [
-        ("Enter", "start it again, in its saved directory"),
+        (
+            "Enter",
+            "start it again; a Claude agent continues its earlier conversation if it can",
+        ),
+        ("f", "start it with a new conversation instead"),
         ("r", "look again now"),
         ("c", "change its directory (nothing is created)"),
         ("v", "accept a changed directory as the right one"),

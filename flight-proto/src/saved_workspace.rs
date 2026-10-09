@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::validate::non_empty;
-use crate::{Reject, SavedHealthCode, SavedRootCode, Validate};
+use crate::{Reject, SavedHealthCode, SavedResumeCode, SavedRootCode, Validate};
 
 /// The longest failure detail the wire carries.
 pub const MAX_DETAIL_LEN: usize = 512;
@@ -32,6 +32,13 @@ pub struct SavedWorkspace {
     /// Imported rather than made on this node: starts nothing on its own.
     #[prost(bool, tag = "8")]
     pub imported: bool,
+    /// What starting it again does about the agent's conversation (ADR-010). 0 from a node that
+    /// does not say.
+    #[prost(enumeration = "SavedResumeCode", tag = "9")]
+    pub resume: i32,
+    /// Why a conversation cannot be continued, plain text.
+    #[prost(string, tag = "10")]
+    pub resume_detail: String,
 }
 
 impl Validate for SavedWorkspace {
@@ -51,6 +58,12 @@ impl Validate for SavedWorkspace {
         }
         if !self.workspace_id.is_empty() && !flight_state::valid_id(&self.workspace_id) {
             return Err(Reject::OutOfRange("saved_workspace.workspace_id"));
+        }
+        if self.resume_detail.len() > MAX_DETAIL_LEN {
+            return Err(Reject::OutOfRange("saved_workspace.resume_detail"));
+        }
+        if self.resume != 0 {
+            SavedResumeCode::decode(self.resume, "saved_workspace.resume")?;
         }
         SavedHealthCode::decode(self.health, "saved_workspace.health")?;
         SavedRootCode::decode(self.root_state, "saved_workspace.root_state")?;

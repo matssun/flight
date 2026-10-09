@@ -3,11 +3,12 @@
 use flight_classify::AgentKind;
 use flight_proto::{
     AgentKindCode, AvailabilityCode, FleetImage, FleetNode, NodeStatusCode, PaneState,
-    SavedHealthCode, SavedRootCode, SavedWorkspace, SurfaceKindCode,
+    SavedHealthCode, SavedResumeCode, SavedRootCode, SavedWorkspace, SurfaceKindCode,
 };
 use flight_state::{HostId, PaneRef, ServerId, SurfaceId, WorkspaceId};
 use flight_ui::{
-    HostHealth, HostView, PaneView, SavedHealth, SavedRoot, SavedView, SurfaceKind, UiSnapshot,
+    HostHealth, HostView, PaneView, SavedHealth, SavedResume, SavedRoot, SavedView, SurfaceKind,
+    UiSnapshot,
 };
 use std::collections::BTreeSet;
 
@@ -94,6 +95,15 @@ fn saved_view(
         detail: s.detail.clone(),
         running: (!s.workspace_id.is_empty()).then(|| s.workspace_id.clone()),
         imported: s.imported,
+        resume: match SavedResumeCode::try_from(s.resume) {
+            Ok(SavedResumeCode::None) => SavedResume::New,
+            Ok(SavedResumeCode::Available) => SavedResume::Continues,
+            Ok(SavedResumeCode::Unavailable) => {
+                SavedResume::CannotContinue(s.resume_detail.clone())
+            }
+            Ok(SavedResumeCode::Unsupported) => SavedResume::Unsupported(s.resume_detail.clone()),
+            Ok(SavedResumeCode::Unspecified) | Err(_) => SavedResume::Unknown,
+        },
     })
 }
 

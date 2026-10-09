@@ -73,6 +73,20 @@ impl Claude {
         scope: &ResumeScope,
         config_dir: Option<&Path>,
     ) -> Result<AgentSession, String> {
+        let session = Self::check_conversation(reference, scope, config_dir)?;
+        if session_in_use(reference.token()) {
+            return Err("that session is already running; reconnect to it instead".to_owned());
+        }
+        Ok(session)
+    }
+
+    /// The part of [`Self::check`] that only reads files: what is reported to the dashboard
+    /// without looking at every process on the machine.
+    pub(crate) fn check_conversation(
+        reference: &ResumeRef,
+        scope: &ResumeScope,
+        config_dir: Option<&Path>,
+    ) -> Result<AgentSession, String> {
         if reference.provider != PROVIDER {
             return Err(format!("this reference is for {}", reference.provider));
         }
@@ -84,9 +98,6 @@ impl Claude {
         let config =
             config_dir.ok_or_else(|| "this node has no Claude data directory".to_owned())?;
         transcript::find(config, &scope.root, reference.token())?;
-        if session_in_use(reference.token()) {
-            return Err("that session is already running; reconnect to it instead".to_owned());
-        }
         Ok(AgentSession {
             provider: PROVIDER,
             token: reference.token().to_owned(),

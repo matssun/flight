@@ -32,6 +32,7 @@ fn saved(
         detail: detail.to_owned(),
         running: None,
         imported: false,
+        resume: flight_ui::SavedResume::Unknown,
     }
 }
 

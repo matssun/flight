@@ -50,6 +50,13 @@ pub fn hints_line(vm: &ViewModel, width: usize) -> Line<'static> {
         if saved.root_state == crate::snapshot::SavedRoot::Changed {
             items.push(hint("v", "Accept dir"));
         }
+        if matches!(
+            saved.resume,
+            crate::snapshot::SavedResume::Continues
+                | crate::snapshot::SavedResume::CannotContinue(_)
+        ) {
+            items.push(hint("f", "New conversation"));
+        }
         if saved.imported {
             items.push(hint("t", "Trust"));
         }

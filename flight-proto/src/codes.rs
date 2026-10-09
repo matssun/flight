@@ -68,7 +68,32 @@ wire_enum! {
 
 wire_enum! {
     /// What a user asks of a saved workspace (ADR-008).
-    SavedActionCode { Retry = 1, Remove = 2, Restore = 3, AcceptRoot = 4, SetRoot = 5, Trust = 6 }
+    SavedActionCode {
+        Retry = 1,
+        Remove = 2,
+        Restore = 3,
+        AcceptRoot = 4,
+        SetRoot = 5,
+        Trust = 6,
+        RestoreFresh = 7,
+    }
+}
+
+wire_enum! {
+    /// What starting a saved workspace again would do about its agent's conversation (ADR-010).
+    /// Absent (0) from a node that predates it: nothing is claimed either way.
+    ///
+    /// `None`: no session was saved, so starting it is a new conversation. `Available`: the
+    /// earlier conversation is there and starting it continues it. `Unavailable`: a session was
+    /// saved but cannot be continued now (`resume_detail` says why); starting it is refused and a
+    /// new conversation is a separate choice. `Unsupported`: the provider has no reliable way to
+    /// continue a session.
+    SavedResumeCode {
+        None = 1,
+        Available = 2,
+        Unavailable = 3,
+        Unsupported = 4,
+    }
 }
 
 wire_enum! {

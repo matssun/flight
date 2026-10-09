@@ -28,6 +28,23 @@ pub enum SavedRoot {
     Changed,
 }
 
+/// What starting a saved workspace again does about its agent's conversation, as its node says
+/// (ADR-010). The dashboard never claims a continuation the node did not report.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SavedResume {
+    /// The node does not say (one that predates it): starting it again is a replacement.
+    Unknown,
+    /// No session was saved: starting it again is a new conversation.
+    New,
+    /// The earlier conversation is there and starting it again continues it.
+    Continues,
+    /// A session was saved but cannot be continued now: starting it again is refused, and a new
+    /// conversation is a separate choice.
+    CannotContinue(String),
+    /// The agent's provider has no reliable way to continue a session.
+    Unsupported(String),
+}
+
 /// A workspace a node has saved: shown whether or not anything of it is running, so it never
 /// disappears with its processes (ADR-008).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +65,7 @@ pub struct SavedView {
     /// The running workspace that realizes it, when one does.
     pub running: Option<String>,
     pub imported: bool,
+    pub resume: SavedResume,
 }
 
 impl SavedView {

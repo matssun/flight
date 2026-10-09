@@ -128,6 +128,42 @@ mod actions {
         }
     }
 
+    fn ask_with(action: SavedActionCode, id: u64) -> Request {
+        let mut r = ask("node-a", id);
+        if let Some(Command {
+            kind: Some(ck::Kind::SavedAction(s)),
+        }) = r.command.as_mut()
+        {
+            s.action = action as i32;
+        }
+        r
+    }
+
+    #[test]
+    fn a_fresh_start_goes_only_to_a_node_that_knows_the_difference_from_a_restore() {
+        // A node that offers saved actions but not agent resumption would restore, which is
+        // not what a fresh start asks for: it is refused at once, while a plain restore goes.
+        let mut w = simple_world();
+        w.subscribe(UiId(1));
+        let offered: Vec<&str> = capability::KNOWN
+            .iter()
+            .copied()
+            .filter(|c| *c != capability::AGENT_RESUME)
+            .collect();
+        w.connect_offering(0, &offered);
+        run(&mut w, ask_with(SavedActionCode::RestoreFresh, 20));
+        assert!(w.forwarded.is_empty());
+        assert_eq!(error_kind(&w), Some(ErrorKindCode::Unsupported as i32));
+        run(&mut w, ask_with(SavedActionCode::Restore, 21));
+        assert_eq!(w.forwarded.len(), 1);
+        // And a node that offers it is sent the fresh start.
+        let mut w = simple_world();
+        w.subscribe(UiId(1));
+        w.connect(0);
+        run(&mut w, ask_with(SavedActionCode::RestoreFresh, 22));
+        assert_eq!(w.forwarded.len(), 1);
+    }
+
     fn run(w: &mut World, request: Request) {
         let fx = w.orch.ui_request(
             UiId(1),

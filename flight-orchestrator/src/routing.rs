@@ -16,6 +16,11 @@ fn required_capability(kind: &Kind) -> &'static str {
         Kind::KillPane(_) => capability::KILL,
         Kind::CreateSession(_) => capability::CREATE_SESSION,
         Kind::CreateSurface(_) => capability::CREATE_SURFACE,
+        // A fresh start must reach a node that knows the difference from a restore: one that
+        // does not would restore (and, in time, resume), which is not what was asked.
+        Kind::SavedAction(c) if c.action == flight_proto::SavedActionCode::RestoreFresh as i32 => {
+            capability::AGENT_RESUME
+        }
         Kind::SavedAction(_) => capability::SAVED_ACTIONS,
     }
 }

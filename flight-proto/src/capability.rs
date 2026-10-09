@@ -30,8 +30,13 @@ pub const SAVED_WORKSPACES: &str = "saved_workspaces_v1";
 /// trust an import (ADR-008). Named separately from `saved_workspaces_v1`, which only reports.
 pub const SAVED_ACTIONS: &str = "saved_actions_v1";
 
+/// The node continues agents' earlier sessions and says so in its saved-workspace reports, and
+/// accepts `RestoreFresh` (ADR-010). Without it a UI neither claims a continuation nor offers a
+/// fresh start the node could not tell apart from a restore.
+pub const AGENT_RESUME: &str = "agent_resume_v1";
+
 /// Every capability this build knows about.
-pub const KNOWN: [&str; 9] = [
+pub const KNOWN: [&str; 10] = [
     PREVIEW,
     GUARDED_REVEAL,
     TERMINAL,
@@ -41,6 +46,7 @@ pub const KNOWN: [&str; 9] = [
     CREATE_SURFACE,
     SAVED_WORKSPACES,
     SAVED_ACTIONS,
+    AGENT_RESUME,
 ];
 
 /// The offered capabilities that `supported` also contains, in offered order, without

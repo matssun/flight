@@ -1,10 +1,22 @@
 // SPDX-License-Identifier: MIT
 
-use flight_proto::{SavedHealthCode, SavedRootCode, SavedWorkspace, MAX_DETAIL_LEN, MAX_SAVED};
+use flight_proto::{
+    SavedHealthCode, SavedResumeCode, SavedRootCode, SavedWorkspace, MAX_DETAIL_LEN, MAX_SAVED,
+};
 use flight_workspaces::{Blocker, Health, Item, RootCheck, RootState, WorkspaceDefinition};
 
+/// What starting a saved workspace again would do about its agent's conversation.
+pub(crate) struct ResumeStatus {
+    pub code: SavedResumeCode,
+    pub detail: String,
+}
+
 /// One saved workspace as the wire carries it. Pure: the planner has already done the looking.
-pub(crate) fn saved_workspace(def: &WorkspaceDefinition, item: &Item) -> SavedWorkspace {
+pub(crate) fn saved_workspace(
+    def: &WorkspaceDefinition,
+    item: &Item,
+    resume: ResumeStatus,
+) -> SavedWorkspace {
     let (health, ambiguity) = match &item.health {
         Health::Running => (SavedHealthCode::Running, None),
         Health::Partial => (SavedHealthCode::Partial, None),
@@ -28,6 +40,8 @@ pub(crate) fn saved_workspace(def: &WorkspaceDefinition, item: &Item) -> SavedWo
         detail: bounded(ambiguity.or(why).unwrap_or_default()),
         workspace_id: item.runtime.clone().unwrap_or_default(),
         imported: def.origin == flight_workspaces::Origin::Imported,
+        resume: resume.code as i32,
+        resume_detail: bounded(resume.detail),
     }
 }
 

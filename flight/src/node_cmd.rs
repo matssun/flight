@@ -37,8 +37,11 @@ pub const USAGE: &str = "usage: flight node <command>
         --no-terminal: do not offer interactive terminals. By default an authorized UI can open
         a terminal onto a pane of this node (a tmux client in a PTY owned by the node, relayed
         through the orchestrator). Turn it off for a read-only node.
-        --restore: at start, also start the saved workspaces that are not running (a replacement
-        process in a verified directory). Without it the node only reconnects to what runs and
+        --restore: at start, also start the saved workspaces that are not running, in a verified
+        directory. A Claude agent continues its earlier conversation when the node kept its
+        session and Claude still has it (never with permission prompts switched off, and never
+        with a mode from the earlier run); when it cannot, nothing is started for that workspace
+        and the log says why. Without --restore the node only reconnects to what runs and
         reports the rest; it never starts a process from a saved file on its own. A missing or
         changed directory is never created or repaired either way.
         --exit-after-link-down: exit with status 75 after this long of nothing but immediate
@@ -261,12 +264,27 @@ fn reconcile_saved_workspaces(servers: &TmuxServers, restore: bool) {
         ..RecoveryPolicy::default()
     };
     match persistence.recover(servers, &policy) {
-        Some(Ok(report)) => crate::clock::log_line(&format!(
-            "saved workspaces: {} known, {} action(s), {} newly recorded",
-            report.items.len(),
-            report.done.len(),
-            report.recorded.len()
-        )),
+        Some(Ok(report)) => {
+            crate::clock::log_line(&format!(
+                "saved workspaces: {} known, {} action(s), {} newly recorded",
+                report.items.len(),
+                report.done.len(),
+                report.recorded.len()
+            ));
+            // What was resumed is said as resumed; what could not be is said why, and nothing
+            // was started in its place.
+            for (key, _, outcome) in &report.done {
+                match outcome {
+                    flight_workspaces::Outcome::Resumed => crate::clock::log_line(&format!(
+                        "saved workspace {key}: continued its earlier agent session"
+                    )),
+                    flight_workspaces::Outcome::Refused(why) => crate::clock::log_line(&format!(
+                        "saved workspace {key}: not started: {why}"
+                    )),
+                    _ => {}
+                }
+            }
+        }
         Some(Err(why)) => crate::clock::log_line(&format!("saved workspaces not saved: {why}")),
         None => {}
     }

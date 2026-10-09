@@ -131,11 +131,14 @@ fn start_value(form: &NewSessionForm) -> Vec<Span<'static>> {
             },
         )
     };
-    vec![
-        choice(Program::Claude),
-        Span::raw("   "),
-        choice(Program::Shell),
-    ]
+    let mut spans = Vec::new();
+    for p in Program::ALL {
+        if !spans.is_empty() {
+            spans.push(Span::raw("  "));
+        }
+        spans.push(choice(p));
+    }
+    spans
 }
 
 fn button(form: &NewSessionForm, field: Field, label: &str) -> Span<'static> {

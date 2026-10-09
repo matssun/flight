@@ -121,7 +121,7 @@ fn n_opens_the_form_and_a_filled_form_creates_a_session_that_appears_selected() 
         seen("Enter a name for the session.")
     });
 
-    // Fill it in: name, then the directory, then Shell (right arrow), then Create.
+    // Fill it in: name, then the directory, then Shell (right arrow twice: Claude, no permission prompts, Shell), then Create.
     for _ in 0..3 {
         writer.write_all(b"\x7f").expect("bs");
     }
@@ -131,7 +131,7 @@ fn n_opens_the_form_and_a_filled_form_creates_a_session_that_appears_selected() 
     writer
         .write_all(work.to_string_lossy().as_bytes())
         .expect("dir");
-    writer.write_all(b"\t\x1b[C").expect("shell");
+    writer.write_all(b"\t\x1b[C\x1b[C").expect("shell");
     writer.write_all(b"\t\r").expect("create");
 
     wait("tmux to have the session", || {

@@ -33,11 +33,11 @@ pub(crate) fn create<R: TmuxRunner>(
     let dir = existing_dir(&request.dir, env)?;
     let launch = match request.program {
         Program::Shell => Launch::DefaultShell,
-        Program::Claude => Launch::Program {
+        Program::Claude | Program::ClaudeSkipPermissions => Launch::Program {
             // Found on the node's PATH, then run by absolute path. tmux gives the session the
             // PATH of its client, which is this process: the node's environment, not
             // whatever the tmux server was started with.
-            argv: vec![find_program(CLAUDE, env)?.to_string_lossy().into_owned()],
+            argv: claude_argv(request.program, find_program(CLAUDE, env)?),
         },
     };
     let spec = NewSession {
@@ -63,9 +63,18 @@ pub(crate) fn create<R: TmuxRunner>(
     }
 }
 
+/// The one flag the closed set can add; no other text ever reaches the command line.
+fn claude_argv(program: Program, claude: PathBuf) -> Vec<String> {
+    let mut argv = vec![claude.to_string_lossy().into_owned()];
+    if program == Program::ClaudeSkipPermissions {
+        argv.push("--dangerously-skip-permissions".to_owned());
+    }
+    argv
+}
+
 fn program_name(program: Program) -> &'static str {
     match program {
-        Program::Claude => CLAUDE,
+        Program::Claude | Program::ClaudeSkipPermissions => CLAUDE,
         Program::Shell => "the shell",
     }
 }

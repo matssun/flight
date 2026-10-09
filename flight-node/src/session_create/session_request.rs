@@ -8,6 +8,8 @@ pub enum Program {
     /// The node's normal shell: tmux's `default-shell`, started the way tmux starts it for a
     /// session created by hand.
     Shell,
+    /// `claude`, started so that it does not ask before acting.
+    ClaudeSkipPermissions,
 }
 
 /// A validated request to create a session, detached from the wire.

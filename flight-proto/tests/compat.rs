@@ -492,6 +492,10 @@ fn a_create_session_names_its_host_and_validates() {
     assert_eq!(ok.validate(), Ok(()));
     assert_eq!(ok.target_host(), Some("mac-local"));
     assert_eq!(
+        create(|c| c.program = ProgramCode::ClaudeSkipPermissions as i32).validate(),
+        Ok(())
+    );
+    assert_eq!(
         create(|c| c.program = ProgramCode::Shell as i32).validate(),
         Ok(())
     );

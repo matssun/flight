@@ -206,7 +206,11 @@ impl NewSessionForm {
                 self.error = None;
             }
             Field::Start => {
-                self.program = self.program.other();
+                self.program = if forward {
+                    self.program.next()
+                } else {
+                    self.program.prev()
+                };
                 self.error = None;
             }
             Field::Create | Field::Cancel => {
@@ -222,7 +226,7 @@ impl NewSessionForm {
 
     fn type_char(&mut self, c: char) {
         match self.focus {
-            Field::Start if c == ' ' => self.program = self.program.other(),
+            Field::Start if c == ' ' => self.program = self.program.next(),
             Field::Host if c == ' ' => self.change(true),
             _ => {
                 let limit = if self.focus == Field::Name {

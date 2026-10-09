@@ -195,6 +195,13 @@ impl OrchestratedBackend {
         pid: u32,
         (cols, rows, term): (u16, u16, String),
     ) -> Result<Vec<u8>, OpenFailure> {
+        // A request queued behind a link that is down would wait out the whole timeout for an
+        // answer that cannot come; say so at once, and let the caller try again.
+        if !self.connected() {
+            return Err(OpenFailure::Unavailable(
+                "not connected to the orchestrator".to_owned(),
+            ));
+        }
         let kind = ck::Kind::OpenTerminal(ck::OpenTerminal {
             pane_ref: Some(PaneRefMsg::from(pane)),
             expected_pid: pid,

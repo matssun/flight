@@ -795,7 +795,11 @@ fn switching_surface_stays_in_the_session_keeps_both_surfaces_running_and_orders
     rig.wait("the shell has what was typed for it", |r| {
         pane_text(r, 1).contains("for-the-shell")
     });
-    assert!(pane_text(&rig, 0).contains("for-the-agent"));
+    // (The agent's own attachment is a different stream: its text may land a moment after the
+    // shell's. Each surface is ordered; the two are not ordered against each other.)
+    rig.wait("the agent has what was typed for it", |r| {
+        pane_text(r, 0).contains("for-the-agent")
+    });
     assert!(
         !pane_text(&rig, 0).contains("for-the-shell"),
         "misdelivered"

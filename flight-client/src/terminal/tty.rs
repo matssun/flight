@@ -113,8 +113,11 @@ pub fn run_session(
         }
     });
 
+    // Notices can carry words from a peer (a refusal's message): none of it may carry a control
+    // character into the user's terminal.
     let say: Arc<dyn Fn(&str) + Send + Sync> = Arc::new(|text| {
-        let _ = std::io::stderr().write_all(format!("\r\n{text}\r\n").as_bytes());
+        let plain: String = text.chars().filter(|c| !c.is_control()).collect();
+        let _ = std::io::stderr().write_all(format!("\r\n{plain}\r\n").as_bytes());
     });
     let host = Arc::new(LinkHost::new(
         link.clone(),

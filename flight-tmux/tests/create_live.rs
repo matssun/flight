@@ -178,6 +178,7 @@ fn mark(workspace: &str, surface: &str, kind: flight_tmux::SurfaceTag) -> flight
         workspace_id: workspace.into(),
         surface_id: surface.into(),
         kind,
+        config: None,
     }
 }
 

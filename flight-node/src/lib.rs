@@ -22,6 +22,7 @@ mod node_session;
 mod observer;
 mod pane_agent;
 mod pane_resolve;
+mod persistence;
 mod round;
 mod session_create;
 mod terminal;
@@ -33,6 +34,7 @@ pub use incarnation::fresh_incarnation;
 pub use node_core::NodeCore;
 pub use node_session::{NodeSession, SessionOutput, ADVERTISED_CAPABILITIES};
 pub use observer::{ControlLink, ControlSkipObserver, PaneObserver, SequentialObserver};
+pub use persistence::WorkspacePersistence;
 pub use round::{PaneObservation, Round, ServerOutcome};
 pub use session_create::{NewSurface, Program, SessionEnv, SessionRequest, SurfaceRequest};
 pub use terminal::{

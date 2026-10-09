@@ -32,7 +32,14 @@ fn rig(defs: Vec<WorkspaceDefinition>) -> Rig {
 impl Rig {
     fn recover(&mut self, policy: &RecoveryPolicy) -> RecoveryReport {
         let mut exec = self.fake.clone();
-        recover(&mut self.doc, &self.fake, &self.roots, &mut exec, policy)
+        recover(
+            &mut self.doc,
+            &["h"],
+            &self.fake,
+            &self.roots,
+            &mut exec,
+            policy,
+        )
     }
 
     fn items(&self) -> Vec<Item> {
@@ -425,4 +432,24 @@ fn changing_the_root_keeps_the_identity_and_reverifies() {
         (w.key.clone(), w.root.path.as_str(), w.root.identity),
         (key, "/moved", None)
     );
+}
+
+#[test]
+fn a_hand_made_workspace_is_recorded_even_when_nothing_is_saved_yet() {
+    let mut r = rig(vec![]);
+    r.fake
+        .0
+        .borrow_mut()
+        .running
+        .entry("h".into())
+        .or_default()
+        .push(ObservedWorkspace {
+            workspace_id: "w-hand".into(),
+            config_key: None,
+            root: "/hand".into(),
+            surfaces: vec![],
+        });
+    let report = r.recover(&RecoveryPolicy::default());
+    assert_eq!(report.recorded, vec!["w-hand"]);
+    assert_eq!(r.doc.active().unwrap().workspaces.len(), 1);
 }

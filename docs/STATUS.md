@@ -141,6 +141,20 @@ permission, not-a-directory and changed roots and never creates or repairs anyth
 driver that reconnects, resumes or replaces under an explicit policy. Not wired into the node, protocol or dashboard yet
 (see `docs/PLAN-workspace-persistence.md`).
 
+### Increment log
+
+| # | Commit / PR | Validation | Guarantees | Limitations |
+|---|---|---|---|---|
+| 1 | PR #13, merged ad257df (code 958ea5d) | fmt, clippy `-D warnings`, `cargo test --workspace`; CI 4 jobs + CodeQL green on the final head | atomic fsynced store; newer/unreadable files never overwritten; non-destructive root classification; idempotent planner/driver; trust gates | library only |
+| 2 | PR (this branch) | as above, plus 10 live-tmux tests run 5 times without a failure | tmux config marks; autosave on create; startup reconcile; `--restore`; no duplicate on lost reply or concurrent passes; missing/changed directory never started in; corrupt file preserved | not on the wire or in the dashboard (increments 3-4); no agent resumption; single writer, not enforced |
+
+### Observed failures and resolutions
+
+- PR #11 "CodeQL" check failed. I first assumed a config-level artifact; wrong. Cause (check-run annotation, alert #1, `rust/cleartext-logging`, high): `flight-node/tests/control_skip.rs:109`, a test fake's `panic!` printing tmux arguments that include a session id. Fixed in PR #12 by printing only the argument count; the check passed on the fix and on #13, alert #1 is `fixed`. No query was disabled.
+- PR #13 could not merge when main moved (branch protection requires an up-to-date branch): merged main into the branch and waited for the checks again.
+- Increment 2: changing `PANE_FORMAT` broke six fixtures that hard-code the old 19-field line (the `flight-client` differential tests failed with "not in the expected format"); the fixtures were updated, no test was loosened.
+- Increment 2: the recovery driver only looked at hosts that already had a saved workspace, so a hand-made workspace on a fresh node was never recorded. Found by a live test; `recover` now takes the hosts the caller owns, with a regression test.
+
 ## Open limitations
 
 Third-machine UI test, hooks and process-table discovery, key rotation,

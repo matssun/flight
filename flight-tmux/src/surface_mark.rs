@@ -7,6 +7,13 @@ pub const SURFACE_OPTION: &str = "@flight_surface";
 /// Window option: the surface's own id.
 pub const SURFACE_ID_OPTION: &str = "@flight_surface_id";
 
+/// Session option: the saved-workspace key (`ConfigKey`) a session was started for. Written in
+/// the same tmux invocation that creates the session, so a start whose reply is lost still
+/// leaves a mark the next reconciliation finds (ADR-008).
+pub const CONFIG_OPTION: &str = "@flight_config";
+/// Window option: the saved-surface key the window was started for.
+pub const CONFIG_SURFACE_OPTION: &str = "@flight_config_surface";
+
 /// What a surface is, as recorded in the backend.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SurfaceTag {
@@ -40,4 +47,13 @@ pub struct SurfaceMark {
     pub workspace_id: String,
     pub surface_id: String,
     pub kind: SurfaceTag,
+    /// The saved definition this was started for, when it was started from one.
+    pub config: Option<ConfigMark>,
+}
+
+/// The keys of the saved workspace and saved surface a started window realizes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConfigMark {
+    pub workspace: String,
+    pub surface: String,
 }

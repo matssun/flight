@@ -5,7 +5,7 @@ use crate::join_cmd::join_command;
 use crate::roles::node_dir;
 use flight_node::{
     fresh_incarnation, ControlLink, ControlSkipObserver, NodeCore, NodeSession, PaneObserver,
-    SequentialObserver, TmuxServers,
+    SequentialObserver, TmuxServers, WorkspacePersistence,
 };
 use flight_proto::RoleCode;
 use flight_state::ServerId;
@@ -14,6 +14,7 @@ use flight_transport::{
     config_path, identity_dir, run_observer, LinkEnd, NodeLink, NodeLinkConfig,
 };
 use flight_trust::{ConnectionConfig, Identity};
+use flight_workspaces::RecoveryPolicy;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -23,7 +24,7 @@ pub const USAGE: &str = "usage: flight node <command>
         enroll this machine with an orchestrator (the bundle comes from
         `flight orchestrator enrollment create`)
   run [--socket NAME]... [--interval SECS] [--observer ctl-skip|seq] [--exit-after-link-down SECS]
-      [--no-terminal] [--config-dir DIR]
+      [--no-terminal] [--restore] [--config-dir DIR]
         observe local tmux (tmux -L NAME; default 'flight') and report to the orchestrator.
         --interval: seconds between polls (fractions allowed; default 0.5). A round that takes
         longer than the interval is followed by at least as much idle time, and is reported.
@@ -35,6 +36,10 @@ pub const USAGE: &str = "usage: flight node <command>
         --no-terminal: do not offer interactive terminals. By default an authorized UI can open
         a terminal onto a pane of this node (a tmux client in a PTY owned by the node, relayed
         through the orchestrator). Turn it off for a read-only node.
+        --restore: at start, also start the saved workspaces that are not running (a replacement
+        process in a verified directory). Without it the node only reconnects to what runs and
+        reports the rest; it never starts a process from a saved file on its own. A missing or
+        changed directory is never created or repaired either way.
         --exit-after-link-down: exit with status 75 after this long of nothing but immediate
         \"no route to host\" failures (never because the orchestrator is merely down), so that a
         supervisor (launchd, systemd, a shell loop) restarts the node. Restarting is safe: tmux
@@ -74,7 +79,7 @@ fn run_node(args: &[String]) -> Result<(), String> {
             "--exit-after-link-down",
             "--config-dir",
         ],
-        &["--no-terminal"],
+        &["--no-terminal", "--restore"],
     )?;
     let dir = node_dir(&config_dir(&args)?);
     let config = ConnectionConfig::load(&config_path(&dir)).map_err(|e| {
@@ -111,6 +116,13 @@ fn run_node(args: &[String]) -> Result<(), String> {
         );
         servers.allow_terminal(ServerId::new(*socket), endpoint);
     }
+    let host_id = identity.fingerprint().host_id();
+    servers.enable_persistence(WorkspacePersistence::open(
+        &dir,
+        host_id.to_string(),
+        std::env::var_os("HOME").map(Into::into),
+    ));
+    reconcile_saved_workspaces(&servers, args.switch("--restore"));
     let servers = Arc::new(servers);
     let observer: Box<dyn PaneObserver> = match observer_kind {
         ObserverKind::Sequential => Box::new(SequentialObserver::new(servers.clone())),
@@ -222,6 +234,34 @@ fn parse_interval(s: &str) -> Result<Duration, String> {
         return Err(bad());
     }
     Duration::try_from_secs_f64(secs).map_err(|_| bad())
+}
+
+/// Reconnect saved workspaces to what is running and say what is not. Only with `--restore` are
+/// replacement processes started.
+fn reconcile_saved_workspaces(servers: &TmuxServers, restore: bool) {
+    let Some(persistence) = servers.persistence() else {
+        return;
+    };
+    if let Some(why) = persistence.disabled_reason() {
+        crate::clock::log_line(&format!(
+            "saved workspaces unavailable, left untouched: {why}"
+        ));
+        return;
+    }
+    let policy = RecoveryPolicy {
+        start_missing: restore,
+        ..RecoveryPolicy::default()
+    };
+    match persistence.recover(servers, &policy) {
+        Some(Ok(report)) => crate::clock::log_line(&format!(
+            "saved workspaces: {} known, {} action(s), {} newly recorded",
+            report.items.len(),
+            report.done.len(),
+            report.recorded.len()
+        )),
+        Some(Err(why)) => crate::clock::log_line(&format!("saved workspaces not saved: {why}")),
+        None => {}
+    }
 }
 
 #[cfg(test)]

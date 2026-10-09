@@ -28,5 +28,6 @@ pub use pane_info::PaneInfo;
 pub use parse::{parse_panes_checked, parse_panes_output, PANE_FORMAT};
 pub use runner::{tmux_args, SystemRunner, TmuxOutput, TmuxRunner};
 pub use surface_mark::{
-    SurfaceMark, SurfaceTag, SURFACE_ID_OPTION, SURFACE_OPTION, WORKSPACE_OPTION,
+    ConfigMark, SurfaceMark, SurfaceTag, CONFIG_OPTION, CONFIG_SURFACE_OPTION, SURFACE_ID_OPTION,
+    SURFACE_OPTION, WORKSPACE_OPTION,
 };

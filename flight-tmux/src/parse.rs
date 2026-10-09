@@ -4,9 +4,9 @@ use crate::{PaneInfo, TmuxError};
 
 /// Format string for `list-panes -F`. `pane_title` stays LAST so a tab inside a
 /// title cannot shift the other fields.
-pub const PANE_FORMAT: &str = "#{pane_id}\t#{session_name}\t#{window_name}\t#{window_id}\t#{window_index}\t#{pane_current_path}\t#{pane_pid}\t#{pane_active}\t#{window_active}\t#{session_attached}\t#{pane_current_command}\t#{window_activity}\t#{?@flight_session,1,0}\t#{@flight_workspace}\t#{@flight_surface_id}\t#{@flight_surface}\t#{session_path}\t#{session_id}\t#{pane_title}";
+pub const PANE_FORMAT: &str = "#{pane_id}\t#{session_name}\t#{window_name}\t#{window_id}\t#{window_index}\t#{pane_current_path}\t#{pane_pid}\t#{pane_active}\t#{window_active}\t#{session_attached}\t#{pane_current_command}\t#{window_activity}\t#{?@flight_session,1,0}\t#{@flight_workspace}\t#{@flight_surface_id}\t#{@flight_surface}\t#{session_path}\t#{session_id}\t#{@flight_config}\t#{@flight_config_surface}\t#{pane_title}";
 
-const FIELDS: usize = 19;
+const FIELDS: usize = 21;
 
 /// Parse `list-panes -F PANE_FORMAT` output, failing when panes were listed but none could be
 /// read (say so rather than report "no panes").
@@ -47,6 +47,8 @@ fn parse_line(line: &str) -> Option<PaneInfo> {
     let surface_kind = it.next()?.to_owned();
     let session_path = it.next()?.to_owned();
     let session_id = it.next()?.to_owned();
+    let config_key = it.next()?.to_owned();
+    let config_surface = it.next()?.to_owned();
     let pane_title = it.next()?.to_owned();
     Some(PaneInfo {
         pane_id,
@@ -69,6 +71,8 @@ fn parse_line(line: &str) -> Option<PaneInfo> {
         surface_kind,
         session_path,
         session_id,
+        config_key,
+        config_surface,
     })
 }
 
@@ -78,7 +82,7 @@ mod tests {
 
     fn line(title: &str, active: &str, attached: &str) -> String {
         format!(
-            "%3\tapi\tbuild\t@5\t2\t/tmp/x\t99\t{active}\t1\t{attached}\tclaude\t1700\t0\t\t\t\t/tmp/x\t$1\t{title}"
+            "%3\tapi\tbuild\t@5\t2\t/tmp/x\t99\t{active}\t1\t{attached}\tclaude\t1700\t0\t\t\t\t/tmp/x\t$1\t\t\t{title}"
         )
     }
 
@@ -120,7 +124,7 @@ mod tests {
 
     #[test]
     fn workspace_markers_and_the_session_root_are_read() {
-        let marked = "%3\tapi\tshell\t@5\t2\t/tmp/x/sub\t99\t1\t1\t0\tzsh\t1700\t1\tw-1\ts-2\tshell\t/tmp/x\t$4\tt";
+        let marked = "%3\tapi\tshell\t@5\t2\t/tmp/x/sub\t99\t1\t1\t0\tzsh\t1700\t1\tw-1\ts-2\tshell\t/tmp/x\t$4\t\t\tt";
         let p = &parse_panes_output(marked)[0];
         assert_eq!(
             (

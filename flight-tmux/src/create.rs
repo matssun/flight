@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use crate::{
-    CreateError, Launch, NewSession, Tmux, TmuxError, TmuxRunner, SURFACE_ID_OPTION,
-    SURFACE_OPTION, WORKSPACE_OPTION,
+    CreateError, Launch, NewSession, Tmux, TmuxError, TmuxRunner, CONFIG_OPTION,
+    CONFIG_SURFACE_OPTION, SURFACE_ID_OPTION, SURFACE_OPTION, WORKSPACE_OPTION,
 };
 use std::thread::sleep;
 use std::time::Duration;
@@ -53,12 +53,17 @@ impl<R: TmuxRunner> Tmux<R> {
         if let Some(mark) = &spec.mark {
             // The identity is written by the same tmux invocation that creates the session, so
             // no observer can see the session without it.
-            for (flag, option, value) in [
+            let mut options = vec![
                 (None, FLIGHT_SESSION_OPTION, "1"),
                 (None, WORKSPACE_OPTION, mark.workspace_id.as_str()),
                 (Some("-w"), SURFACE_OPTION, mark.kind.as_str()),
                 (Some("-w"), SURFACE_ID_OPTION, mark.surface_id.as_str()),
-            ] {
+            ];
+            if let Some(config) = &mark.config {
+                options.push((None, CONFIG_OPTION, config.workspace.as_str()));
+                options.push((Some("-w"), CONFIG_SURFACE_OPTION, config.surface.as_str()));
+            }
+            for (flag, option, value) in options {
                 args.push(";".to_owned());
                 args.push("set-option".to_owned());
                 args.extend(flag.map(str::to_owned));

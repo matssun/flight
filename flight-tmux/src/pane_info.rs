@@ -35,6 +35,10 @@ pub struct PaneInfo {
     pub session_path: String,
     /// The session's tmux id, e.g. `$3`. Server-scoped, like a pane id.
     pub session_id: String,
+    /// `@flight_config` of the session and `@flight_config_surface` of the window: the saved
+    /// definitions they were started for (ADR-008). Empty when started any other way.
+    pub config_key: String,
+    pub config_surface: String,
 }
 
 impl PaneInfo {

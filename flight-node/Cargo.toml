@@ -12,5 +12,6 @@ flight-classify = { path = "../flight-classify" }
 flight-proto = { path = "../flight-proto" }
 flight-state = { path = "../flight-state" }
 flight-tmux = { path = "../flight-tmux" }
+flight-workspaces = { path = "../flight-workspaces" }
 getrandom = "0.2"
 portable-pty = "0.8"

@@ -61,7 +61,7 @@ impl TmuxRunner for Fake {
 
 fn row(id: &str, command: &str, pid: u32) -> String {
     format!(
-        "{id}\twork\tw\t@1\t0\t/tmp\t{pid}\t0\t0\t0\t{command}\t1700\t0\t\t\t\t/tmp\t$1\ttitle\n"
+        "{id}\twork\tw\t@1\t0\t/tmp\t{pid}\t0\t0\t0\t{command}\t1700\t0\t\t\t\t/tmp\t$1\t\t\ttitle\n"
     )
 }
 

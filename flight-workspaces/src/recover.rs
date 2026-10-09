@@ -9,12 +9,19 @@ use crate::{
 };
 use std::collections::HashMap;
 
-fn observe_all(profile: &Profile, observer: &dyn Observer) -> HashMap<String, HostView> {
+/// Ask every host that has a saved workspace, and the `hosts` the caller owns even when they
+/// have none yet (so a workspace made by hand on a fresh node is still seen).
+fn observe_all(
+    profile: &Profile,
+    hosts: &[&str],
+    observer: &dyn Observer,
+) -> HashMap<String, HostView> {
     let mut views = HashMap::new();
-    for w in &profile.workspaces {
+    let saved = profile.workspaces.iter().map(|w| w.host.as_str());
+    for host in saved.chain(hosts.iter().copied()) {
         views
-            .entry(w.host.clone())
-            .or_insert_with(|| observer.observe(&w.host));
+            .entry(host.to_owned())
+            .or_insert_with(|| observer.observe(host));
     }
     views
 }
@@ -31,6 +38,7 @@ fn observe_all(profile: &Profile, observer: &dyn Observer) -> HashMap<String, Ho
 /// The caller saves the document when `changed` is set.
 pub fn recover(
     doc: &mut Document,
+    hosts: &[&str],
     observer: &dyn Observer,
     probe: &dyn RootProbe,
     executor: &mut dyn Executor,
@@ -39,7 +47,12 @@ pub fn recover(
     let Some(profile) = doc.active_mut() else {
         return RecoveryReport::default();
     };
-    let first = plan(profile, &observe_all(profile, observer), probe, policy);
+    let first = plan(
+        profile,
+        &observe_all(profile, hosts, observer),
+        probe,
+        policy,
+    );
     let mut report = RecoveryReport {
         items: first.items.clone(),
         ..RecoveryReport::default()
@@ -47,7 +60,7 @@ pub fn recover(
     for item in &first.items {
         for action in &item.actions {
             // Re-plan this one workspace against a fresh view just before acting on it.
-            let fresh = fresh_actions(profile, &item.key, observer, probe, policy);
+            let fresh = fresh_actions(profile, hosts, &item.key, observer, probe, policy);
             if !fresh.contains(action) && !matches!(action, Action::Bind { .. }) {
                 continue;
             }
@@ -61,12 +74,19 @@ pub fn recover(
             }
         }
     }
-    report.changed |= record_unsaved(profile, &first.unsaved, observer, &mut report.recorded);
+    report.changed |= record_unsaved(
+        profile,
+        hosts,
+        &first.unsaved,
+        observer,
+        &mut report.recorded,
+    );
     report
 }
 
 fn fresh_actions(
     profile: &Profile,
+    hosts: &[&str],
     key: &ConfigKey,
     observer: &dyn Observer,
     probe: &dyn RootProbe,
@@ -75,7 +95,7 @@ fn fresh_actions(
     let mut only = Profile::new(profile.name.clone());
     only.workspaces = profile.workspaces.clone();
     only.dismissed = profile.dismissed.clone();
-    plan(&only, &observe_all(&only, observer), probe, policy)
+    plan(&only, &observe_all(&only, hosts, observer), probe, policy)
         .items
         .into_iter()
         .find(|i| &i.key == key)
@@ -149,11 +169,13 @@ fn with_def(
 /// the next restart. Dismissed ones stay dismissed.
 fn record_unsaved(
     profile: &mut Profile,
+    extra_hosts: &[&str],
     unsaved: &[String],
     observer: &dyn Observer,
     recorded: &mut Vec<String>,
 ) -> bool {
     let mut hosts: Vec<String> = profile.workspaces.iter().map(|w| w.host.clone()).collect();
+    hosts.extend(extra_hosts.iter().map(|h| (*h).to_owned()));
     hosts.sort();
     hosts.dedup();
     let mut changed = false;

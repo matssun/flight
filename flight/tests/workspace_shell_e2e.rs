@@ -390,10 +390,18 @@ fn the_agent_and_the_shell_are_shown_side_by_side_each_with_its_own_keys_size_an
     // keyboard where it was (the shell).
     rig.send(b"\x00v");
     wait("two clients", || rig.clients() == 2);
-    // The agent's tile is on the left, a line, the shell's prompt on the right: both on one
-    // screen (the status lines are cut to fit half the width).
+    // Both tiles are on one screen: a line between them and a status line in each (cut to fit
+    // half the width). What the shell prompt looks like depends on the machine.
     wait("both tiles on screen", || {
-        rig.seen("│[~]") && rig.seen("[flight-")
+        rig.seen("│")
+            && rig
+                .screen
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .text()
+                .matches("[flight-")
+                .count()
+                >= 2
     });
     let widths = client_widths(&rig);
     assert_eq!(widths.len(), 2, "{widths:?}");

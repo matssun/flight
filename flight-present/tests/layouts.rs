@@ -308,3 +308,47 @@ fn nesting_deeper_than_the_limit_is_refused() {
     }
     assert_eq!(Layout::new(r, id("s0")).unwrap_err(), LayoutError::TooDeep);
 }
+
+#[test]
+fn replacing_a_surface_keeps_its_place_share_and_the_keyboard() {
+    let l = side_by_side()
+        .resize(&id("agent"), Axis::Across, 20)
+        .unwrap();
+    let swapped = l.replace(&id("agent"), id("notes")).unwrap();
+    assert!(!swapped.contains(&id("agent")));
+    assert_eq!(swapped.focus(), &id("notes"));
+    let before = solve(&l, screen(), &Style::default());
+    let after = solve(&swapped, screen(), &Style::default());
+    assert_eq!(
+        before.tile(&id("agent")).unwrap().area,
+        after.tile(&id("notes")).unwrap().area
+    );
+    // A surface already in the layout cannot be put in twice.
+    assert!(matches!(
+        l.replace(&id("agent"), id("shell")).unwrap_err(),
+        LayoutError::Duplicate(_)
+    ));
+    // Replacing one that does not have the keyboard leaves the keyboard alone.
+    assert_eq!(
+        l.replace(&id("shell"), id("logs")).unwrap().focus(),
+        &id("agent")
+    );
+}
+
+#[test]
+fn stepping_through_tabs_wraps_and_a_layout_without_tabs_does_not_change() {
+    let l = Layout::new(
+        Region::Tabs {
+            active: 0,
+            tabs: vec![leaf("agent"), leaf("shell"), leaf("logs")],
+        },
+        id("agent"),
+    )
+    .unwrap();
+    let next = l.step_tab(true);
+    assert_eq!(next.focus(), &id("shell"));
+    assert_eq!(next.step_tab(true).focus(), &id("logs"));
+    assert_eq!(next.step_tab(true).step_tab(true).focus(), &id("agent"));
+    assert_eq!(l.step_tab(false).focus(), &id("logs"));
+    assert_eq!(side_by_side().step_tab(true), side_by_side());
+}

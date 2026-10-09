@@ -219,6 +219,16 @@ fn edits_keep_the_invariants_and_touch_only_what_they_name() {
             b.sort();
             assert_eq!(a, b);
         }
+        // Replacing keeps the shape: the same number of surfaces, the new name where the old was.
+        let renamed = l
+            .replace(&pick, SurfaceId::new(format!("r-{next}")))
+            .unwrap();
+        assert_eq!(renamed.surfaces().len(), all.len());
+        assert!(!renamed.contains(&pick));
+        // Stepping a tab set keeps the keyboard on something showing.
+        let stepped = l.step_tab(g.rng.below(2) == 0);
+        assert!(stepped.visible().contains(&stepped.focus()));
+        assert_eq!(stepped.surfaces().len(), all.len());
         // Focusing anything shows it.
         let focused = l.focus_on(&pick).unwrap();
         assert!(focused.visible().contains(&&pick));

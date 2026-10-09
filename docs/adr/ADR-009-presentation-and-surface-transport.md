@@ -77,6 +77,54 @@ So on loopback the cost is structural (rebuilding the dashboard), and on a real 
 
 The wire protocol did not change.
 
+## Decision (increment 6, part 2): a surface session over a link that outlives it
+
+**Three lifetimes, kept apart.**
+
+| | What it is | Lives |
+|---|---|---|
+| Surface | a tmux window of the workspace's session, with its processes and state | in the backend; nothing in presentation code owns or ends one |
+| Link | the process's one authenticated connection to the orchestrator, its runtime, its image of the fleet | for the process (reconnects by itself); `flight ui run` holds it across dashboard runs, terminal sessions and switches |
+| Attachment | one terminal stream, the node's tmux client on a PTY, and its view session (previous section) | opened when a surface is shown, retired when it is not; hidden surfaces hold none |
+
+Presentation (which surface is on screen) is a decision of the session; it never decides a surface's identity or lifetime. The session knows nothing about how a terminal is carried (`SurfaceHost`: open, connect, renew), so an in-memory host tests it and the real one (`LinkHost`) rides the link.
+
+**Rejected, with the evidence.** *Warm (parked) attachments for the other surface* (option A): possible only since views exist, and the cold attach is 20 to 30 ms on loopback, roughly 120 ms at 20 ms RTT and 285 ms at 50 ms RTT before connection reuse; a parked attachment costs a tmux client, a view, a PTY and two streams per hidden surface, and either bandwidth for output nobody sees or a new protocol signal with a capability gate. Not needed for correctness; revisit only if measurements on a real WAN say the cold attach is the problem. *One client that selects the window* (option B): couples the surface to the attachment and cannot show two at once. *Pre-open on intent* (option C): same cost as A with a guess added.
+
+**Input is an ordered log split at switch points.** The escape filter turns the keyboard into `Data`, `Switch`, `Leave` and `Hint` events in the order typed. Bytes typed after `Ctrl-Space s` belong to the shell from the moment they are typed, whether or not the shell is attached yet; they wait. They are delivered to that surface or reported, never to another.
+
+| Concern | Rule |
+|---|---|
+| Ownership | the surface chosen by the last `Switch` that reached the front of the queue; data ahead of a switch is delivered to the previous surface first |
+| Buffer | 64 KiB of queued data (switches and hints weigh a byte); a single read can overshoot by its own length (4 KiB) |
+| Backpressure | at the bound the keyboard is no longer read, so the terminal's own input buffer holds the rest; nothing is dropped |
+| Stall | if input cannot move for 3 s the session ends with "the surface is not taking input"; leaving (`Ctrl-Space q`) works at any time the keyboard is being read |
+| Switch | make before break: the new surface is attached before the old one is let go; if it cannot be, the user stays where they were with a notice, and what was typed for the missing surface is discarded and counted (`undelivered`), not delivered to the wrong one |
+| One at a time per surface | a second attachment to a surface is not asked for until the previous one has finished (its stream ended, the node read the goodbye), up to 3 s; otherwise keys on the two could overtake each other and the orchestrator would replace the one still finishing |
+| Reconnect | a broken stream is re-attached 3 times (250 ms, 1 s, 3 s) to the same process only (the pid guard); a changed process is refused and the queued input is reported, not replayed |
+| Cancellation | a switch requested while another is opening cancels the one in flight; a session that ends cancels everything; a terminal whose `OpenTerminal` was answered but never attached ends by its own attach window (bounded, existing) |
+| Resize | the size is the terminal's, remembered by the session: an attachment opened at one size is told the current one as soon as it is up, and a resize while a surface is opening is not lost. A surface that is not attached has no client, so nothing constrains it; it takes the size of the next client that attaches. Each view has its own size, so two attached surfaces can differ |
+| Limits | per UI 2 terminals that are not closing; a closing terminal still counts toward the node's 4 and the total 32. Multiple simultaneously visible surfaces raise the per-UI figure (a policy, not a design change) |
+| Lease | renewed over the link for the surface on screen; it fails the session only when the link has stopped |
+| Authorization | unchanged: every terminal is asked for from the orchestrator with the pid guard; the identity checks, single-use ids and lease are the orchestrator's |
+
+**Teardown is ordered, and four bugs of ordering were found by driving the real dashboard with keys typed in bursts across switches** (`keys_typed_right_after_opening_or_switching_reach_the_surface_they_were_typed_for`, which failed 1 time in 3 until all four were fixed and has since passed 30 of 30 on a release build and 10 of 10 on a debug build):
+
+1. The UI dropped a terminal's stream as soon as the session let go, which cancels it with the goodbye and the last keys still unsent. The stream is now read to its end (2 s bound).
+2. The orchestrator tore the node's side down when the UI said goodbye, discarding what was queued toward the node. It now keeps the node's side open until the node has ended it (3 s bound) and marks the terminal *closing*: not replaced by a new open of the same pane, not counted against the UI's limit, gone after 5 s whatever happens.
+3. The node gave up reading input when a send failed, and read input only between floods: under a program that floods the terminal a Ctrl-C waited for the flood (3 s with the default stall limit, measured). It now reads input between output frames, drains for 2 s after the orchestrator stops taking output, and leaves the tmux client alone for 100 ms after a goodbye so that the key just written is read by it.
+4. The dashboard left keys in the terminal library's event queue when it let the keyboard go (lost in debug builds, where it is slower). Keys typed after opening a surface are now read in order, encoded as a terminal sends them, and handed to the session; raw mode stays on across the hand-over, and what is typed for a surface that does not open is discarded and counted in the dashboard's message.
+
+**Measured after** (same harness, release build, 15 switches; the dashboard is no longer torn down, the link is reused, the lease rides the link, the terminal's threads stop at once, and the reveal still happens only for the dashboard's first open):
+
+| simulated RTT | before p50 (min-max) | after p50 (min-max) |
+|---|---|---|
+| 0 ms | 407 (406-412) | 30 (24-40) |
+| 20 ms | 615 (595-635) | 117 (107-122) |
+| 50 ms | 1001 (947-1166) | 262 (249-272) |
+
+What remains at 50 ms RTT is the routed `OpenTerminal` (about 2 RTT) and a stream dial (about 2.3 RTT) per switch; the next step is to reuse the terminal connection for new streams. Not done: removing the redundant `RevealPane` from the dashboard's first open (it also reveals when a node offers no terminals, a behaviour ADR-003 describes), and raising the per-UI terminal limit for simultaneous presentation (increment 8).
+
 ## Options for persistent transport (to measure, not yet to choose)
 
 | Option | Idea | Cost | Risk |

@@ -3,7 +3,7 @@
 # Status
 
 Short and factual. Design decisions live in the ADRs; this file says where the work stands.
-Last updated: 2026-10-09.
+Last updated: 2026-10-10.
 
 ## Merged baseline (main)
 
@@ -157,6 +157,12 @@ driver that reconnects, resumes or replaces under an explicit policy. Not wired 
 | 4b-2 | PR #18, merged 597a9e2 (code d0bc152; Ubuntu test re-run after the `control_all` flake below) | as above; 12 new UI tests | Enter starts a saved workspace, `r` looks again, `c` changes its directory, `x` forgets, `v` accepts a changed directory, `t` trusts an import; destructive or trust-granting ones ask first and default to No; a refusal keeps the question open with the reason | not clickable; no export/import UI yet (increment 5) |
 
 | 5 | PR #19, merged c7ee7e8 (code 2141b46) | as above; 8 library, 1 node, 8 CLI tests | named snapshots, profiles, one-step undo, export/import as untrusted (new identities, host rewritten, no runtime ids or recorded identity, permission-free flag dropped, nothing starts until trusted); the node holds an exclusive lock on the saved file (a second node runs without persistence and says why; CLI edits are refused while a node runs) | CLI only (no dashboard UI for snapshots or import); solo mode does not save workspaces |
+
+| 6a | PR #21, merged 8f4e55f | fmt, clippy, workspace tests, CI 4 jobs + CodeQL green | measurements of the surface switch (harness, delaying proxy, baseline) in ADR-009 | evidence only |
+
+| 6b | PR #22, merged 4d63402 | as above, plus 8 live terminal tests (two terminals on two surfaces, own window, own size, no leftover view), fold unit tests, Ubuntu green | each terminal attaches to a view session of its own: keys reach only the window that terminal shows; every pane is still published once; focus kept | tmux 3.7b; views are removed by `destroy-unattached` and by the terminal's cleanup |
+
+| 6c | this PR | as above, plus 25 session unit tests, 12 live session tests, 2 driven end-to-end tests, 3 orchestrator tests | the dashboard keeps its link across terminal sessions; `Ctrl-Space a/s` switches inside the session without rebuilding anything; input is an ordered, bounded log across switches; bounded re-attach; ordered teardown; input read between output frames; keys typed ahead are kept | switch 407 -> 30 ms (0 ms RTT), 1001 -> 262 ms (50 ms RTT); the terminal connection is still dialed per switch; `RevealPane` stays in the dashboard's first open |
 
 ### Known flaky tests (tracked, not hidden)
 

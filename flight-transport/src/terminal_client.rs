@@ -10,6 +10,7 @@ use tokio::sync::mpsc::{self, Sender};
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::client::Grpc;
 use tonic::codegen::http::uri::PathAndQuery;
+use tonic::transport::Channel;
 use tonic::{Request, Streaming};
 use tonic_prost::ProstCodec;
 
@@ -53,6 +54,17 @@ impl TerminalClient {
         dial_timeout: Duration,
     ) -> Result<Self, TransportError> {
         let channel = connect_with(address, identity, orchestrator, dial_timeout).await?;
+        Self::attach_on(channel, terminal_id, me, dial_timeout).await
+    }
+
+    /// Open the terminal's stream on an existing channel: one more stream on a connection that
+    /// is already up, with no new handshake.
+    pub(crate) async fn attach_on(
+        channel: Channel,
+        terminal_id: &[u8],
+        me: Origin,
+        dial_timeout: Duration,
+    ) -> Result<Self, TransportError> {
         let mut grpc = Grpc::new(channel);
         grpc.ready()
             .await

@@ -13,7 +13,7 @@ Each increment is independently testable and shippable; later ones need earlier 
 | 4b-1 | Actions on the wire and node: retry, remove, restore, accept root, set root, trust; `saved_actions_v1`; client/Backend support | proto, orchestrator routing, node live (9 tests) | done, PR #17 (merge a3f26ca) |
 | 4b-2 | Dashboard keys and prompts for those actions | view-model, render, keys (12 tests) | done, PR #18 (merge 597a9e2) |
 | 5 | Snapshots, profiles, undo, export/import (`flight workspaces`); exclusive lock on the saved file; previous generation | library (8), node lock, CLI end to end with the real binary (8) | done, PR #19 (merge c7ee7e8) |
-| 6 | Persistent surface transport (ADR-009): measurements (6a, PR #21), per-terminal view sessions (6b, PR #22), surface session over a persistent link (6c) | latency by simulated RTT; driven key-burst end to end; live view and session tests | 6a, 6b done; 6c in review; connection reuse next |
+| 6 | Persistent surface transport (ADR-009): measurements (6a, PR #21), per-terminal view sessions (6b, PR #22), surface session over a persistent link (6c) | latency by simulated RTT; driven key-burst end to end; live view and session tests | 6a, 6b done; 6c (#23) in review; 6d connection reuse in this PR |
 | 7 | Agent-session resumption for a provider that supports it | | |
 | 8 | Terminal emulation / composition for side by side | | |
 

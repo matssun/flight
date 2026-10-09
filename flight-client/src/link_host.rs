@@ -4,11 +4,11 @@ use crate::session::{
     Attachment, Binding, FromRemote, OpenFailure, OpenRequest, SurfaceHost, ToRemote,
 };
 use crate::terminal::terminal_request_shape;
-use crate::{ClientConfig, OrchestratedBackend};
+use crate::OrchestratedBackend;
 use flight_proto::{
     terminal_body, TerminalClose, TerminalFrame, TerminalResize, MAX_TERMINAL_DATA,
 };
-use flight_transport::{TerminalClient, TerminalReceiver};
+use flight_transport::TerminalReceiver;
 use flight_ui::{SurfaceChoice, WorkspaceKey};
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
@@ -23,17 +23,12 @@ const GOODBYE: Duration = Duration::from_secs(2);
 /// guard) on every terminal it is asked for.
 pub struct LinkHost {
     link: OrchestratedBackend,
-    config: ClientConfig,
     workspace: WorkspaceKey,
 }
 
 impl LinkHost {
-    pub fn new(link: OrchestratedBackend, config: ClientConfig, workspace: WorkspaceKey) -> Self {
-        Self {
-            link,
-            config,
-            workspace,
-        }
+    pub fn new(link: OrchestratedBackend, workspace: WorkspaceKey) -> Self {
+        Self { link, workspace }
     }
 
     /// The pane showing `choice` for this workspace, as the link last saw the fleet. When
@@ -94,14 +89,12 @@ impl SurfaceHost for LinkHost {
         _choice: SurfaceChoice,
         binding: Binding,
     ) -> Result<Attachment, OpenFailure> {
-        let client = TerminalClient::connect_ui(
-            &self.config.address,
-            &self.config.identity,
-            &self.config.orchestrator,
-            &id,
-        )
-        .await
-        .map_err(|e| OpenFailure::Unavailable(e.to_string()))?;
+        let client = self
+            .link
+            .terminals()
+            .connect_ui(&id)
+            .await
+            .map_err(|e| OpenFailure::Unavailable(e.to_string()))?;
         let (sender, mut receiver) = client.split();
         let (to_remote, mut commands) = mpsc::channel::<ToRemote>(QUEUE);
         let (reports, from_remote) = mpsc::channel::<FromRemote>(QUEUE);

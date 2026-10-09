@@ -125,6 +125,24 @@ Presentation (which surface is on screen) is a decision of the session; it never
 
 What remains at 50 ms RTT is the routed `OpenTerminal` (about 2 RTT) and a stream dial (about 2.3 RTT) per switch; the next step is to reuse the terminal connection for new streams. Not done: removing the redundant `RevealPane` from the dashboard's first open (it also reveals when a node offers no terminals, a behaviour ADR-003 describes), and raising the per-UI terminal limit for simultaneous presentation (increment 8).
 
+## Decision (increment 6, part 3): terminal connections are kept
+
+Each terminal used to dial its own mutually authenticated connection from each end (the UI's stream, the node's stream). The streams of an HTTP/2 connection are independent, so a terminal is now one more stream on a connection each process keeps (`TerminalConnector`: the UI's lives with the link, the node's with the node link). Terminals still never share a connection with fleet state, so a terminal flooding output cannot hold up replication. The connection is dialed on first use; if it is gone when a terminal is wanted (the orchestrator moved, the network dropped, a keep-alive failed) one fresh dial is made before giving up (tested by cutting the connection through a proxy: the next terminal dials once, the one after rides that).
+
+**A kept connection couples its streams through flow control, and this was measured, not assumed.** HTTP/2 gives the connection a window as well as each stream; data a stream's reader has not consumed holds window. With the default 64 KiB connection window, one terminal whose reader is stuck (a flooding pane, a UI that stopped reading) leaves another terminal on the same connection with nothing: `a_terminal_nobody_reads_does_not_starve_another_on_the_same_connection` fails at 64 KiB and passes at 2 MiB. Both ends now advertise a 64 KiB window per stream and 2 MiB for the connection, enough for the per-UI and per-node terminal limits (a few stalled streams at most, each already bounded by the node's discard-and-repaint policy and the orchestrator's stall limit). Memory is bounded by the window, not by the number of switches.
+
+**Measured** (same harness, release build, 15 switches, key to new surface on screen, p50; each row adds one change to the previous):
+
+| simulated RTT | baseline | session over a persistent link | + kept connection |
+|---|---|---|---|
+| 0 ms | 407 | 30 | 29 |
+| 20 ms | 615 | 117 | 90 |
+| 50 ms | 1001 | 262 | 198 |
+
+What remains at 50 ms is the routed `OpenTerminal` (UI to orchestrator to node and back, 2 RTT of the 50 ms figure per hop pair) plus one stream open on a warm connection (1 RTT) and the first paint; no handshake is left on the switch path. Resources are flat across switches: 200 consecutive switches left the node, orchestrator and dashboard at the same descriptor and thread counts, and resident memory grew by under 0.5 MB in each (`FLIGHT_MEASURE_ROUNDS=200`).
+
+Still open: the dashboard's first open does a `RevealPane` before `OpenTerminal` (two routed commands; the reveal is redundant when the node offers terminals, but also keeps the "pane selected, cannot attach" behaviour of ADR-003 for a node that does not, so removing it is a product decision recorded as a follow-up), and a speculative dial of the terminal connection before the first terminal is wanted.
+
 ## Options for persistent transport (to measure, not yet to choose)
 
 | Option | Idea | Cost | Risk |

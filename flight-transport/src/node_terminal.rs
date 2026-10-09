@@ -4,12 +4,9 @@
 //! terminal stream. The PTY side is blocking and runs on its own threads; the stream side is
 //! async. Both hand-offs are bounded, so a slow reader slows the PTY instead of growing memory.
 
-use crate::terminal_client::TerminalClient;
+use crate::terminal_connector::TerminalConnector;
 use flight_node::OpenedTerminal;
-use flight_proto::{
-    terminal_body, ExitReasonCode, Origin, TerminalExit, TerminalFrame, MAX_TERMINAL_DATA,
-};
-use flight_trust::{Fingerprint, Identity};
+use flight_proto::{terminal_body, ExitReasonCode, TerminalExit, TerminalFrame, MAX_TERMINAL_DATA};
 use std::io::Read;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -47,10 +44,8 @@ const CLOSE_SETTLE: Duration = Duration::from_millis(100);
 const INBOUND_DRAIN: Duration = Duration::from_secs(2);
 
 pub(crate) struct NodeTerminalEnd {
-    pub(crate) address: String,
-    pub(crate) identity: Arc<Identity>,
-    pub(crate) orchestrator: Fingerprint,
-    pub(crate) dial_timeout: Duration,
+    /// The node's kept connection for terminal streams.
+    pub(crate) connector: Arc<TerminalConnector>,
     /// How long the far end may stay behind before the terminal is given up.
     pub(crate) stall: Duration,
 }
@@ -82,18 +77,8 @@ pub(crate) async fn run(
 
     let hang_up = || killer.clone().hang_up();
 
-    let attach = tokio::time::timeout(
-        ATTACH_TIMEOUT,
-        TerminalClient::connect(
-            &end.address,
-            &end.identity,
-            &end.orchestrator,
-            &terminal_id,
-            Origin::Node,
-            end.dial_timeout,
-        ),
-    )
-    .await;
+    let attach =
+        tokio::time::timeout(ATTACH_TIMEOUT, end.connector.connect_node(&terminal_id)).await;
     let mut client = match attach {
         Ok(Ok(client)) => client,
         Ok(Err(e)) => {

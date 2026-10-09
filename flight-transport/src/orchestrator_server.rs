@@ -66,6 +66,8 @@ pub async fn serve(config: ServerConfig) -> Result<ServerHandle, TransportError>
     let incoming = accept_tls(listener, tls, stop_rx.clone());
     let mut shutdown = stop_rx.clone();
     let server = Server::builder()
+        .initial_stream_window_size(Some(crate::connector::STREAM_WINDOW))
+        .initial_connection_window_size(Some(crate::connector::CONNECTION_WINDOW))
         .http2_keepalive_interval(Some(Duration::from_secs(10)))
         .http2_keepalive_timeout(Some(Duration::from_secs(10)))
         .add_service(FlightService::new(state.clone()))

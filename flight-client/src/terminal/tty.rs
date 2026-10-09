@@ -2,7 +2,7 @@
 
 use crate::session::{Binding, SessionConfig, SessionOutcome, SessionStart, SurfaceSession};
 use crate::terminal::{LocalTerminal, TerminalEnd};
-use crate::{ClientConfig, LinkHost, OrchestratedBackend, ShownSurface};
+use crate::{LinkHost, OrchestratedBackend, ShownSurface};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, size};
 use flight_proto::valid_term;
 use rustix::event::{poll, PollFd, PollFlags};
@@ -74,11 +74,7 @@ impl Wake {
 /// Show the surfaces of a workspace in the user's terminal until the session ends, then
 /// restore the terminal. The link the dashboard already holds carries everything: nothing is
 /// dialed to start, and switching surface does not leave this function.
-pub fn run_session(
-    link: &OrchestratedBackend,
-    config: &ClientConfig,
-    request: SessionRequest,
-) -> SessionOutcome {
+pub fn run_session(link: &OrchestratedBackend, request: SessionRequest) -> SessionOutcome {
     let lost = |why: &str| SessionOutcome {
         end: TerminalEnd::Lost(why.to_owned()),
         shown: None,
@@ -119,11 +115,7 @@ pub fn run_session(
         let plain: String = text.chars().filter(|c| !c.is_control()).collect();
         let _ = std::io::stderr().write_all(format!("\r\n{plain}\r\n").as_bytes());
     });
-    let host = Arc::new(LinkHost::new(
-        link.clone(),
-        config.clone(),
-        request.shown.workspace.clone(),
-    ));
+    let host = Arc::new(LinkHost::new(link.clone(), request.shown.workspace.clone()));
     let session = SurfaceSession::new(host, SessionConfig::new(say));
     let (cols, rows, _) = terminal_request_shape();
     let outcome = link.runtime().block_on(session.run(

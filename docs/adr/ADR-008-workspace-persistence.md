@@ -131,6 +131,16 @@ Importing, trusting and starting remain three decisions: `Restore` of an importe
 
 On a selected saved workspace: **Enter** starts it (explicit and idempotent, so it asks nothing; the node refuses with the reason whatever is not safe), **r** looks again now, **c** changes its directory (typed, validated as a path, nothing is created), **x** forgets it, **v** accepts a changed directory as the right one (offered only when the node reports a changed root), **t** trusts an import (offered only for imported entries). Forgetting, accepting and trusting ask first, with the focus on No, so a stray Enter does nothing; each says what it does not do ("only the saved entry goes", "nothing is created or changed in it"). A refusal from the node keeps the question open with the reason, and the same words are used in the footer line when no question was asked. These keys do nothing on a live workspace.
 
+## Keeping, sharing and taking back (increment 5)
+
+`flight workspaces`: `list`, `snapshot save|list|restore`, `profile list|use|duplicate`, `export`, `import`, `undo`.
+
+- **Single writer, now enforced.** The node holds an exclusive operating-system file lock on `workspaces.lock` for as long as it runs (released by the OS if it crashes); it waits up to two seconds for a process that is exiting. A second node on the same directory runs without persistence and says why; the command refuses to edit while a node runs ("stop it first"). Listing, `snapshot save|list` and `export` only read the saved file, which is replaced atomically, so they work while the node runs.
+- **Undo.** Each save keeps the generation it replaced (`workspaces.prev.toml`); `undo` restores it. A snapshot restore first keeps the current state as `before-<label>`.
+- **Export** is the declaration only: names, roots, surfaces. The host is replaced by a placeholder, and runtime ids, recorded directory identity, the dismissal list and the git shape are dropped. There is no field in a definition that could hold a secret, a command line or an environment.
+- **Import** reads the file as untrusted: bounded size, schema checked (a newer one refused), unusable names or relative directories skipped with a reason, every saved identity minted afresh (a file can neither collide with nor impersonate a saved workspace), the host set to the importing node's, origin `Imported`, and the permission-free flag of an agent dropped. It becomes a new, inactive profile; nothing starts until the workspace is trusted (`t` in the dashboard, then an explicit start). Importing, trusting and starting are three separate acts.
+- Solo mode (`flight` with no arguments) does not save workspaces; persistence belongs to the node.
+
 ## Deferred, with reasons
 
 - Wire protocol: publishing saved-but-not-running workspaces to the dashboard, and the user actions, are the next increment (`SavedWorkspace` messages with capability negotiation, so an older node simply publishes none).

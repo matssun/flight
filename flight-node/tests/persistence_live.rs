@@ -77,6 +77,8 @@ impl Live {
 
     /// The node process starts again: nothing in memory survives, the saved file does.
     fn restart_node(&mut self) {
+        // The old process is gone before the new one starts: it held the saved file's lock.
+        drop(std::mem::take(&mut self.servers));
         self.servers = Self::node(&self.endpoint, &self.root);
     }
 
@@ -725,4 +727,27 @@ mod actions {
         act(&live, &key(&live), SavedAction::Retry).unwrap();
         assert!(live.servers.retries() > before);
     }
+}
+
+#[test]
+fn a_second_node_on_the_same_saved_file_runs_without_persistence_and_leaves_the_first_alone() {
+    let Some(live) = Live::start("lock") else {
+        return;
+    };
+    let dir = live.dir("nga");
+    live.workspace("nga", &dir);
+    let second = WorkspacePersistence::open(&live.root.join("state"), HOST, None);
+    assert!(second
+        .disabled_reason()
+        .unwrap()
+        .contains("another Flight process"));
+    assert!(second.document().is_none());
+    // The first still owns the file and keeps working.
+    assert!(live
+        .servers
+        .persistence()
+        .unwrap()
+        .disabled_reason()
+        .is_none());
+    assert_eq!(live.saved().active().unwrap().workspaces.len(), 1);
 }

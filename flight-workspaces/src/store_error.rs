@@ -15,6 +15,8 @@ pub enum StoreError {
     /// A snapshot with this label exists; snapshots are never overwritten.
     Exists,
     NotFound,
+    /// Another Flight process has the saved workspaces in use.
+    Locked,
 }
 
 impl From<std::io::Error> for StoreError {
@@ -42,7 +44,8 @@ impl std::fmt::Display for StoreError {
             }
             Self::BadLabel => f.write_str("a snapshot label is letters, digits, '_', '-' and '.'"),
             Self::Exists => f.write_str("a snapshot with that label already exists"),
-            Self::NotFound => f.write_str("no such snapshot"),
+            Self::NotFound => f.write_str("not found"),
+            Self::Locked => f.write_str("another Flight process is using these saved workspaces"),
         }
     }
 }

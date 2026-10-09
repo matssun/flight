@@ -7,6 +7,8 @@ use std::path::PathBuf;
 
 const FILE: &str = "workspaces.toml";
 const SNAPSHOTS: &str = "snapshots";
+const LOCK: &str = "workspaces.lock";
+const PREVIOUS: &str = "workspaces.prev.toml";
 
 /// How [`Store::load`] arrived at its document.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,6 +20,14 @@ pub enum Loaded {
     Migrated {
         from: u32,
     },
+}
+
+/// Exclusive use of a store's directory for as long as it is held: the node holds it while it
+/// runs, and a command that edits the saved file takes it for the edit. Advisory (an operating
+/// system file lock), released when dropped or when the process ends, even by a crash.
+#[derive(Debug)]
+pub struct StoreLock {
+    _file: std::fs::File,
 }
 
 /// The saved workspaces of one host: one file, owned by the node that owns the roots, written
@@ -37,6 +47,35 @@ impl Store {
         Self {
             dir: dir.into(),
             steps,
+        }
+    }
+
+    /// Take exclusive use of the store, or say that someone else has it. Never waits.
+    pub fn lock(&self) -> Result<StoreLock, StoreError> {
+        std::fs::create_dir_all(&self.dir)?;
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(self.dir.join(LOCK))?;
+        match file.try_lock() {
+            Ok(()) => Ok(StoreLock { _file: file }),
+            Err(std::fs::TryLockError::WouldBlock) => Err(StoreError::Locked),
+            Err(std::fs::TryLockError::Error(e)) => Err(e.into()),
+        }
+    }
+
+    /// [`Self::lock`], but give a process that is just exiting (a node being restarted) a moment
+    /// to let go. A lock that stays held is reported as [`StoreError::Locked`].
+    pub fn lock_waiting(&self, patience: std::time::Duration) -> Result<StoreLock, StoreError> {
+        let start = std::time::Instant::now();
+        loop {
+            match self.lock() {
+                Err(StoreError::Locked) if start.elapsed() < patience => {
+                    std::thread::sleep(std::time::Duration::from_millis(25));
+                }
+                other => return other,
+            }
         }
     }
 
@@ -85,6 +124,11 @@ impl Store {
                 return Err(LoadError::Corrupt("the saved file is unreadable".to_owned()).into());
             }
         }
+        // Keep the generation being replaced, so one mistake (a removal, a wrong root) can be
+        // taken back even without a snapshot. A copy that cannot be made does not stop the save.
+        if let Ok(old) = std::fs::read(self.path()) {
+            let _ = atomic::write(&self.dir.join(PREVIOUS), &old);
+        }
         Ok(atomic::write(&self.path(), doc.to_toml()?.as_bytes())?)
     }
 
@@ -99,6 +143,15 @@ impl Store {
             }
         }
         Err(StoreError::Exists)
+    }
+
+    /// The saved state as it was before the last save, if there is one.
+    pub fn previous(&self) -> Result<Document, StoreError> {
+        match std::fs::read_to_string(self.dir.join(PREVIOUS)) {
+            Ok(t) => Ok(Document::from_toml_with(&t, self.steps)?),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(StoreError::NotFound),
+            Err(e) => Err(e.into()),
+        }
     }
 
     /// Remove temporary files a crash left behind. They are never read, so this is housekeeping.

@@ -41,6 +41,38 @@ impl Document {
         self.profiles.iter().find(|p| p.name == name)
     }
 
+    /// Make `name` the active profile. False if there is no such profile.
+    pub fn use_profile(&mut self, name: &str) -> bool {
+        let known = self.profile(name).is_some();
+        if known {
+            self.active_profile = name.to_owned();
+        }
+        known
+    }
+
+    /// Add a profile under its own name. Names are plain text and unique; an existing profile is
+    /// never replaced.
+    pub fn add_profile(&mut self, profile: Profile) -> Result<(), ProfileError> {
+        if !valid_profile_name(&profile.name) {
+            return Err(ProfileError::BadName);
+        }
+        if self.profile(&profile.name).is_some() {
+            return Err(ProfileError::Exists);
+        }
+        self.profiles.push(profile);
+        Ok(())
+    }
+
+    /// Copy `from` as `to`, with new identities (see [`Profile::duplicate`]).
+    pub fn duplicate_profile(&mut self, from: &str, to: &str) -> Result<(), ProfileError> {
+        let copy = self
+            .profile(from)
+            .ok_or(ProfileError::Unknown)?
+            .duplicate(to)
+            .map_err(|_| ProfileError::NoRandomness)?;
+        self.add_profile(copy)
+    }
+
     pub fn to_toml(&self) -> Result<String, std::io::Error> {
         toml::to_string_pretty(self).map_err(std::io::Error::other)
     }
@@ -69,4 +101,34 @@ impl Document {
             .try_into()
             .map_err(|e: toml::de::Error| LoadError::Corrupt(e.to_string()))
     }
+}
+
+/// Why a profile change was refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProfileError {
+    BadName,
+    Exists,
+    Unknown,
+    NoRandomness,
+}
+
+impl std::fmt::Display for ProfileError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::BadName => "a profile name is letters, digits, '_', '-' and '.'",
+            Self::Exists => "a profile with that name exists",
+            Self::Unknown => "no such profile",
+            Self::NoRandomness => "cannot make new identities here",
+        })
+    }
+}
+
+impl std::error::Error for ProfileError {}
+
+fn valid_profile_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 64
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.'))
 }

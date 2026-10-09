@@ -156,7 +156,7 @@ driver that reconnects, resumes or replaces under an explicit policy. Not wired 
 
 | 4b-2 | PR #18, merged 597a9e2 (code d0bc152; Ubuntu test re-run after the `control_all` flake below) | as above; 12 new UI tests | Enter starts a saved workspace, `r` looks again, `c` changes its directory, `x` forgets, `v` accepts a changed directory, `t` trusts an import; destructive or trust-granting ones ask first and default to No; a refusal keeps the question open with the reason | not clickable; no export/import UI yet (increment 5) |
 
-| 5 | PR (this branch) | as above; 8 library, 1 node, 8 CLI tests | named snapshots, profiles, one-step undo, export/import as untrusted (new identities, host rewritten, no runtime ids or recorded identity, permission-free flag dropped, nothing starts until trusted); the node holds an exclusive lock on the saved file (a second node runs without persistence and says why; CLI edits are refused while a node runs) | CLI only (no dashboard UI for snapshots or import); solo mode does not save workspaces |
+| 5 | PR #19, merged c7ee7e8 (code 2141b46) | as above; 8 library, 1 node, 8 CLI tests | named snapshots, profiles, one-step undo, export/import as untrusted (new identities, host rewritten, no runtime ids or recorded identity, permission-free flag dropped, nothing starts until trusted); the node holds an exclusive lock on the saved file (a second node runs without persistence and says why; CLI edits are refused while a node runs) | CLI only (no dashboard UI for snapshots or import); solo mode does not save workspaces |
 
 ### Known flaky tests (tracked, not hidden)
 

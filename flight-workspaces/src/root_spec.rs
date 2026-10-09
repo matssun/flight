@@ -52,11 +52,16 @@ impl RootSpec {
         let Some(recorded) = self.identity else {
             return RootCheck::FirstSighting;
         };
-        if recorded != *identity {
+        if !recorded.same_directory(identity) {
             return RootCheck::Changed(format!(
-                "a different directory is at this path now (was device {} inode {}, is device {} \
-                 inode {})",
-                recorded.dev, recorded.ino, identity.dev, identity.ino
+                "a different directory is at this path now (was device {} inode {}{}, is device {} \
+                 inode {}{})",
+                recorded.dev,
+                recorded.ino,
+                born(&recorded),
+                identity.dev,
+                identity.ino,
+                born(identity)
             ));
         }
         match &self.git {
@@ -74,4 +79,9 @@ impl RootSpec {
             self.git = (*git != GitMarker::Unreadable).then(|| git.clone());
         }
     }
+}
+
+fn born(id: &RootIdentity) -> String {
+    id.birth_ns
+        .map_or_else(String::new, |ns| format!(" created {ns}"))
 }

@@ -178,3 +178,48 @@ fn a_clone_that_becomes_a_pointer_file_is_flagged_as_a_layout_change() {
         RootCheck::Changed(_)
     ));
 }
+
+#[test]
+fn a_directory_deleted_and_made_again_is_not_the_same_directory_even_if_it_gets_the_same_inode() {
+    let base = scratch("roots-recreated");
+    let root = base.join("proj");
+    std::fs::create_dir(&root).unwrap();
+    let mut spec = RootSpec::new(path(&root));
+    spec.record(&probe().probe("h", &spec.path));
+    std::fs::remove_dir(&root).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    std::fs::create_dir(&root).unwrap();
+    if std::fs::metadata(&root).and_then(|m| m.created()).is_err() {
+        // No creation time here: nothing distinguishes the two, and that is the documented
+        // limit. Make sure nothing is claimed beyond it.
+        assert!(spec.identity.is_some_and(|i| i.birth_ns.is_none()));
+        return;
+    }
+    let got = spec.check(&probe().probe("h", &spec.path));
+    assert!(matches!(got, RootCheck::Changed(_)), "{got:?}");
+}
+
+#[test]
+fn identities_from_before_creation_times_were_recorded_still_compare_by_device_and_inode() {
+    let old = RootIdentity {
+        dev: 1,
+        ino: 2,
+        birth_ns: None,
+    };
+    let new = RootIdentity {
+        dev: 1,
+        ino: 2,
+        birth_ns: Some(5),
+    };
+    assert!(old.same_directory(&new) && new.same_directory(&old));
+    assert!(!new.same_directory(&RootIdentity {
+        dev: 1,
+        ino: 2,
+        birth_ns: Some(6)
+    }));
+    assert!(!old.same_directory(&RootIdentity {
+        dev: 1,
+        ino: 3,
+        birth_ns: None
+    }));
+}

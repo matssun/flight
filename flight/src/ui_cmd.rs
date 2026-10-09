@@ -83,7 +83,6 @@ fn dashboard(args: &[String]) -> Result<(), String> {
             Some(Handoff::Terminal { id, shown, binding }) => {
                 let outcome = run_session(
                     &link,
-                    &config,
                     SessionRequest {
                         id,
                         shown: shown.clone(),

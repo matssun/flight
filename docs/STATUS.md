@@ -162,7 +162,9 @@ driver that reconnects, resumes or replaces under an explicit policy. Not wired 
 
 | 6b | PR #22, merged 4d63402 | as above, plus 8 live terminal tests (two terminals on two surfaces, own window, own size, no leftover view), fold unit tests, Ubuntu green | each terminal attaches to a view session of its own: keys reach only the window that terminal shows; every pane is still published once; focus kept | tmux 3.7b; views are removed by `destroy-unattached` and by the terminal's cleanup |
 
-| 6c | this PR | as above, plus 25 session unit tests, 12 live session tests, 2 driven end-to-end tests, 3 orchestrator tests | the dashboard keeps its link across terminal sessions; `Ctrl-Space a/s` switches inside the session without rebuilding anything; input is an ordered, bounded log across switches; bounded re-attach; ordered teardown; input read between output frames; keys typed ahead are kept | switch 407 -> 30 ms (0 ms RTT), 1001 -> 262 ms (50 ms RTT); the terminal connection is still dialed per switch; `RevealPane` stays in the dashboard's first open |
+| 6c | PR #23 | as above, plus 25 session unit tests, 12 live session tests, 2 driven end-to-end tests, 3 orchestrator tests | the dashboard keeps its link across terminal sessions; `Ctrl-Space a/s` switches inside the session without rebuilding anything; input is an ordered, bounded log across switches; bounded re-attach; ordered teardown; input read between output frames; keys typed ahead are kept | switch 407 -> 30 ms (0 ms RTT), 1001 -> 262 ms (50 ms RTT); the terminal connection is still dialed per switch; `RevealPane` stays in the dashboard's first open |
+
+| 6d | this PR | as above, plus connection-reuse tests (one connection for five terminals, redial after a cut, a stuck terminal does not starve another) | terminals ride a kept connection from each end; flow-control windows sized so a stalled stream cannot starve its neighbours | switch 1001 -> 198 ms (50 ms RTT), 615 -> 90 ms (20 ms), 407 -> 29 ms; 200 switches leave fds/threads flat |
 
 ### Known flaky tests (tracked, not hidden)
 

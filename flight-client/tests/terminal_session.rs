@@ -310,11 +310,7 @@ impl Rig {
 
     /// Show terminal `id` in a session over the real link, with plain channels.
     fn show(&self, (id, binding): &(Vec<u8>, Binding)) -> Shown {
-        let host = Arc::new(LinkHost::new(
-            self.backend.clone(),
-            self.config.clone(),
-            self.workspace(),
-        ));
+        let host = Arc::new(LinkHost::new(self.backend.clone(), self.workspace()));
         self.show_with(host, id, binding, |_| {})
     }
 
@@ -667,7 +663,7 @@ fn a_presenter_whose_control_connection_dies_stops_renewing_and_the_terminal_goe
     let entered = rig.enter(0);
     let renewals = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let host = Arc::new(KillableLease {
-        inner: LinkHost::new(rig.backend.clone(), rig.config.clone(), rig.workspace()),
+        inner: LinkHost::new(rig.backend.clone(), rig.workspace()),
         control: control.clone(),
         renewals: renewals.clone(),
     });

@@ -7,6 +7,7 @@ use crate::node_terminal::{self, NodeTerminalEnd};
 use crate::outbox::Outbox;
 use crate::paths::NODE_CONNECT;
 use crate::shared::{now, DEFAULT_TERMINAL_STALL, OUTBOX_CAPACITY};
+use crate::terminal_connector::TerminalConnector;
 use crate::unreachable_watch::{jittered, UnreachableWatch};
 use crate::TransportError;
 use flight_node::{error_frame, Control, ControlJob, NodeSession, Round};
@@ -79,6 +80,10 @@ pub struct NodeLink {
     dial_timeout: Duration,
     terminal_stall: Duration,
     unreachable_limit: Option<Duration>,
+    /// The connection for terminal streams, dialed on the first terminal and kept: a terminal is
+    /// one more stream on it, not a new handshake. Made lazily so the builder methods that
+    /// change dialing (`with_dial_timeout`) apply to it.
+    terminals_connection: std::sync::OnceLock<Arc<TerminalConnector>>,
 }
 
 impl NodeLink {
@@ -95,6 +100,7 @@ impl NodeLink {
             dial_timeout: DEFAULT_DIAL_TIMEOUT,
             terminal_stall: DEFAULT_TERMINAL_STALL,
             unreachable_limit: None,
+            terminals_connection: std::sync::OnceLock::new(),
         }
     }
 
@@ -369,11 +375,19 @@ impl NodeLink {
             return;
         };
         let control = self.control.clone();
+        let connector = self
+            .terminals_connection
+            .get_or_init(|| {
+                Arc::new(TerminalConnector::with_dial_timeout(
+                    &self.cfg.address,
+                    self.cfg.identity.clone(),
+                    self.cfg.orchestrator.clone(),
+                    self.dial_timeout,
+                ))
+            })
+            .clone();
         let end = NodeTerminalEnd {
-            address: self.cfg.address.clone(),
-            identity: self.cfg.identity.clone(),
-            orchestrator: self.cfg.orchestrator.clone(),
-            dial_timeout: self.dial_timeout,
+            connector,
             stall: self.terminal_stall,
         };
         let log = self.log.clone();

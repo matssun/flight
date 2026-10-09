@@ -17,6 +17,12 @@ use tower::service_fn;
 pub const DEFAULT_DIAL_TIMEOUT: Duration = Duration::from_secs(5);
 /// HTTP/2 PING cadence and tolerance on the client: a half-open connection is detected.
 const KEEPALIVE: Duration = Duration::from_secs(10);
+/// What each stream and the whole connection may have in flight toward this end before the
+/// sender waits. Streams of a kept connection share its window: a stream nobody reads holds up
+/// to a stream window of it, so the connection window is large enough that several stalled
+/// streams cannot leave a healthy one with nothing.
+pub(crate) const STREAM_WINDOW: u32 = 64 * 1024;
+pub(crate) const CONNECTION_WINDOW: u32 = 2 * 1024 * 1024;
 
 /// An HTTP/2 channel to `address` (`host:port`) over mutual TLS 1.3. The server is accepted
 /// only if its key fingerprint is `expected`; nothing is sent over a connection to any other.
@@ -44,7 +50,9 @@ pub(crate) async fn connect_with(
         .connect_timeout(dial_timeout * 2 + Duration::from_secs(1))
         .http2_keep_alive_interval(KEEPALIVE)
         .keep_alive_timeout(KEEPALIVE)
-        .keep_alive_while_idle(true);
+        .keep_alive_while_idle(true)
+        .initial_stream_window_size(STREAM_WINDOW)
+        .initial_connection_window_size(CONNECTION_WINDOW);
     endpoint
         .connect_with_connector(service_fn(move |_: Uri| {
             let (connector, address, flag) = (connector.clone(), address.clone(), flag.clone());

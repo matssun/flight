@@ -125,7 +125,7 @@ fn where_the_time_of_a_switch_goes() {
         host: pane.pane_ref.host.clone(),
         workspace: pane.workspace.clone(),
     };
-    let host = LinkHost::new(backend.clone(), config.clone(), workspace);
+    let host = LinkHost::new(backend.clone(), workspace);
     let (mut dash_open_t, mut dash_stream_t, mut dash_lease_t, mut dash_total_t) =
         (vec![], vec![], vec![], vec![]);
     let (mut session_open_t, mut session_first_t, mut session_total_t) = (vec![], vec![], vec![]);

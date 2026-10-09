@@ -168,14 +168,6 @@ fn boot() -> Rig {
     }
 }
 
-fn proc_count(pattern: &str) -> usize {
-    std::process::Command::new("pgrep")
-        .args(["-f", pattern])
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).lines().count())
-        .unwrap_or(0)
-}
-
 /// Resident set (KiB), thread count and open descriptors of a pid, by `ps` and `lsof`.
 fn resources(pid: u32) -> (u64, usize, usize) {
     let ps = |field: &str| {
@@ -244,6 +236,7 @@ fn measure_the_surface_switch() {
         rig.clients() == 1 && rig.seen("1:shell*")
     });
 
+    report_resources("before");
     // Alternate agent and shell; time each from the key to the other surface's status marker.
     let rounds: usize = std::env::var("FLIGHT_MEASURE_ROUNDS")
         .ok()
@@ -282,16 +275,20 @@ fn measure_the_surface_switch() {
         percentile(&sorted, 0.95),
         sorted.last().copied().unwrap_or(0.0)
     );
-    // Resources while one surface is shown.
     println!("tmux clients attached: {}", rig.clients());
-    println!("flight processes: {}", proc_count("flight"));
+    report_resources("after");
+}
+
+/// Memory, threads and descriptors of the Flight processes (orchestrator, node, dashboard).
+fn report_resources(when: &str) {
+    // Only the processes of this run: they were all started with this run's directory.
     let pids = std::process::Command::new("pgrep")
-        .args(["-f", "flight.* (node run|orchestrator run|ui run)"])
+        .args(["-f", &format!("fl-ws-{}", std::process::id())])
         .output()
         .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
         .unwrap_or_default();
     for pid in pids.lines().filter_map(|l| l.trim().parse::<u32>().ok()) {
         let (rss, threads, fds) = resources(pid);
-        println!("pid {pid}: rss={rss} KiB threads={threads} fds={fds}");
+        println!("RES {when} pid {pid}: rss={rss} KiB threads={threads} fds={fds}");
     }
 }

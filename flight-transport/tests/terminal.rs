@@ -14,9 +14,10 @@ use flight_proto::{
 };
 use flight_state::ServerId;
 use flight_tmux::{SystemRunner, Tmux, TmuxEndpoint, TmuxRunner};
-use flight_transport::{ServerHandle, TerminalClient, UiClient};
+use flight_transport::{ServerHandle, TerminalClient, TerminalConnector, UiClient};
 use flight_trust::{Fingerprint, Identity};
 use std::process::Command as Process;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use support::*;
@@ -32,7 +33,7 @@ struct Rig {
     server: ServerHandle,
     addr: String,
     orch: Fingerprint,
-    ui_id: Identity,
+    ui_id: Arc<Identity>,
     node_fp: Fingerprint,
     tmux: Tmux,
     tmux_name: String,
@@ -100,7 +101,7 @@ impl Rig {
         servers.allow_terminal(ServerId::new("flight"), endpoint);
 
         let node_id = Arc::new(Identity::generate().unwrap());
-        let ui_id = Identity::generate().unwrap();
+        let ui_id = Arc::new(Identity::generate().unwrap());
         let trust = trust_with(&[(&node_id, "mini-1")], &[(&ui_id, "laptop")]);
         let core = flight_orchestrator::OrchestratorConfig {
             terminal_lease_ttl_secs: ttl,
@@ -800,4 +801,139 @@ async fn fifty_terminals_come_and_go_and_leave_nothing_behind() {
         rig.stop_leasing();
         rig.assert_gone().await;
     }
+}
+
+/// A TCP proxy that counts the connections made through it and can cut them all.
+struct CountingProxy {
+    addr: String,
+    accepted: Arc<AtomicUsize>,
+    cut: watch::Sender<u64>,
+}
+
+impl CountingProxy {
+    async fn start(target: &str) -> Self {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        let accepted = Arc::new(AtomicUsize::new(0));
+        let (cut, mut cut_rx) = watch::channel(0u64);
+        let (target, count) = (target.to_owned(), accepted.clone());
+        tokio::spawn(async move {
+            while let Ok((mut client, _)) = listener.accept().await {
+                count.fetch_add(1, Ordering::Relaxed);
+                // A connection made after a cut is not cut by it.
+                cut_rx.borrow_and_update();
+                let (target, mut cut_rx) = (target.clone(), cut_rx.clone());
+                tokio::spawn(async move {
+                    let Ok(mut server) = tokio::net::TcpStream::connect(&target).await else {
+                        return;
+                    };
+                    tokio::select! {
+                        _ = tokio::io::copy_bidirectional(&mut client, &mut server) => {}
+                        _ = cut_rx.changed() => {}
+                    }
+                });
+            }
+        });
+        Self {
+            addr,
+            accepted,
+            cut,
+        }
+    }
+
+    fn connections(&self) -> usize {
+        self.accepted.load(Ordering::Relaxed)
+    }
+
+    fn cut_all(&self) {
+        self.cut.send_modify(|n| *n += 1);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn terminals_ride_one_kept_connection_and_a_dead_one_is_dialed_again() {
+    if !tmux_available() {
+        return;
+    }
+    let (mut rig, pane, pid) = Rig::start("kept", "cat").await;
+    let proxy = CountingProxy::start(&rig.addr).await;
+    let connector = TerminalConnector::new(&proxy.addr, rig.ui_id.clone(), rig.orch.clone());
+    for round in 0..5 {
+        let id = rig.open(&pane, pid).await.expect("terminal opens");
+        let mut term = connector.connect_ui(&id).await.expect("terminal");
+        term.send(TerminalFrame::data(format!("kept-{round}\r").into_bytes()))
+            .await
+            .unwrap();
+        read_until(&mut term, &format!("kept-{round}")).await;
+        term.send(TerminalFrame {
+            body: Some(terminal_body::Body::Close(TerminalClose {})),
+        })
+        .await
+        .unwrap();
+        drop(term);
+        rig.wait_clients(0).await;
+    }
+    assert_eq!(proxy.connections(), 1, "one connection for five terminals");
+
+    // The kept connection dies (the orchestrator moved, the network dropped): the next terminal
+    // dials once and the one after rides that.
+    proxy.cut_all();
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    for round in 0..2 {
+        let id = rig.open(&pane, pid).await.expect("terminal opens");
+        let mut term = connector
+            .connect_ui(&id)
+            .await
+            .expect("terminal after the cut");
+        term.send(TerminalFrame::data(format!("again-{round}\r").into_bytes()))
+            .await
+            .unwrap();
+        read_until(&mut term, &format!("again-{round}")).await;
+        term.send(TerminalFrame {
+            body: Some(terminal_body::Body::Close(TerminalClose {})),
+        })
+        .await
+        .unwrap();
+        drop(term);
+        rig.wait_clients(0).await;
+    }
+    assert_eq!(
+        proxy.connections(),
+        2,
+        "one more dial, not one per terminal"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_terminal_nobody_reads_does_not_starve_another_on_the_same_connection() {
+    if !tmux_available() {
+        return;
+    }
+    // The pane floods the terminal and echoes what it is sent.
+    let (mut rig, pane, pid) = Rig::start(
+        "starve",
+        "sh -c 'while :; do printf \"%0900d\\n\" 0; sleep 0.001; done & exec cat'",
+    )
+    .await;
+    let connector = TerminalConnector::new(&rig.addr, rig.ui_id.clone(), rig.orch.clone());
+    // One terminal whose reader is stuck: it holds as much of the connection as it can.
+    let stuck_id = rig.open(&pane, pid).await.expect("first terminal");
+    let _stuck = connector
+        .connect_ui(&stuck_id)
+        .await
+        .expect("stuck terminal");
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    // A second one, on the same connection, is as responsive as ever.
+    let id = rig.open(&pane, pid).await.expect("second terminal");
+    let mut term = connector.connect_ui(&id).await.expect("terminal");
+    let started = Instant::now();
+    term.send(TerminalFrame::data(b"still-here\r".to_vec()))
+        .await
+        .unwrap();
+    read_until(&mut term, "still-here").await;
+    assert!(
+        started.elapsed() < Duration::from_secs(3),
+        "took {:?}",
+        started.elapsed()
+    );
 }

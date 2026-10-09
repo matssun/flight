@@ -12,7 +12,7 @@ use flight_proto::{
     SurfaceKindCode, TerminalLease, UiEvent, UiRequest,
 };
 use flight_state::PaneRef;
-use flight_transport::UiClient;
+use flight_transport::{TerminalConnector, UiClient};
 use flight_trust::{ConnectionConfig, Fingerprint, Identity, TrustError};
 use flight_ui::{
     Backend, CreateFailure, NewSessionRequest, NewSurfaceRequest, PanePreview, PaneView, Program,
@@ -121,6 +121,8 @@ pub struct OrchestratedBackend {
 
 /// The link itself: shared by every handle.
 struct Link {
+    /// The connection terminal streams ride, kept between terminals.
+    terminals: Arc<TerminalConnector>,
     runtime: Runtime,
     state: Shared,
     requests: mpsc::Sender<LinkRequest>,
@@ -139,12 +141,18 @@ impl OrchestratedBackend {
             .worker_threads(2)
             .enable_all()
             .build()?;
+        let terminals = Arc::new(TerminalConnector::new(
+            &config.address,
+            config.identity.clone(),
+            config.orchestrator.clone(),
+        ));
         let state: Shared = Arc::default();
         let (requests, rx) = mpsc::channel(16);
         let (stop, stop_rx) = watch::channel(false);
         runtime.spawn(link_loop(config, state.clone(), rx, stop_rx));
         Ok(Self {
             inner: Arc::new(Link {
+                terminals,
                 runtime,
                 state,
                 requests,
@@ -175,6 +183,12 @@ impl OrchestratedBackend {
     /// runs here too, so there is one set of worker threads and one place to stop them.
     pub fn runtime(&self) -> &Runtime {
         &self.inner.runtime
+    }
+
+    /// The connection for terminal streams: one is dialed on first use and kept, so showing a
+    /// surface is one more stream on a connection that is already up.
+    pub(crate) fn terminals(&self) -> &TerminalConnector {
+        &self.inner.terminals
     }
 
     /// The fleet as the link last saw it, for finding the surface to show.

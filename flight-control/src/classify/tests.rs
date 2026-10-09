@@ -49,6 +49,17 @@ fn ssh_auth_failures_are_distinct() {
 }
 
 #[test]
+fn a_server_that_goes_away_mid_command_is_a_missing_server() {
+    // Seen on Linux CI: a list issued right after a kill reached the dying server.
+    for transport in [Transport::Local, ssh()] {
+        assert_eq!(
+            classify(&transport, &failed(1, "server exited unexpectedly")),
+            HostError::TmuxServerUnavailable
+        );
+    }
+}
+
+#[test]
 fn missing_tmux_is_distinct_from_a_missing_server() {
     assert_eq!(
         classify(&ssh(), &failed(127, "bash: tmux: command not found")),

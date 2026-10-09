@@ -15,10 +15,13 @@ const AUTH_MARKERS: [&str; 3] = [
     "host key verification failed",
     "too many authentication failures",
 ];
-const NO_SERVER_MARKERS: [&str; 3] = [
+const NO_SERVER_MARKERS: [&str; 4] = [
     "no server running",
     "error connecting to",
     "failed to connect to server",
+    // What a client says when the server goes away while it is talking to it: the same fact,
+    // seen a moment later (for example a list right after a kill).
+    "server exited unexpectedly",
 ];
 const NOT_FOUND_MARKERS: [&str; 2] = ["command not found", "not found"];
 

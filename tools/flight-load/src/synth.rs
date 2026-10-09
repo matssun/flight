@@ -202,6 +202,7 @@ pub async fn run(a: Args) -> Result<(), String> {
                     .lines()
                     .map(str::to_owned)
                     .collect(),
+                placement: Default::default(),
             })
             .collect();
         let now = SystemTime::now()

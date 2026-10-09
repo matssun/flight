@@ -41,7 +41,7 @@ impl TmuxRunner for &Fake {
 
 #[test]
 fn list_panes_passes_format_and_parses() {
-    let f = Fake::ok("%1\ts\tw\t@1\t0\t/\t7\t1\t1\t1\tzsh\t1700\t0\tt\n");
+    let f = Fake::ok("%1\ts\tw\t@1\t0\t/\t7\t1\t1\t1\tzsh\t1700\t0\t\t\t\t/\t$1\tt\n");
     let panes = Tmux::with_runner(&f).list_panes().unwrap();
     assert_eq!(panes.len(), 1);
     assert_eq!(f.calls.borrow()[0][..3], ["list-panes", "-a", "-F"]);

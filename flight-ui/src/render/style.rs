@@ -2,7 +2,7 @@
 
 //! How states and health look. Presentation only: the meaning lives in `flight-state`.
 
-use crate::snapshot::HostHealth;
+use crate::snapshot::{HostHealth, Surface, SurfaceKind};
 use crate::view::Tier;
 use flight_state::AgentState;
 use ratatui::style::{Color, Modifier, Style};
@@ -77,10 +77,21 @@ pub fn health_look(h: &HostHealth) -> (&'static str, String, Color) {
         HostHealth::Online => ("●", "online".to_owned(), Color::Green),
         HostHealth::Stale => ("!", "no news lately (last known)".to_owned(), Color::Yellow),
         HostHealth::Disconnected => ("!", "disconnected (last known)".to_owned(), Color::Red),
-        HostHealth::NoServer => ("○", "no sessions yet".to_owned(), Color::DarkGray),
+        HostHealth::NoServer => ("○", "no workspaces yet".to_owned(), Color::DarkGray),
         HostHealth::Unreachable(_) => ("!", "unreachable".to_owned(), Color::Red),
         HostHealth::AuthFailed(_) => ("!", "authentication failed".to_owned(), Color::Red),
-        HostHealth::NoTmux => ("!", "cannot run sessions".to_owned(), Color::Red),
+        HostHealth::NoTmux => ("!", "cannot run workspaces".to_owned(), Color::Red),
         HostHealth::Failed(_) => ("!", "error".to_owned(), Color::Red),
     }
+}
+
+/// What to say of a surface and in which colour. A shell that is just a shell is "ready"; an
+/// agent (or anything else running in a shell surface) is described by its state.
+pub fn surface_status(s: &Surface) -> (&'static str, Color) {
+    let state = s.pane.state;
+    if s.kind == SurfaceKind::Shell && state == AgentState::Shell {
+        return ("ready", Color::Green);
+    }
+    let (_, label, colour) = state_look(state);
+    (label, colour)
 }

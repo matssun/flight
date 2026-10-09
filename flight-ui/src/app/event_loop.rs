@@ -4,7 +4,8 @@ use super::keys::action_for;
 use super::worker::{Cmd, Msg, Worker};
 use crate::collect::Backend;
 use crate::render::{render, session_at};
-use crate::view::{Action, Effect, ViewModel};
+use crate::snapshot::WorkspaceKey;
+use crate::view::{Action, Effect, SurfaceChoice, ViewModel};
 use crossterm::event::{
     self, DisableMouseCapture, EnableMouseCapture, Event, KeyEventKind, MouseButton, MouseEvent,
     MouseEventKind,
@@ -51,12 +52,37 @@ pub fn run_with_notice(
     refresh_every: Duration,
     notice: Option<String>,
 ) -> io::Result<Exit> {
+    run_with_start(
+        backend,
+        refresh_every,
+        Start {
+            notice,
+            resume: None,
+        },
+    )
+}
+
+/// How the dashboard begins: with a line to show (for example why a terminal ended), and
+/// optionally a surface to open the moment it is listed (the user left a terminal in order to
+/// switch to its workspace's other surface).
+#[derive(Debug, Clone, Default)]
+pub struct Start {
+    pub notice: Option<String>,
+    pub resume: Option<(WorkspaceKey, SurfaceChoice)>,
+}
+
+/// [`run`], beginning as `start` says.
+pub fn run_with_start(
+    backend: impl Backend + 'static,
+    refresh_every: Duration,
+    start: Start,
+) -> io::Result<Exit> {
     enable_raw_mode()?;
     let _guard = TerminalGuard;
     execute!(io::stdout(), EnterAlternateScreen, EnableMouseCapture)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
     let mut worker = Worker::spawn(Box::new(backend), refresh_every);
-    let exit = event_loop(&mut terminal, &mut worker, notice);
+    let exit = event_loop(&mut terminal, &mut worker, start);
     worker.shutdown();
     exit
 }
@@ -64,10 +90,13 @@ pub fn run_with_notice(
 fn event_loop(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     worker: &mut Worker,
-    notice: Option<String>,
+    start: Start,
 ) -> io::Result<Exit> {
     let mut vm = ViewModel::new();
-    vm.set_message(notice);
+    vm.set_message(start.notice);
+    if let Some((key, choice)) = start.resume {
+        vm.resume(key, choice);
+    }
     let mut last_click: Option<(flight_state::PaneRef, Instant)> = None;
     loop {
         terminal.draw(|f| render(f, &vm))?;
@@ -152,6 +181,9 @@ fn handle(worker: &Worker, effect: Effect) -> Option<Exit> {
         Effect::Create(request) => {
             let _ = worker.tx.send(Cmd::Create(request));
         }
+        Effect::CreateSurface(request) => {
+            let _ = worker.tx.send(Cmd::CreateSurface(request));
+        }
     }
     None
 }
@@ -169,6 +201,10 @@ fn on_message(vm: &mut ViewModel, worker: &Worker, msg: Msg) -> Option<Exit> {
         Msg::Created(request, result) => {
             vm.apply_created(&request, result);
             None
+        }
+        Msg::SurfaceCreated(request, result) => {
+            let effect = vm.apply_surface_created(&request, result);
+            handle(worker, effect)
         }
         Msg::Switched(Ok(())) => Some(Exit::Switched),
         Msg::Switched(Err(e)) => {

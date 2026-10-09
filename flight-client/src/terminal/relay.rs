@@ -5,6 +5,7 @@ use flight_proto::{
     terminal_body, TerminalClose, TerminalFrame, TerminalResize, MAX_TERMINAL_DATA,
 };
 use flight_transport::{TerminalReceiver, TerminalSender};
+use flight_ui::SurfaceChoice;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -28,6 +29,7 @@ pub async fn relay(
     output: mpsc::Sender<Vec<u8>>,
     hint: impl Fn() + Send + 'static,
     mut lease: Lease,
+    showing: Option<SurfaceChoice>,
 ) -> TerminalEnd {
     let from_remote = tokio::spawn(async move {
         loop {
@@ -54,7 +56,7 @@ pub async fn relay(
         }
     });
     let to_remote = tokio::spawn(async move {
-        let mut filter = EscapeFilter::default();
+        let mut filter = EscapeFilter::showing(showing);
         loop {
             tokio::select! {
                 bytes = input.recv() => {
@@ -71,6 +73,10 @@ pub async fn relay(
                         EscapeAction::Leave => {
                             let _ = sender.send(frame(terminal_body::Body::Close(TerminalClose {}))).await;
                             return (TerminalEnd::UserLeft, sender);
+                        }
+                        EscapeAction::Switch(choice) => {
+                            let _ = sender.send(frame(terminal_body::Body::Close(TerminalClose {}))).await;
+                            return (TerminalEnd::SwitchTo(choice), sender);
                         }
                         EscapeAction::Hint => hint(),
                         EscapeAction::None => {}

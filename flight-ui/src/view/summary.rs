@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 
+use super::lists::workspaces;
 use crate::snapshot::{HostHealth, UiSnapshot};
 use flight_state::AgentState;
 use std::collections::BTreeSet;
 
-/// Counts for the header strip, over every session regardless of the search.
+/// Counts for the header strip, over every workspace regardless of the search.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Summary {
     /// Waiting for approval or asking a question.
@@ -30,24 +31,25 @@ impl Summary {
             if matches!(h.health, HostHealth::Online | HostHealth::NoServer) {
                 up.insert(&h.host);
             }
-            for p in &h.panes {
-                let slot = match p.state {
-                    AgentState::Permit | AgentState::Question => &mut out.need_you,
-                    AgentState::Done => &mut out.ready,
-                    AgentState::Busy => &mut out.working,
-                    AgentState::Idle => &mut out.idle,
-                    AgentState::Shell => &mut out.shell,
-                    AgentState::Down => &mut out.down,
-                };
-                *slot = slot.saturating_add(1);
-            }
+        }
+        // One count per workspace, by its state: a workspace's shell is not another session.
+        for w in workspaces(s, "") {
+            let slot = match w.state() {
+                AgentState::Permit | AgentState::Question => &mut out.need_you,
+                AgentState::Done => &mut out.ready,
+                AgentState::Busy => &mut out.working,
+                AgentState::Idle => &mut out.idle,
+                AgentState::Shell => &mut out.shell,
+                AgentState::Down => &mut out.down,
+            };
+            *slot = slot.saturating_add(1);
         }
         out.hosts = all.len();
         out.hosts_up = up.len();
         out
     }
 
-    pub fn sessions(&self) -> usize {
+    pub fn workspaces(&self) -> usize {
         [
             self.need_you,
             self.ready,

@@ -43,8 +43,10 @@ pub fn hints_line(vm: &ViewModel, width: usize) -> Line<'static> {
     // Most important first: what does not fit is dropped from the right.
     let items = vec![
         hint("n", "New"),
-        hint("/", "Search"),
         hint("Enter", "Open"),
+        hint("a", "Agent"),
+        hint("s", "Shell"),
+        hint("/", "Search"),
         hint("?", "Help"),
         hint("q", "Quit"),
         hint("↑↓", "Move"),

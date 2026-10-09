@@ -7,5 +7,7 @@ pub enum InputMode {
     /// Typing a search.
     Search,
     Form,
+    /// The companion-shell prompt.
+    Prompt,
     Help,
 }

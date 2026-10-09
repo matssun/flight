@@ -86,7 +86,7 @@ fn once(collector: &mut Collector) -> Result<(), String> {
         .map_or(0, |d| d.as_secs());
     let mut vm = ViewModel::new();
     vm.apply_snapshot(collector.collect(now));
-    if let Some(sel) = vm.selected().cloned() {
+    if let Some(sel) = vm.selected() {
         vm.apply_preview(Some(collector.preview(&sel)));
     }
     println!("{}", render_to_string(&vm, 110, 32));

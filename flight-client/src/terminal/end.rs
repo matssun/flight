@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use flight_proto::ExitReasonCode;
+use flight_ui::SurfaceChoice;
 use std::fmt;
 
 /// How a terminal session ended, in words for the person who was using it.
@@ -8,6 +9,8 @@ use std::fmt;
 pub enum TerminalEnd {
     /// The user used the local escape.
     UserLeft,
+    /// The user asked for the workspace's other surface (`Ctrl-Space` then `a` or `s`).
+    SwitchTo(SurfaceChoice),
     /// The node reported the end.
     Exited { reason: ExitReasonCode, status: i32 },
     /// The connection failed or broke without a report.
@@ -18,6 +21,7 @@ impl fmt::Display for TerminalEnd {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UserLeft => f.write_str("left the terminal"),
+            Self::SwitchTo(choice) => write!(f, "switching to the {}", choice.label()),
             Self::Exited { reason, status } => match reason {
                 ExitReasonCode::ClientExited if *status == 0 => {
                     f.write_str("the remote tmux client ended (detached or the session closed)")

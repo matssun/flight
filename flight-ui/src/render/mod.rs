@@ -9,6 +9,7 @@ mod help;
 mod layout;
 mod list_view;
 mod preview_view;
+mod prompt_lines;
 mod scroll;
 mod style;
 mod text;

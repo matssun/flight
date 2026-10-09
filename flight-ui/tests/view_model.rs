@@ -6,7 +6,9 @@
 mod support;
 
 use flight_state::AgentState::{Busy, Done, Idle, Permit, Question, Shell};
-use flight_ui::{sessions, Action, Effect, FilterInput, InputMode, Summary, Tier, ViewModel};
+use flight_ui::{
+    workspaces as sessions_of, Action, Effect, FilterInput, InputMode, Summary, Tier, ViewModel,
+};
 use support::*;
 
 fn fleet(states: [flight_state::AgentState; 4]) -> flight_ui::UiSnapshot {
@@ -44,7 +46,7 @@ fn type_search(vm: &mut ViewModel, text: &str) {
 #[test]
 fn sessions_are_listed_most_urgent_first_whatever_the_input_order() {
     let s = fleet([Idle, Busy, Done, Permit]);
-    let order: Vec<_> = sessions(&s, "").iter().map(|p| p.state).collect();
+    let order: Vec<_> = sessions_of(&s, "").iter().map(|w| w.state()).collect();
     assert_eq!(order, [Permit, Done, Busy, Idle]);
     let all = snap(vec![online(
         "h",
@@ -58,9 +60,9 @@ fn sessions_are_listed_most_urgent_first_whatever_the_input_order() {
             pane("h", "g", "%7", Permit),
         ],
     )]);
-    let names: Vec<_> = sessions(&all, "")
+    let names: Vec<_> = sessions_of(&all, "")
         .iter()
-        .map(|p| p.session.clone())
+        .map(|w| w.name.clone())
         .collect();
     assert_eq!(names, ["g", "f", "e", "d", "c", "b", "a"]);
 }
@@ -79,18 +81,18 @@ fn tiers_group_what_needs_you_from_what_works_and_what_rests() {
 #[test]
 fn first_snapshot_selects_the_most_urgent_session() {
     let vm = vm_with(fleet([Busy, Question, Permit, Idle]));
-    assert_eq!(vm.selected(), Some(&pref("macbook", "%1")));
+    assert_eq!(vm.selected(), Some(pref("macbook", "%1")));
 }
 
 #[test]
 fn selection_stays_on_the_same_session_when_states_reorder_the_list() {
     let mut vm = vm_with(fleet([Done, Question, Permit, Busy]));
     vm.apply(Action::Down); // Permit, then Question
-    assert_eq!(vm.selected(), Some(&pref("mini-1", "%2")));
+    assert_eq!(vm.selected(), Some(pref("mini-1", "%2")));
     vm.apply_snapshot(fleet([Permit, Question, Idle, Busy]));
     assert_eq!(
         vm.selected(),
-        Some(&pref("mini-1", "%2")),
+        Some(pref("mini-1", "%2")),
         "the cursor did not jump to another session"
     );
 }
@@ -99,9 +101,9 @@ fn selection_stays_on_the_same_session_when_states_reorder_the_list() {
 fn selection_follows_its_session_to_another_group_without_a_new_preview() {
     let mut vm = vm_with(fleet([Done, Question, Permit, Busy]));
     vm.apply(Action::Down);
-    assert_eq!(vm.selected(), Some(&pref("mini-1", "%2")));
+    assert_eq!(vm.selected(), Some(pref("mini-1", "%2")));
     let e = vm.apply_snapshot(fleet([Done, Busy, Permit, Busy])); // the question was answered
-    assert_eq!(vm.selected(), Some(&pref("mini-1", "%2")));
+    assert_eq!(vm.selected(), Some(pref("mini-1", "%2")));
     assert_eq!(e, Effect::None, "same session, so no new preview request");
 }
 
@@ -115,7 +117,7 @@ fn a_vanished_session_falls_back_to_its_neighbour_not_to_nothing() {
     ]);
     let e = vm.apply_snapshot(gone);
     assert!(vm.selected().is_some());
-    assert_eq!(e, Effect::Select(vm.selected().cloned()));
+    assert_eq!(e, Effect::Select(vm.selected()));
 }
 
 #[test]
@@ -164,7 +166,7 @@ fn clicking_a_listed_session_selects_it_and_anything_else_is_ignored() {
         vm.apply(Action::Select(pref("nowhere", "%9"))),
         Effect::None
     );
-    assert_eq!(vm.selected(), Some(&pref("macbook", "%2")));
+    assert_eq!(vm.selected(), Some(pref("macbook", "%2")));
 }
 
 #[test]
@@ -196,7 +198,7 @@ fn a_stale_preview_is_never_shown_for_another_session() {
 fn search_matches_session_host_and_agent_ignoring_case() {
     let s = fleet([Busy, Busy, Busy, Busy]);
     let names =
-        |f: &str| -> Vec<String> { sessions(&s, f).iter().map(|p| p.session.clone()).collect() };
+        |f: &str| -> Vec<String> { sessions_of(&s, f).iter().map(|w| w.name.clone()).collect() };
     assert_eq!(names("NGA"), ["nga"]);
     assert_eq!(names("macbook"), ["hyperrag", "mcp-re"]);
     assert_eq!(names("claude").len(), 4, "agent kind");
@@ -211,7 +213,7 @@ fn typing_a_search_narrows_the_list_and_keeps_the_cursor_on_a_listed_session() {
     type_search(&mut vm, "mcp");
     assert_eq!(vm.input_mode(), InputMode::Search);
     assert_eq!(vm.filter(), "mcp");
-    assert_eq!(vm.selected(), Some(&pref("macbook", "%2")));
+    assert_eq!(vm.selected(), Some(pref("macbook", "%2")));
     assert_eq!(vm.listed().len(), 1);
     // Enter keeps the filter and returns keys to the dashboard.
     vm.apply(Action::Filter(FilterInput::Accept));
@@ -265,12 +267,12 @@ fn the_summary_counts_every_session_and_host_regardless_of_the_search() {
             sum.ready,
             sum.working,
             sum.idle,
-            sum.sessions()
+            sum.workspaces()
         ),
         (2, 1, 1, 0, 4)
     );
     assert_eq!((sum.hosts, sum.hosts_up), (3, 2));
     let mut vm = vm_with(s);
     type_search(&mut vm, "nga");
-    assert_eq!(Summary::of(vm.snapshot()).sessions(), 4);
+    assert_eq!(Summary::of(vm.snapshot()).workspaces(), 4);
 }

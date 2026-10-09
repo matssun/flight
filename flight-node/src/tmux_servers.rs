@@ -1,16 +1,21 @@
 // SPDX-License-Identifier: MIT
 
 use crate::pane_agent;
-use crate::session_create::create;
+use crate::round::raw_placement;
+use crate::session_create::{create, new_id};
 use crate::{
     tmux_attach_command, Control, ControlError, OpenedTerminal, PaneObservation, Round,
-    ServerOutcome, SessionEnv, SessionRequest, TerminalProcess, TerminalSpec, Unavailable,
+    ServerOutcome, SessionEnv, SessionRequest, SurfaceRequest, TerminalProcess, TerminalSpec,
+    Unavailable,
 };
 use flight_proto::ErrorKindCode;
-use flight_state::{PaneId, ServerId};
-use flight_tmux::{Tmux, TmuxEndpoint, TmuxError, TmuxRunner};
+use flight_state::{HostId, PaneId, ServerId, SurfaceRole, WorkspaceId};
+use flight_tmux::{
+    CreateError, Launch, SurfaceMark, SurfaceTag, Tmux, TmuxEndpoint, TmuxError, TmuxRunner,
+};
 use std::collections::BTreeMap;
 use std::io::ErrorKind;
+use std::sync::Mutex;
 
 /// Lines captured per agent pane for classification (Fleet's scrape window).
 pub(crate) const SCRAPE_LINES: u32 = 50;
@@ -30,6 +35,9 @@ pub struct TmuxServers {
     terminals: BTreeMap<ServerId, TmuxEndpoint>,
     /// What a created session may start from: `PATH` and `~`.
     session_env: SessionEnv,
+    /// Surface creation checks "no shell yet" and then adds one: one at a time, so two
+    /// requests cannot both pass the check.
+    surfaces: Mutex<()>,
 }
 
 impl TmuxServers {
@@ -74,6 +82,27 @@ impl TmuxServers {
             now,
             outcome: observe_server(tmux),
         })
+    }
+
+    /// The server a workspace lives on and the panes of its surfaces, read live from the
+    /// backend. The workspace is found by its id, never by a name or a backend id the caller
+    /// supplied.
+    fn workspace_panes(
+        &self,
+        host: &HostId,
+        id: &WorkspaceId,
+    ) -> Result<(ServerId, Vec<flight_tmux::PaneInfo>), ControlError> {
+        for (server, tmux) in &self.servers {
+            let Ok(all) = tmux.list_panes() else { continue };
+            let panes: Vec<_> = all
+                .into_iter()
+                .filter(|p| raw_placement(p).workspace(host, server) == *id)
+                .collect();
+            if !panes.is_empty() {
+                return Ok((server.clone(), panes));
+            }
+        }
+        Err(unknown_workspace(id))
     }
 
     fn tmux(
@@ -260,6 +289,60 @@ impl Control for TmuxServers {
         let tmux = self.tmux(server)?;
         create(tmux, request, &self.session_env, failed)
     }
+
+    fn create_surface(&self, request: &SurfaceRequest) -> Result<(), ControlError> {
+        let _one_at_a_time = self.surfaces.lock().unwrap_or_else(|p| p.into_inner());
+        let (server, panes) = self.workspace_panes(&request.host, &request.workspace_id)?;
+        let tmux = self.tmux(&server)?;
+        let is_shell = |p: &flight_tmux::PaneInfo| {
+            let runs_agent = pane_agent(p).is_some_and(|a| a != flight_classify::AgentKind::Other);
+            raw_placement(p).role(runs_agent) == SurfaceRole::Shell
+        };
+        if panes.iter().any(is_shell) {
+            return Err(ControlError::new(
+                ErrorKindCode::AlreadyExists,
+                "this workspace already has a shell",
+            ));
+        }
+        let first = panes
+            .first()
+            .ok_or_else(|| unknown_workspace(&request.workspace_id))?;
+        if first.session_path.is_empty() {
+            return Err(ControlError::new(
+                ErrorKindCode::InvalidDirectory,
+                "this workspace has no known root directory",
+            ));
+        }
+        let mark = SurfaceMark {
+            workspace_id: request.workspace_id.to_string(),
+            surface_id: new_id('s')?,
+            kind: SurfaceTag::Shell,
+        };
+        match tmux.create_surface_window(
+            &first.session_id,
+            &first.session_path,
+            &Launch::DefaultShell,
+            &mark,
+        ) {
+            Ok(_window) => Ok(()),
+            Err(CreateError::Exited) => Err(ControlError::new(
+                ErrorKindCode::ProgramUnavailable,
+                "the shell exited as soon as it started; nothing was created",
+            )),
+            Err(CreateError::AlreadyExists) => Err(ControlError::new(
+                ErrorKindCode::AlreadyExists,
+                "this workspace already has a shell",
+            )),
+            Err(CreateError::Tmux(e)) => Err(failed(e)),
+        }
+    }
+}
+
+fn unknown_workspace(id: &WorkspaceId) -> ControlError {
+    ControlError::new(
+        ErrorKindCode::UnknownWorkspace,
+        format!("no workspace {id} on this node"),
+    )
 }
 
 /// The whole environment of a terminal's tmux client: nothing is inherited but where to find

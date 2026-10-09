@@ -18,14 +18,19 @@ pub const KILL: &str = "kill";
 /// whose program it would silently ignore.
 pub const CREATE_SESSION: &str = "create_session_v1";
 
+/// Create a surface (a companion shell) for an existing workspace, named by workspace id alone:
+/// the node resolves the host's directory and session from the workspace itself.
+pub const CREATE_SURFACE: &str = "create_surface_v1";
+
 /// Every capability this build knows about.
-pub const KNOWN: [&str; 6] = [
+pub const KNOWN: [&str; 7] = [
     PREVIEW,
     GUARDED_REVEAL,
     TERMINAL,
     SEND_INPUT,
     KILL,
     CREATE_SESSION,
+    CREATE_SURFACE,
 ];
 
 /// The offered capabilities that `supported` also contains, in offered order, without

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 
 use super::resolve_pane::resolve_pane;
-use crate::snapshot::{HostHealth, HostView, PanePreview, PaneView, UiSnapshot};
-use flight_classify::{detect_agent, prune_tracking, why, ResolvedState};
+use crate::snapshot::{HostHealth, HostView, PanePreview, PaneView, SurfaceKind, UiSnapshot};
+use flight_classify::{detect_agent, prune_tracking, why, AgentKind, ResolvedState};
 use flight_control::{HostError, HostPane, HostRegistry, PanesOutcome};
-use flight_state::{HostId, PaneRef, ServerId};
+use flight_state::{HostId, PaneRef, RawPlacement, ServerId, SurfaceRole};
 use std::collections::{HashMap, HashSet};
 
 /// Lines captured for the preview of the selected pane.
@@ -96,6 +96,14 @@ impl Collector {
             self.resolved.get(&p.pane_ref),
             now,
         );
+        let placement = RawPlacement {
+            workspace_id: p.info.workspace_id.clone(),
+            surface_id: p.info.surface_id.clone(),
+            surface_kind: p.info.surface_kind.clone(),
+            window_id: p.info.window_id.clone(),
+            session_id: p.info.session_id.clone(),
+            session_path: p.info.session_path.clone(),
+        };
         let view = PaneView {
             pane_ref: p.pane_ref.clone(),
             session: p.info.session_name.clone(),
@@ -105,6 +113,13 @@ impl Collector {
             why: why(&resolved),
             title: p.info.pane_title.clone(),
             pid: p.info.pane_pid,
+            workspace: placement.workspace(&p.pane_ref.host, &p.pane_ref.server),
+            surface: placement.surface(&p.pane_ref.host, &p.pane_ref.server),
+            kind: match placement.role(agent != AgentKind::Other) {
+                SurfaceRole::Agent => SurfaceKind::Agent(agent),
+                SurfaceRole::Shell => SurfaceKind::Shell,
+            },
+            root: placement.root(&p.info.current_path).to_owned(),
         };
         self.resolved.insert(p.pane_ref.clone(), resolved);
         Some(view)

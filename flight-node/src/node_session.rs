@@ -1,22 +1,26 @@
 // SPDX-License-Identifier: MIT
 
 use crate::control::response_frame;
-use crate::{ControlError, ControlJob, NodeCore, Program, Round, SessionRequest, TerminalSpec};
+use crate::{
+    ControlError, ControlJob, NewSurface, NodeCore, Program, Round, SessionRequest, SurfaceRequest,
+    TerminalSpec,
+};
 use flight_proto::{
     capability, command_kind::Kind, node_body, orchestrator_body, Command, ErrorKindCode,
     Heartbeat, NodeFrame, NodeHello, OrchestratorFrame, PaneRefMsg, ProgramCode, ProtocolVersion,
-    Request, Validate, CURRENT_VERSION, TERMINAL_ID_LEN,
+    Request, SurfaceKindCode, Validate, CURRENT_VERSION, TERMINAL_ID_LEN,
 };
-use flight_state::PaneRef;
+use flight_state::{PaneRef, WorkspaceId};
 
 /// What this node can do. `send_input` is not offered: there is no input path yet. A node
 /// never switches a client (it has none): it reveals a pane in its own tmux hierarchy.
-pub const ADVERTISED_CAPABILITIES: [&str; 5] = [
+pub const ADVERTISED_CAPABILITIES: [&str; 6] = [
     capability::PREVIEW,
     capability::GUARDED_REVEAL,
     capability::TERMINAL,
     capability::KILL,
     capability::CREATE_SESSION,
+    capability::CREATE_SURFACE,
 ];
 
 /// Frames to send, control work to run, and whether the node should close the stream.
@@ -227,6 +231,32 @@ impl NodeSession {
                         name: c.name.clone(),
                         dir: c.dir.clone(),
                         program,
+                    },
+                ))
+            }
+            Some(Kind::CreateSurface(c)) => {
+                need(capability::CREATE_SURFACE)?;
+                let kind = match SurfaceKindCode::try_from(c.kind) {
+                    Ok(SurfaceKindCode::Shell) => NewSurface::Shell,
+                    Ok(SurfaceKindCode::Agent) => {
+                        return Err(ControlError::new(
+                            ErrorKindCode::Unsupported,
+                            "an agent is created with its workspace, not added to it",
+                        ))
+                    }
+                    _ => {
+                        return Err(ControlError::new(
+                            ErrorKindCode::InvalidRequest,
+                            "unknown surface kind",
+                        ))
+                    }
+                };
+                Ok(ControlJob::create_surface(
+                    id,
+                    SurfaceRequest {
+                        host: self.core.host().clone(),
+                        workspace_id: WorkspaceId::new(&c.workspace_id),
+                        kind,
                     },
                 ))
             }

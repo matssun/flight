@@ -174,6 +174,7 @@ pub fn obs(pane: &str, pid: u32, screen: &str) -> PaneObservation {
         title: String::new(),
         focused: false,
         screen_lines: screen.lines().map(str::to_owned).collect(),
+        placement: Default::default(),
     }
 }
 

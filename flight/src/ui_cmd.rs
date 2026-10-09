@@ -3,9 +3,11 @@
 use crate::args::{config_dir, now, Args};
 use crate::join_cmd::join_command;
 use crate::roles::ui_dir;
-use flight_client::{run_terminal, ClientConfig, Handoff, OrchestratedBackend, Switcher};
+use flight_client::{
+    run_terminal, ClientConfig, Handoff, OrchestratedBackend, Switcher, TerminalEnd,
+};
 use flight_proto::RoleCode;
-use flight_ui::{render_to_string, run_with_notice, Backend, Exit, ViewModel};
+use flight_ui::{render_to_string, run_with_start, Backend, Exit, Start, ViewModel};
 use std::time::Duration;
 
 pub const USAGE: &str = "usage: flight ui <command>
@@ -14,10 +16,10 @@ pub const USAGE: &str = "usage: flight ui <command>
         enroll this machine's UI with an orchestrator
   [run] [--refresh SECS] [--once] [--config-dir DIR]
         the dashboard, reading from the orchestrator this UI joined.
-        Enter on a pane shows it in a terminal carried over Flight's own connections (no ssh,
-        no direct path to the node), on this machine or another: Ctrl-Space q leaves,
-        Ctrl-Space Ctrl-Space sends a literal Ctrl-Space, and the dashboard comes back when the
-        terminal ends.";
+        Enter opens a workspace's agent, s its shell (offered if it has none), in a terminal
+        carried over Flight's own connections (no ssh, no direct path to the node), on this
+        machine or another. Inside: Ctrl-Space a / s switches between the agent and the shell,
+        Ctrl-Space q leaves, and Ctrl-Space Ctrl-Space sends a literal Ctrl-Space.";
 
 pub fn run_ui(args: &[String]) -> Result<(), String> {
     if args.iter().any(|a| a == "--help" || a == "-h") {
@@ -61,11 +63,12 @@ fn dashboard(args: &[String]) -> Result<(), String> {
     }
     // A remote pane is shown in a terminal over Flight; when it ends the dashboard comes
     // back, with the reason on its status line.
-    let mut notice = None;
+    let mut begin = Start::default();
     loop {
         let backend = start(config.clone())?;
         let handoff = backend.handoff();
-        let exit = run_with_notice(backend, refresh, notice.take()).map_err(|e| e.to_string())?;
+        let exit = run_with_start(backend, refresh, std::mem::take(&mut begin))
+            .map_err(|e| e.to_string())?;
         if exit != Exit::Switched {
             return Ok(());
         }
@@ -75,9 +78,20 @@ fn dashboard(args: &[String]) -> Result<(), String> {
                 let why = attach.exec();
                 return Err(format!("pane selected, but cannot attach: {why}"));
             }
-            Some(Handoff::Terminal(id)) => {
-                let end = run_terminal(&config, &id);
-                notice = Some(format!("terminal: {end}"));
+            Some(Handoff::Terminal { id, shown }) => {
+                let end = run_terminal(&config, &id, Some(shown.choice));
+                begin = match end {
+                    // Ctrl-Space a / s: the dashboard comes back only long enough to open the
+                    // workspace's other surface.
+                    TerminalEnd::SwitchTo(choice) => Start {
+                        notice: None,
+                        resume: Some((shown.workspace, choice)),
+                    },
+                    other => Start {
+                        notice: Some(format!("terminal: {other}")),
+                        resume: None,
+                    },
+                };
             }
             None => return Ok(()),
         }
@@ -92,7 +106,7 @@ fn once(mut backend: OrchestratedBackend) -> Result<(), String> {
     }
     let mut vm = ViewModel::new();
     vm.apply_snapshot(backend.snapshot(now()));
-    if let Some(sel) = vm.selected().cloned() {
+    if let Some(sel) = vm.selected() {
         vm.apply_preview(Some(backend.preview(&sel)));
     }
     println!("{}", render_to_string(&vm, 110, 32));

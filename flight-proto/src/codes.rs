@@ -34,12 +34,18 @@ wire_enum! {
         AlreadyExists = 12,
         InvalidDirectory = 13,
         ProgramUnavailable = 14,
+        UnknownWorkspace = 15,
     }
 }
 
 wire_enum! {
     /// What a new session runs: a closed set, never a command line.
     ProgramCode { Claude = 1, Shell = 2, ClaudeSkipPermissions = 3 }
+}
+
+wire_enum! {
+    /// What a surface of a workspace is: a closed set.
+    SurfaceKindCode { Agent = 1, Shell = 2 }
 }
 
 wire_enum! {

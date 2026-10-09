@@ -2,7 +2,7 @@
 
 use crate::collect::{Backend, CreateFailure};
 use crate::snapshot::{PanePreview, PaneView, UiSnapshot};
-use crate::NewSessionRequest;
+use crate::{NewSessionRequest, NewSurfaceRequest};
 use flight_state::PaneRef;
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::thread::{self, JoinHandle};
@@ -13,6 +13,7 @@ pub enum Cmd {
     Select(Option<PaneRef>),
     Switch(PaneView),
     Create(NewSessionRequest),
+    CreateSurface(NewSurfaceRequest),
     Shutdown,
 }
 
@@ -21,6 +22,7 @@ pub enum Msg {
     Preview(Option<PanePreview>),
     Switched(Result<(), String>),
     Created(NewSessionRequest, Result<(), CreateFailure>),
+    SurfaceCreated(NewSurfaceRequest, Result<(), CreateFailure>),
 }
 
 pub struct Worker {
@@ -59,6 +61,11 @@ impl Worker {
                         let r = collector.create_session(&request);
                         // The new session shows up in the next snapshot: ask for it now.
                         msg_tx.send(Msg::Created(request, r)).is_ok()
+                            && refresh(&mut *collector, &target, &msg_tx)
+                    }
+                    Ok(Cmd::CreateSurface(request)) => {
+                        let r = collector.create_surface(&request);
+                        msg_tx.send(Msg::SurfaceCreated(request, r)).is_ok()
                             && refresh(&mut *collector, &target, &msg_tx)
                     }
                     Ok(Cmd::Shutdown) | Err(RecvTimeoutError::Disconnected) => false,

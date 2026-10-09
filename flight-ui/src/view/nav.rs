@@ -3,17 +3,18 @@
 //! Selection movement, search and reconciliation, kept apart from the model's data.
 
 use super::{Effect, FilterInput, ViewModel};
+use crate::snapshot::WorkspaceKey;
 use flight_state::PaneRef;
 
-fn position(list: &[PaneRef], sel: Option<&PaneRef>) -> Option<usize> {
-    sel.and_then(|s| list.iter().position(|p| p == s))
+fn position(list: &[WorkspaceKey], sel: Option<&WorkspaceKey>) -> Option<usize> {
+    sel.and_then(|s| list.iter().position(|k| k == s))
 }
 
 impl ViewModel {
     /// Make the selection valid for the new snapshot or filter without moving it onto another
-    /// session unless its pane is gone from the list.
+    /// workspace unless its own is gone from the list.
     pub(super) fn reconcile(&mut self) {
-        let list = self.refs();
+        let list = self.keys();
         if let Some(i) = position(&list, self.selected.as_ref()) {
             self.hint = i;
             return;
@@ -23,8 +24,8 @@ impl ViewModel {
         self.hint = idx;
     }
 
-    /// Select the pane of a session just created, as soon as a snapshot has it. The wait ends
-    /// when it shows up, when the user moves the cursor, or after a while.
+    /// Select a workspace just created, as soon as a snapshot has it. The wait ends when it
+    /// shows up, when the user moves the cursor, or after a while.
     pub(super) fn select_created(&mut self) {
         let Some(pending) = self.pending.as_mut() else {
             return;
@@ -36,19 +37,18 @@ impl ViewModel {
             .filter(|h| h.host == pending.host)
             .flat_map(|h| h.panes.iter())
             .find(|p| p.session == pending.session)
-            .map(|p| p.pane_ref.clone());
-        if let Some(pane) = found {
-            // The new session must be visible: a search that hides it is dropped.
-            if !self.refs().contains(&pane) {
+            .map(|p| WorkspaceKey {
+                host: p.pane_ref.host.clone(),
+                workspace: p.workspace.clone(),
+            });
+        if let Some(key) = found {
+            // The new workspace must be visible: a search that hides it is dropped.
+            if !self.keys().contains(&key) {
                 self.filter.clear();
                 self.searching = false;
             }
-            self.selected = Some(pane);
-            self.hint = self
-                .refs()
-                .iter()
-                .position(|p| Some(p) == self.selected.as_ref())
-                .unwrap_or(0);
+            self.hint = self.keys().iter().position(|k| *k == key).unwrap_or(0);
+            self.selected = Some(key);
             self.pending = None;
         } else {
             pending.snapshots_left = pending.snapshots_left.saturating_sub(1);
@@ -60,8 +60,9 @@ impl ViewModel {
 
     pub(super) fn step(&mut self, delta: isize) -> Effect {
         self.pending = None;
-        let before = self.selected.clone();
-        let list = self.refs();
+        self.opening = None;
+        let before = self.selected();
+        let list = self.keys();
         let next = match position(&list, self.selected.as_ref()) {
             Some(i) => i
                 .saturating_add_signed(delta)
@@ -73,15 +74,20 @@ impl ViewModel {
         self.select_effect(before)
     }
 
-    /// Point at a listed session (a click). Anything not listed is ignored.
-    pub(super) fn select(&mut self, pane: PaneRef) -> Effect {
+    /// Point at the workspace a listed pane belongs to (a click). Anything not listed is
+    /// ignored.
+    pub(super) fn select(&mut self, pane: &PaneRef) -> Effect {
         self.pending = None;
-        let list = self.refs();
-        let Some(i) = position(&list, Some(&pane)) else {
+        let Some((i, key)) = self.listed().iter().enumerate().find_map(|(i, w)| {
+            w.surfaces
+                .iter()
+                .any(|s| &s.pane.pane_ref == pane)
+                .then(|| (i, w.key()))
+        }) else {
             return Effect::None;
         };
-        let before = self.selected.clone();
-        self.selected = Some(pane);
+        let before = self.selected();
+        self.selected = Some(key);
         self.hint = i;
         self.select_effect(before)
     }
@@ -101,7 +107,7 @@ impl ViewModel {
                 self.searching = false;
             }
         }
-        let before = self.selected.clone();
+        let before = self.selected();
         self.reconcile();
         self.select_effect(before)
     }

@@ -67,7 +67,7 @@ impl World {
             .iter()
             .map(|p| {
                 format!(
-                    "{}\t{}\tw\t@1\t0\t/tmp\t{}\t1\t1\t{}\t{}\t{}\t0\t{}\n",
+                    "{}\t{}\tw\t@1\t0\t/tmp\t{}\t1\t1\t{}\t{}\t{}\t0\t\t\t\t/tmp\t$1\t{}\n",
                     p.id,
                     p.session,
                     p.pid,

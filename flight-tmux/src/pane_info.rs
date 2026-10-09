@@ -25,6 +25,16 @@ pub struct PaneInfo {
     /// The session was created by Flight (carries `@flight_session`).
     pub flight_session: bool,
     pub pane_title: String,
+    /// `@flight_workspace` of the pane's session: the workspace Flight made it for. Empty for
+    /// a session that predates workspaces.
+    pub workspace_id: String,
+    /// `@flight_surface_id` and `@flight_surface` of the pane's window; empty when unmarked.
+    pub surface_id: String,
+    pub surface_kind: String,
+    /// Where the session was started (`#{session_path}`): the workspace's root directory.
+    pub session_path: String,
+    /// The session's tmux id, e.g. `$3`. Server-scoped, like a pane id.
+    pub session_id: String,
 }
 
 impl PaneInfo {

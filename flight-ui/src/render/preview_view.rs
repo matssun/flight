@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-use super::list_view::{agent_name, host_label};
+use super::list_view::agent_name;
 use super::style::{bold, dim, state_icon, state_look, state_meaning};
+use super::text::fit;
+use crate::snapshot::Workspace;
 use crate::view::ViewModel;
 use flight_state::AgentState;
 use ratatui::style::{Color, Style};
@@ -10,14 +12,14 @@ use ratatui::text::{Line, Span};
 /// The preview pane's content: what the selected session is and does, its recent screen, and
 /// what Enter will do. `height` is the rows available inside the pane.
 pub fn preview_view(vm: &ViewModel, height: usize, width: usize) -> Vec<Line<'static>> {
-    let Some(p) = vm
-        .selected()
-        .and_then(|sel| vm.listed().into_iter().find(|p| &p.pane_ref == sel))
-    else {
+    let Some(w) = vm.selected_workspace() else {
         return vec![
             Line::raw(""),
-            Line::styled("  Select a session to see what it is doing.", dim()),
+            Line::styled("  Select a workspace to see what it is doing.", dim()),
         ];
+    };
+    let Some(p) = w.anchor_pane() else {
+        return vec![Line::raw("")];
     };
     let (_, label, colour) = state_look(p.state);
     let mut out = vec![
@@ -28,7 +30,7 @@ pub fn preview_view(vm: &ViewModel, height: usize, width: usize) -> Vec<Line<'st
                 Style::default().fg(colour),
             ),
             Span::raw(" "),
-            Span::styled(p.session.clone(), bold()),
+            Span::styled(w.name.clone(), bold()),
             Span::styled(
                 format!("  {}", label.to_uppercase()),
                 Style::default().fg(colour),
@@ -38,11 +40,12 @@ pub fn preview_view(vm: &ViewModel, height: usize, width: usize) -> Vec<Line<'st
             format!(
                 " {} on {} · {}",
                 agent_name(p),
-                host_label(vm, p),
+                w.host_label,
                 state_meaning(p.state)
             ),
             dim(),
         ),
+        Line::styled(fit(&surfaces_summary(&w), width), dim()),
         Line::styled("─".repeat(width), dim()),
     ];
     let action = action_hint(p.state);
@@ -80,9 +83,21 @@ pub fn preview_view(vm: &ViewModel, height: usize, width: usize) -> Vec<Line<'st
         Style::default().fg(accent(p.state)),
     ));
     if p.state != AgentState::Down {
-        out.push(Line::styled(" Ctrl-Space q comes back here.", dim()));
+        out.push(Line::styled(
+            " In a session: Ctrl-Space a agent · s shell · q back here.",
+            dim(),
+        ));
     }
     out
+}
+
+/// `~/dev/nga · shell ready`: where the surfaces start and whether a shell is there yet.
+fn surfaces_summary(w: &Workspace) -> String {
+    let shell = match w.shell() {
+        Some(_) => "shell ready",
+        None => "no shell yet",
+    };
+    format!(" {} · {shell}", w.root)
 }
 
 fn accent(state: AgentState) -> Color {

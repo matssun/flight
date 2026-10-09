@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use crate::view::{Action, FilterInput, FormInput, InputMode};
+use crate::view::{Action, FilterInput, FormInput, InputMode, PromptInput, SurfaceChoice};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 /// Terminal keys to actions, by where keys are going: while the new-session form is open or a
@@ -11,6 +11,7 @@ pub fn action_for(key: KeyEvent, mode: InputMode) -> Option<Action> {
     }
     match mode {
         InputMode::Form => form_action(key).map(Action::Form),
+        InputMode::Prompt => prompt_action(key).map(Action::Prompt),
         InputMode::Help => Some(Action::CloseHelp),
         InputMode::Search => search_action(key),
         InputMode::Dashboard => dashboard_action(key),
@@ -22,6 +23,8 @@ fn dashboard_action(key: KeyEvent) -> Option<Action> {
         KeyCode::Up | KeyCode::Char('k') => Some(Action::Up),
         KeyCode::Down | KeyCode::Char('j') => Some(Action::Down),
         KeyCode::Enter => Some(Action::Switch),
+        KeyCode::Char('a') => Some(Action::Open(SurfaceChoice::Agent)),
+        KeyCode::Char('s') => Some(Action::Open(SurfaceChoice::Shell)),
         KeyCode::Char('r') => Some(Action::Refresh),
         KeyCode::Char('n') => Some(Action::NewSession),
         KeyCode::Char('/') => Some(Action::Search),
@@ -41,6 +44,16 @@ fn search_action(key: KeyEvent) -> Option<Action> {
         KeyCode::Up => Some(Action::Up),
         KeyCode::Down => Some(Action::Down),
         KeyCode::Char(c) => Some(Action::Filter(FilterInput::Char(c))),
+        _ => None,
+    }
+}
+
+fn prompt_action(key: KeyEvent) -> Option<PromptInput> {
+    match key.code {
+        KeyCode::Esc | KeyCode::Char('n' | 'N') => Some(PromptInput::Cancel),
+        KeyCode::Char('y' | 'Y') => Some(PromptInput::Yes),
+        KeyCode::Enter => Some(PromptInput::Enter),
+        KeyCode::Tab | KeyCode::BackTab | KeyCode::Left | KeyCode::Right => Some(PromptInput::Next),
         _ => None,
     }
 }
@@ -82,6 +95,14 @@ mod tests {
         assert_eq!(dash(KeyCode::Char('/')), Some(Action::Search));
         assert_eq!(dash(KeyCode::Char('?')), Some(Action::Help));
         assert_eq!(dash(KeyCode::Esc), Some(Action::Back));
+        assert_eq!(
+            dash(KeyCode::Char('a')),
+            Some(Action::Open(SurfaceChoice::Agent))
+        );
+        assert_eq!(
+            dash(KeyCode::Char('s')),
+            Some(Action::Open(SurfaceChoice::Shell))
+        );
         assert_eq!(dash(KeyCode::Char('x')), None);
     }
 
@@ -123,6 +144,24 @@ mod tests {
         assert_eq!(s(KeyCode::Esc), Some(Action::Filter(FilterInput::Clear)));
         assert_eq!(s(KeyCode::Enter), Some(Action::Filter(FilterInput::Accept)));
         assert_eq!(s(KeyCode::Down), Some(Action::Down));
+    }
+
+    #[test]
+    fn the_shell_prompt_takes_yes_no_enter_and_escape() {
+        let p = |code| action_for(k(code), InputMode::Prompt);
+        assert_eq!(
+            p(KeyCode::Char('y')),
+            Some(Action::Prompt(PromptInput::Yes))
+        );
+        assert_eq!(
+            p(KeyCode::Char('n')),
+            Some(Action::Prompt(PromptInput::Cancel))
+        );
+        assert_eq!(p(KeyCode::Esc), Some(Action::Prompt(PromptInput::Cancel)));
+        assert_eq!(p(KeyCode::Enter), Some(Action::Prompt(PromptInput::Enter)));
+        assert_eq!(p(KeyCode::Tab), Some(Action::Prompt(PromptInput::Next)));
+        // Letters that mean something on the dashboard do nothing here.
+        assert_eq!(p(KeyCode::Char('s')), None);
     }
 
     #[test]

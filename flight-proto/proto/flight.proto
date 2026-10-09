@@ -84,6 +84,8 @@ enum ErrorKindCode {
   ERROR_KIND_CODE_INVALID_DIRECTORY = 13;
   // CreateSession: the program could not be found on the node, or ended as soon as it started.
   ERROR_KIND_CODE_PROGRAM_UNAVAILABLE = 14;
+  // The workspace named by a request is not known to the node (or orchestrator) asked.
+  ERROR_KIND_CODE_UNKNOWN_WORKSPACE = 15;
 }
 
 // What a new session runs. A closed set: the wire never carries a command line.
@@ -95,6 +97,16 @@ enum ProgramCode {
   PROGRAM_CODE_SHELL = 2;
   // `claude` started so that it does not ask before acting (`--dangerously-skip-permissions`).
   PROGRAM_CODE_CLAUDE_SKIP_PERMISSIONS = 3;
+}
+
+// What a surface of a workspace is. A closed set: a new kind is a new number, and a peer that
+// does not know it refuses the message rather than guessing.
+enum SurfaceKindCode {
+  SURFACE_KIND_CODE_UNSPECIFIED = 0;
+  // The workspace's coding agent (Claude, Codex, ...). Which one is `agent_kind`.
+  SURFACE_KIND_CODE_AGENT = 1;
+  // A shell in the workspace's root directory.
+  SURFACE_KIND_CODE_SHELL = 2;
 }
 
 // Why a terminal session ended (ADR-003).
@@ -152,6 +164,15 @@ message PaneState {
   // The pane's process id: the pane incarnation a control action must name. 0 from a node
   // that predates it.
   uint32 pid = 14;
+  // The workspace this pane is a surface of, and which surface. Empty from a node that predates
+  // workspaces (the pane is then a single-surface workspace around itself). Ids are minted by
+  // the node and kept in its backend; they are not backend ids and not display names.
+  string workspace_id = 15;
+  string surface_id = 16;
+  // UNSPECIFIED from a node that predates workspaces.
+  SurfaceKindCode surface_kind = 17;
+  // The workspace's root directory on the node: where its surfaces start.
+  string workspace_root = 18;
 }
 
 message ServerStatus {
@@ -252,6 +273,14 @@ message Command {
     string dir = 4;
     ProgramCode program = 5;
   }
+  // A new surface for an existing workspace. The workspace fixes the host and the directory, so
+  // the request carries neither: the orchestrator routes by the workspace id and the node
+  // resolves the rest from the workspace itself (create_surface_v1). A workspace has at most
+  // one surface of each kind; asking for a second is refused with ALREADY_EXISTS.
+  message CreateSurface {
+    string workspace_id = 1;
+    SurfaceKindCode kind = 2;
+  }
   reserved 2, 5;
   oneof kind {
     GetPreview get_preview = 1;
@@ -260,6 +289,7 @@ message Command {
     RevealPane reveal_pane = 6;
     OpenTerminal open_terminal = 7;
     CreateSession create_session = 8;
+    CreateSurface create_surface = 9;
   }
 }
 

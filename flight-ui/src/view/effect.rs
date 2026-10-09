@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-use crate::{NewSessionRequest, PaneView};
+use crate::view::{NewSessionRequest, NewSurfaceRequest};
+use crate::PaneView;
 use flight_state::PaneRef;
 
 /// What the terminal loop must do after the view model handled an action. The view model
@@ -14,6 +15,8 @@ pub enum Effect {
     Select(Option<PaneRef>),
     /// Take the user to this pane, exactly as it looked when they asked.
     Switch(PaneView),
-    /// Ask a node to create this session.
+    /// Ask a node to create this workspace.
     Create(NewSessionRequest),
+    /// Ask the workspace's node to add a surface to it.
+    CreateSurface(NewSurfaceRequest),
 }

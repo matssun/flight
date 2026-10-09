@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::validate::non_empty;
-use crate::{AgentKindCode, PaneRefMsg, Reject, SourceCode, StateCode, Validate};
+use crate::{AgentKindCode, PaneRefMsg, Reject, SourceCode, StateCode, SurfaceKindCode, Validate};
 use flight_state::AgentState;
 
 /// One agent pane's resolved, externally visible state. No terminal contents.
@@ -38,6 +38,17 @@ pub struct PaneState {
     /// when the process does, so it adds no per-poll delta. 0 from a node that predates it.
     #[prost(uint32, tag = "14")]
     pub pid: u32,
+    /// The workspace this pane is a surface of; empty from a node that predates workspaces.
+    #[prost(string, tag = "15")]
+    pub workspace_id: String,
+    #[prost(string, tag = "16")]
+    pub surface_id: String,
+    /// `Unspecified` (0) from a node that predates workspaces.
+    #[prost(enumeration = "SurfaceKindCode", tag = "17")]
+    pub surface_kind: i32,
+    /// Where the workspace's surfaces start, on the node.
+    #[prost(string, tag = "18")]
+    pub workspace_root: String,
 }
 
 impl PaneState {
@@ -76,6 +87,19 @@ impl Validate for PaneState {
         AgentKindCode::decode(self.agent_kind, "pane_state.agent_kind")?;
         self.agent_state()?;
         SourceCode::decode(self.source, "pane_state.source")?;
-        non_empty(&self.session, "pane_state.session")
+        non_empty(&self.session, "pane_state.session")?;
+        // Absent (an older node) is fine; present, it must be well-formed.
+        for (id, field) in [
+            (&self.workspace_id, "pane_state.workspace_id"),
+            (&self.surface_id, "pane_state.surface_id"),
+        ] {
+            if !id.is_empty() && !flight_state::valid_id(id) {
+                return Err(Reject::OutOfRange(field));
+            }
+        }
+        if self.surface_kind != 0 {
+            SurfaceKindCode::decode(self.surface_kind, "pane_state.surface_kind")?;
+        }
+        Ok(())
     }
 }

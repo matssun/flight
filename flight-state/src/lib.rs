@@ -11,11 +11,14 @@ mod agent_state;
 mod host_id;
 mod pane_id;
 mod pane_ref;
+mod placement;
 mod server_id;
 mod session_id;
 mod session_name;
 mod session_ref;
+mod surface_id;
 mod window_id;
+mod workspace_id;
 
 pub mod policy;
 
@@ -23,12 +26,15 @@ pub use agent_state::AgentState;
 pub use host_id::HostId;
 pub use pane_id::PaneId;
 pub use pane_ref::PaneRef;
+pub use placement::{RawPlacement, SurfaceRole};
 pub use policy::{needs_attention, sort_rank};
 pub use server_id::ServerId;
 pub use session_id::SessionId;
 pub use session_name::{valid_dir, valid_session_name, MAX_DIR_LEN, MAX_SESSION_NAME_LEN};
 pub use session_ref::SessionRef;
+pub use surface_id::SurfaceId;
 pub use window_id::WindowId;
+pub use workspace_id::{valid_id, WorkspaceId, MAX_ID_LEN};
 
 #[cfg(test)]
 mod identity_tests;

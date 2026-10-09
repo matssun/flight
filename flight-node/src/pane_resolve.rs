@@ -3,11 +3,11 @@
 use crate::codes::{agent_code, source_code};
 use crate::PaneObservation;
 use flight_classify::{
-    classify_screen, classify_title, resolve, why, working_glyph_present, Evidence, Manifest,
-    Observation, ResolveInput, ResolvedState, DEFAULT_IDLE_SECS,
+    classify_screen, classify_title, resolve, why, working_glyph_present, AgentKind, Evidence,
+    Manifest, Observation, ResolveInput, ResolvedState, DEFAULT_IDLE_SECS,
 };
-use flight_proto::{PaneRefMsg, PaneState};
-use flight_state::PaneRef;
+use flight_proto::{PaneRefMsg, PaneState, SurfaceKindCode};
+use flight_state::{PaneRef, SurfaceRole};
 
 /// Classify, fuse and resolve one observed pane against its previous resolution.
 pub(crate) fn resolve_observation(
@@ -72,5 +72,18 @@ pub(crate) fn pane_state(
         path: obs.path.clone(),
         command: obs.command.clone(),
         pid: obs.pid,
+        workspace_id: obs
+            .placement
+            .workspace(&pane_ref.host, &pane_ref.server)
+            .to_string(),
+        surface_id: obs
+            .placement
+            .surface(&pane_ref.host, &pane_ref.server)
+            .to_string(),
+        surface_kind: match obs.placement.role(obs.agent != AgentKind::Other) {
+            SurfaceRole::Agent => SurfaceKindCode::Agent,
+            SurfaceRole::Shell => SurfaceKindCode::Shell,
+        } as i32,
+        workspace_root: obs.placement.root(&obs.path).to_owned(),
     }
 }

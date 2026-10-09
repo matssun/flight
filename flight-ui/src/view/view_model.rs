@@ -1,22 +1,22 @@
 // SPDX-License-Identifier: MIT
 
-use super::lists::sessions;
+use super::lists::workspaces;
 use super::{
     Action, Effect, FilterInput, FormOutcome, HostChoice, InputMode, NewSessionForm,
-    NewSessionRequest,
+    NewSessionRequest, NewSurfaceRequest, PromptOutcome, ShellPrompt, SurfaceChoice,
 };
 use crate::collect::CreateFailure;
 use crate::snapshot::HostHealth;
-use crate::snapshot::{PanePreview, PaneView, UiSnapshot};
+use crate::snapshot::{PanePreview, UiSnapshot, Workspace, WorkspaceKey};
 use flight_state::{HostId, PaneRef};
 
 /// Presentation state: the latest snapshot plus what the user is pointing at. Selection is
-/// the identity of a pane, never a row number, so reordering cannot move the cursor onto a
-/// different agent; the visible row is derived from it each frame.
+/// the identity of a workspace, never a row number, so reordering cannot move the cursor onto
+/// a different workspace; the visible row is derived from it each frame.
 #[derive(Debug, Clone)]
 pub struct ViewModel {
     pub(super) snapshot: UiSnapshot,
-    pub(super) selected: Option<PaneRef>,
+    pub(super) selected: Option<WorkspaceKey>,
     /// Index the selection had in the list, to pick a neighbour if it vanishes.
     pub(super) hint: usize,
     pub(super) preview: Option<PanePreview>,
@@ -24,8 +24,13 @@ pub struct ViewModel {
     pub(super) loaded: bool,
     /// The new-session form, while it is open.
     pub(super) form: Option<NewSessionForm>,
-    /// A session just created: select its pane when it shows up in a snapshot.
+    /// The companion-shell prompt, while it is open.
+    pub(super) prompt: Option<ShellPrompt>,
+    /// A workspace just created: select it when it shows up in a snapshot.
     pub(super) pending: Option<Pending>,
+    /// A surface to open as soon as it shows up in a snapshot (just created, or asked for by
+    /// a terminal that was left to switch).
+    pub(super) opening: Option<Opening>,
     /// The search text; only sessions matching it are listed.
     pub(super) filter: String,
     /// Keys are going into the search.
@@ -37,6 +42,13 @@ pub struct ViewModel {
 
 /// How many snapshots to wait for a created session to show up before giving up on selecting it.
 const PENDING_SNAPSHOTS: u8 = 30;
+
+#[derive(Debug, Clone)]
+pub(super) struct Opening {
+    pub(super) key: WorkspaceKey,
+    pub(super) choice: SurfaceChoice,
+    pub(super) snapshots_left: u8,
+}
 
 #[derive(Debug, Clone)]
 pub(super) struct Pending {
@@ -61,7 +73,9 @@ impl ViewModel {
             message: None,
             loaded: false,
             form: None,
+            prompt: None,
             pending: None,
+            opening: None,
             filter: String::new(),
             searching: false,
             help: false,
@@ -73,22 +87,30 @@ impl ViewModel {
         &self.snapshot
     }
 
-    pub fn selected(&self) -> Option<&PaneRef> {
+    /// The pane the selected workspace is previewed by (its agent's, or its shell's).
+    pub fn selected(&self) -> Option<PaneRef> {
+        self.selected_workspace()?
+            .anchor_pane()
+            .map(|p| p.pane_ref.clone())
+    }
+
+    pub fn selected_key(&self) -> Option<&WorkspaceKey> {
         self.selected.as_ref()
     }
 
-    /// The sessions on screen: most urgent first, narrowed by the search.
-    pub fn listed(&self) -> Vec<&PaneView> {
-        sessions(&self.snapshot, &self.filter)
+    /// The workspaces on screen: most urgent first, narrowed by the search.
+    pub fn listed(&self) -> Vec<Workspace> {
+        workspaces(&self.snapshot, &self.filter)
     }
 
-    fn selected_view(&self) -> Option<&PaneView> {
+    pub fn selected_workspace(&self) -> Option<Workspace> {
         let want = self.selected.as_ref()?;
-        self.snapshot
-            .hosts
-            .iter()
-            .flat_map(|h| h.panes.iter())
-            .find(|p| &p.pane_ref == want)
+        self.listed().into_iter().find(|w| &w.key() == want)
+    }
+
+    /// The companion-shell prompt, if it is open.
+    pub fn prompt(&self) -> Option<&ShellPrompt> {
+        self.prompt.as_ref()
     }
 
     /// The search text (empty: no filter).
@@ -107,6 +129,8 @@ impl ViewModel {
     pub fn input_mode(&self) -> InputMode {
         if self.form.is_some() {
             InputMode::Form
+        } else if self.prompt.is_some() {
+            InputMode::Prompt
         } else if self.help {
             InputMode::Help
         } else if self.searching {
@@ -142,7 +166,7 @@ impl ViewModel {
     pub fn preview(&self) -> Option<&PanePreview> {
         self.preview
             .as_ref()
-            .filter(|p| Some(&p.pane) == self.selected.as_ref())
+            .filter(|p| Some(&p.pane) == self.selected().as_ref())
     }
 
     pub fn set_message(&mut self, m: Option<String>) {
@@ -157,10 +181,15 @@ impl ViewModel {
     pub fn apply_snapshot(&mut self, s: UiSnapshot) -> Effect {
         self.snapshot = s;
         self.loaded = true;
-        let before = self.selected.clone();
+        let before = self.selected();
         self.reconcile();
         self.select_created();
-        self.select_effect(before)
+        let opened = self.open_pending();
+        if matches!(opened, Effect::None) {
+            self.select_effect(before)
+        } else {
+            opened
+        }
     }
 
     pub fn apply(&mut self, action: Action) -> Effect {
@@ -174,7 +203,9 @@ impl ViewModel {
             Action::Refresh => Effect::Refresh,
             Action::Up => self.step(-1),
             Action::Down => self.step(1),
-            Action::Select(pane) => self.select(pane),
+            Action::Select(pane) => self.select(&pane),
+            Action::Open(choice) => self.open(choice),
+            Action::Prompt(input) => self.apply_prompt(input),
             Action::Search => {
                 self.searching = true;
                 Effect::None
@@ -188,10 +219,7 @@ impl ViewModel {
                 self.help = false;
                 Effect::None
             }
-            Action::Switch => self
-                .selected_view()
-                .cloned()
-                .map_or(Effect::None, Effect::Switch),
+            Action::Switch => self.open(SurfaceChoice::Agent),
             Action::NewSession => {
                 self.open_form();
                 Effect::None
@@ -201,7 +229,7 @@ impl ViewModel {
     }
 
     fn open_form(&mut self) {
-        let prefer = self.selected.as_ref().map(|p| p.host.clone());
+        let prefer = self.selected.as_ref().map(|k| k.host.clone());
         self.form = Some(NewSessionForm::new(self.connected_hosts(), prefer.as_ref()));
     }
 
@@ -252,7 +280,7 @@ impl ViewModel {
                     snapshots_left: PENDING_SNAPSHOTS,
                 });
                 self.message = Some(format!(
-                    "Created session {} on {}.",
+                    "Created workspace {} on {}.",
                     request.name, request.host_label
                 ));
                 self.select_created();
@@ -267,17 +295,149 @@ impl ViewModel {
     }
 
     pub(super) fn select_effect(&self, before: Option<PaneRef>) -> Effect {
-        if before == self.selected {
+        let now = self.selected();
+        if before == now {
             Effect::None
         } else {
-            Effect::Select(self.selected.clone())
+            Effect::Select(now)
         }
     }
 
-    pub(super) fn refs(&self) -> Vec<PaneRef> {
-        sessions(&self.snapshot, &self.filter)
+    pub(super) fn keys(&self) -> Vec<WorkspaceKey> {
+        self.listed().iter().map(Workspace::key).collect()
+    }
+
+    /// Open a surface of the selected workspace. The agent is the default (Enter); a workspace
+    /// whose agent is gone opens its shell. A shell that does not exist yet is offered, not
+    /// silently made.
+    fn open(&mut self, choice: SurfaceChoice) -> Effect {
+        self.pending = None;
+        let Some(workspace) = self.selected_workspace() else {
+            return Effect::None;
+        };
+        let surface = match choice {
+            SurfaceChoice::Agent => workspace.agent().or_else(|| workspace.shell()),
+            SurfaceChoice::Shell => workspace.shell(),
+        };
+        if let Some(surface) = surface {
+            return Effect::Switch(surface.pane.clone());
+        }
+        match choice {
+            SurfaceChoice::Shell => {
+                self.prompt = Some(ShellPrompt::new(&workspace));
+            }
+            SurfaceChoice::Agent => {
+                self.message = Some(format!("{} has nothing to open.", workspace.name));
+            }
+        }
+        Effect::None
+    }
+
+    /// The user is asked to confirm a new shell; the answer decides what happens next.
+    fn apply_prompt(&mut self, input: super::PromptInput) -> Effect {
+        let Some(prompt) = self.prompt.as_mut() else {
+            return Effect::None;
+        };
+        match prompt.handle(input) {
+            PromptOutcome::None => Effect::None,
+            PromptOutcome::Cancel => {
+                self.prompt = None;
+                Effect::None
+            }
+            PromptOutcome::Submit(request) => Effect::CreateSurface(request),
+        }
+    }
+
+    /// The answer to an [`Effect::CreateSurface`]. Success closes the prompt and opens the new
+    /// surface as soon as the workspace publishes it; a refusal stays in the prompt.
+    pub fn apply_surface_created(
+        &mut self,
+        request: &NewSurfaceRequest,
+        result: Result<(), CreateFailure>,
+    ) -> Effect {
+        // The shell being there already is what the user wanted, however it came to be.
+        let result = match result {
+            Err(CreateFailure::AlreadyExists) => Ok(()),
+            other => other,
+        };
+        match result {
+            Ok(()) => {
+                self.prompt = None;
+                self.message = Some(format!(
+                    "Created a {} for {}.",
+                    request.kind.label(),
+                    request.name
+                ));
+                self.opening = Some(Opening {
+                    key: WorkspaceKey {
+                        host: request.host.clone(),
+                        workspace: request.workspace.clone(),
+                    },
+                    choice: request.kind,
+                    snapshots_left: PENDING_SNAPSHOTS,
+                });
+                self.open_pending()
+            }
+            Err(failure) => {
+                if let Some(prompt) = self.prompt.as_mut() {
+                    prompt.fail(&failure);
+                }
+                Effect::None
+            }
+        }
+    }
+
+    /// Ask for a surface to be opened as soon as it exists (a terminal was left in order to
+    /// switch to it).
+    pub fn resume(&mut self, key: WorkspaceKey, choice: SurfaceChoice) {
+        self.opening = Some(Opening {
+            key,
+            choice,
+            snapshots_left: PENDING_SNAPSHOTS,
+        });
+    }
+
+    /// Open the surface being waited for, if a snapshot has it now.
+    fn open_pending(&mut self) -> Effect {
+        let Some(opening) = self.opening.as_mut() else {
+            return Effect::None;
+        };
+        let found = self
+            .snapshot
+            .hosts
+            .iter()
+            .filter(|h| h.host == opening.key.host)
+            .flat_map(|h| h.panes.iter())
+            .filter(|p| p.workspace == opening.key.workspace)
+            .find(|p| opening.choice.is(p.kind))
+            .cloned();
+        if let Some(pane) = found {
+            self.opening = None;
+            return Effect::Switch(pane);
+        }
+        // A workspace that is listed but lacks the surface is the answer, not a wait: a missing
+        // shell is offered, a missing agent is left alone.
+        let (key, choice) = (opening.key.clone(), opening.choice);
+        if let Some(workspace) = workspaces(&self.snapshot, "")
             .into_iter()
-            .map(|p| p.pane_ref.clone())
-            .collect()
+            .find(|w| w.key() == key)
+        {
+            self.opening = None;
+            if choice == SurfaceChoice::Shell {
+                self.filter.clear();
+                self.searching = false;
+                self.selected = Some(key);
+                self.prompt = Some(ShellPrompt::new(&workspace));
+            }
+            return Effect::None;
+        }
+        let Some(opening) = self.opening.as_mut() else {
+            return Effect::None;
+        };
+        opening.snapshots_left = opening.snapshots_left.saturating_sub(1);
+        if opening.snapshots_left == 0 {
+            self.opening = None;
+        }
+        Effect::None
     }
 }

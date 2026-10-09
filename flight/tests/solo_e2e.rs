@@ -68,7 +68,7 @@ fn plain_flight_sets_itself_up_shows_the_dashboard_and_stops_what_it_started() {
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         let text = screen.lock().unwrap_or_else(|p| p.into_inner()).text();
-        if text.contains("No Flight sessions yet") && text.contains("Connected hosts") {
+        if text.contains("No Flight workspaces yet") && text.contains("Connected hosts") {
             break;
         }
         assert!(Instant::now() < deadline, "no dashboard:\n{text}");

@@ -7,12 +7,14 @@ mod client_ops;
 mod control;
 mod create;
 mod create_error;
+mod create_window;
 mod endpoint;
 mod error;
 mod new_session;
 mod pane_info;
 mod parse;
 mod runner;
+mod surface_mark;
 
 pub use client::Tmux;
 pub use client_ops::ClientInfo;
@@ -25,3 +27,6 @@ pub use new_session::{Launch, NewSession};
 pub use pane_info::PaneInfo;
 pub use parse::{parse_panes_checked, parse_panes_output, PANE_FORMAT};
 pub use runner::{tmux_args, SystemRunner, TmuxOutput, TmuxRunner};
+pub use surface_mark::{
+    SurfaceMark, SurfaceTag, SURFACE_ID_OPTION, SURFACE_OPTION, WORKSPACE_OPTION,
+};

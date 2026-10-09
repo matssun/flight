@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//! The new-session form as plain lines. A pure function of the form.
+//! The new-workspace form as plain lines. A pure function of the form.
 
 use super::style::{dim, key};
 use super::text::{fit_tail, pad};
@@ -27,12 +27,15 @@ pub fn form_lines(form: &NewSessionForm) -> Vec<Line<'static>> {
         "Directory",
         text_value(form, Field::Directory),
     ));
-    lines.push(row(form, Field::Start, "Start", start_value(form)));
+    lines.push(row(form, Field::Start, "Agent", start_value(form)));
     lines.push(Line::raw(""));
     lines.push(match (form.submitting(), form.error()) {
-        (true, _) => Line::styled("  Creating the session…", dim()),
+        (true, _) => Line::styled("  Creating the workspace…", dim()),
         (false, Some(e)) => Line::styled(format!("  {e}"), Style::default().fg(Color::Red)),
-        (false, None) => Line::styled("  The directory is on the chosen host.", dim()),
+        (false, None) => Line::styled(
+            "  The directory is on the chosen host. A shell can be added later.",
+            dim(),
+        ),
     });
     lines.push(Line::raw(""));
     lines.push(Line::from(vec![

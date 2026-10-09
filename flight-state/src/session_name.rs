@@ -6,6 +6,10 @@ pub const MAX_SESSION_NAME_LEN: usize = 64;
 /// The longest directory a request may carry (Linux `PATH_MAX`).
 pub const MAX_DIR_LEN: usize = 4096;
 
+/// Names starting with this are Flight's own view sessions (`flight_tmux::VIEW_SESSION_PREFIX`,
+/// which a test in `flight-node` keeps equal) and are never given to a session a person makes.
+pub const RESERVED_VIEW_PREFIX: &str = "flight-view-";
+
 /// A session name: 1 to [`MAX_SESSION_NAME_LEN`] bytes of `[A-Za-z0-9_-]`, not starting with
 /// `-`. tmux rewrites `.` and `:` in names and treats a leading `-` as an option, so none of
 /// them is accepted; what a person types is what the session is called.
@@ -13,6 +17,7 @@ pub fn valid_session_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= MAX_SESSION_NAME_LEN
         && !name.starts_with('-')
+        && !name.starts_with(RESERVED_VIEW_PREFIX)
         && name
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
@@ -52,6 +57,7 @@ mod tests {
             "a\nb",
             "ä",
             "$(x)",
+            "flight-view-ab12",
             &"a".repeat(MAX_SESSION_NAME_LEN + 1),
         ] {
             assert!(!valid_session_name(bad), "{bad:?}");

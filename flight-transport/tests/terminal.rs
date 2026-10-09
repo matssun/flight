@@ -355,7 +355,12 @@ async fn a_terminal_carries_keystrokes_output_and_size_to_the_pane_and_closes_cl
     let id = rig.open(&pane, pid).await.expect("terminal opens");
     let mut term = rig.attach(&id).await;
     rig.wait_clients(1).await;
-    assert_eq!(rig.clients(), vec!["work 90x25".to_owned()]);
+    // The node shows the pane through a view of its session, sized as asked.
+    assert!(
+        matches!(rig.clients().as_slice(), [only] if only.starts_with("flight-view-") && only.ends_with(" 90x25")),
+        "{:?}",
+        rig.clients()
+    );
 
     term.send(TerminalFrame::data(b"typed-over-flight\r".to_vec()))
         .await
@@ -370,7 +375,10 @@ async fn a_terminal_carries_keystrokes_output_and_size_to_the_pane_and_closes_cl
     })
     .await
     .unwrap();
-    wait_until("resized", || rig.clients() == vec!["work 70x20".to_owned()]).await;
+    wait_until("resized", || {
+        matches!(rig.clients().as_slice(), [only] if only.starts_with("flight-view-") && only.ends_with(" 70x20"))
+    })
+    .await;
 
     term.send(TerminalFrame {
         body: Some(terminal_body::Body::Close(TerminalClose {})),
@@ -426,12 +434,13 @@ async fn detaching_in_tmux_ends_the_terminal_with_a_reason() {
     rig.wait_clients(1).await;
     // A client is listed before it is attached to its session; detaching then does nothing.
     wait_until("attached to its session", || {
-        rig.clients().iter().any(|c| c.starts_with("work "))
+        rig.clients().iter().any(|c| c.starts_with("flight-view-"))
     })
     .await;
+    let view = rig.clients()[0].split(' ').next().unwrap().to_owned();
     rig.tmux
         .runner()
-        .run(&["detach-client", "-s", "work"])
+        .run(&["detach-client", "-s", &view])
         .unwrap();
     assert_eq!(
         exit_reason(&mut term).await,

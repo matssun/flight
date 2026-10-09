@@ -399,9 +399,10 @@ fn enter_reveals_the_pane_opens_a_terminal_and_the_escape_leaves_cleanly() {
     assert_eq!(rig.active_pane(), rig.panes[1].0, "the pane was revealed");
 
     let mut shown = rig.show(&entered);
-    rig.wait("tmux client attached", |r| {
-        r.clients() == vec!["work".to_owned()]
-    });
+    rig.wait(
+        "tmux client attached",
+        |r| matches!(r.clients().as_slice(), [only] if only.starts_with("flight-view-")),
+    );
     rig.rt
         .block_on(shown.input.send(b"typed-through-the-session\r".to_vec()))
         .expect("input");
@@ -499,12 +500,13 @@ fn a_remote_detach_ends_the_session_with_the_reason() {
     rig.rt
         .spawn(async move { while output.recv().await.is_some() {} });
     // A client is listed before it is attached to its session; detaching then does nothing.
-    rig.wait("attached to its session", |r| {
-        r.clients() == vec!["work".to_owned()]
-    });
+    rig.wait(
+        "attached to its session",
+        |r| matches!(r.clients().as_slice(), [only] if only.starts_with("flight-view-")),
+    );
     rig.tmux
         .runner()
-        .run(&["detach-client", "-s", "work"])
+        .run(&["detach-client", "-s", &rig.clients()[0]])
         .expect("detach");
     match finish(&rig, shown) {
         TerminalEnd::Exited { reason, .. } => assert_eq!(reason, ExitReasonCode::ClientExited),
@@ -654,9 +656,10 @@ fn a_presenter_whose_control_connection_dies_stops_renewing_and_the_terminal_goe
     let mut shown = rig.show_with(host, &entered.0, &entered.1, |c| {
         c.lease_period = Duration::from_secs(1);
     });
-    rig.wait("tmux client attached", |r| {
-        r.clients() == vec!["work".to_owned()]
-    });
+    rig.wait(
+        "tmux client attached",
+        |r| matches!(r.clients().as_slice(), [only] if only.starts_with("flight-view-")),
+    );
     // Normal traffic, and the lease is being renewed.
     rig.rt
         .block_on(shown.input.send(b"healthy-traffic\r".to_vec()))

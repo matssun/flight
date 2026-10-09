@@ -21,9 +21,13 @@ pub struct OpenedTerminal {
     /// Ask tmux to redraw this client's whole screen. Used after output was discarded because
     /// the far end could not keep up. May block briefly; failures are ignored.
     pub redraw: Redraw,
+    /// Remove whatever the terminal made besides its process (a view session), after the
+    /// process is gone. Must be harmless to run when there is nothing left to remove.
+    pub cleanup: Redraw,
 }
 
-/// How to make a terminal's tmux client repaint itself.
+/// How to make a terminal's tmux client repaint itself (also used for other small actions
+/// taken on a terminal's behalf).
 pub type Redraw = Box<dyn Fn() + Send + Sync>;
 
 fn io_err(e: impl std::fmt::Display) -> io::Error {
@@ -67,6 +71,7 @@ impl TerminalProcess {
             },
             reader,
             redraw: Box::new(|| {}),
+            cleanup: Box::new(|| {}),
         })
     }
 

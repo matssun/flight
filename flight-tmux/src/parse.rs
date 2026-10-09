@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-use crate::{PaneInfo, TmuxError};
+use crate::{is_view_session, PaneInfo, TmuxError};
+use std::collections::HashMap;
 
 /// Format string for `list-panes -F`. `pane_title` stays LAST so a tab inside a
 /// title cannot shift the other fields.
@@ -21,8 +22,49 @@ pub fn parse_panes_checked(stdout: &str) -> Result<Vec<PaneInfo>, TmuxError> {
 }
 
 /// Parse `list-panes -F PANE_FORMAT` output. Malformed lines are skipped.
+///
+/// A pane in a session group is listed once per session of the group, and Flight's view
+/// sessions are in their workspace's group. Each pane comes out once, as its workspace's own
+/// session lists it; a view only adds to whether the pane is being looked at.
 pub fn parse_panes_output(stdout: &str) -> Vec<PaneInfo> {
-    stdout.lines().filter_map(parse_line).collect()
+    fold_views(stdout.lines().filter_map(parse_line).collect())
+}
+
+fn fold_views(rows: Vec<PaneInfo>) -> Vec<PaneInfo> {
+    if !rows.iter().any(|r| is_view_session(&r.session_name)) {
+        return rows;
+    }
+    let mut panes: Vec<PaneInfo> = Vec::with_capacity(rows.len());
+    let mut index: HashMap<String, usize> = HashMap::new();
+    for row in rows.iter().filter(|r| !is_view_session(&r.session_name)) {
+        index.insert(row.pane_id.clone(), panes.len());
+        panes.push(row.clone());
+    }
+    // How many clients are looking at each pane, counted over every session that shows it.
+    let mut looking: HashMap<String, u32> = HashMap::new();
+    for row in &rows {
+        if row.pane_active && row.window_active {
+            let n = looking.entry(row.pane_id.clone()).or_default();
+            *n = n.saturating_add(row.session_attached);
+        }
+    }
+    for row in rows.iter().filter(|r| is_view_session(&r.session_name)) {
+        // A view whose own session is gone is the only listing there is.
+        if !index.contains_key(&row.pane_id) {
+            index.insert(row.pane_id.clone(), panes.len());
+            panes.push(row.clone());
+        }
+    }
+    for pane in &mut panes {
+        let shown = looking.get(&pane.pane_id).copied().unwrap_or(0);
+        if shown > 0 {
+            pane.pane_active = true;
+            pane.window_active = true;
+            pane.session_attached = shown;
+            pane.focused = true;
+        }
+    }
+    panes
 }
 
 fn parse_line(line: &str) -> Option<PaneInfo> {
@@ -96,6 +138,75 @@ mod tests {
             ("%3", 2, 99)
         );
         assert!(p.focused);
+    }
+
+    fn row(session: &str, pane_active: &str, window_active: &str, attached: &str) -> String {
+        format!(
+            "%3\t{session}\tbuild\t@5\t2\t/tmp/x\t99\t{pane_active}\t{window_active}\t{attached}\tclaude\t1700\t0\t\t\t\t/tmp/x\t$1\t\t\tt"
+        )
+    }
+
+    #[test]
+    fn a_pane_listed_by_its_workspace_and_by_a_view_comes_out_once_as_the_workspace_s() {
+        let out = format!(
+            "{}\n{}\n",
+            row("api", "0", "0", "0"),
+            row("flight-view-ab", "1", "1", "1")
+        );
+        let panes = parse_panes_output(&out);
+        assert_eq!(panes.len(), 1);
+        assert_eq!(panes[0].session_name, "api");
+        // Someone is looking at it through the view, so it is focused.
+        assert!(panes[0].focused);
+        assert!(panes[0].focused_excluding(0));
+        assert!(!panes[0].focused_excluding(1));
+    }
+
+    #[test]
+    fn a_view_on_another_window_does_not_focus_the_pane() {
+        let out = format!(
+            "{}\n{}\n",
+            row("api", "1", "1", "0"),
+            row("flight-view-ab", "1", "0", "1")
+        );
+        let panes = parse_panes_output(&out);
+        assert_eq!(panes.len(), 1);
+        assert!(!panes[0].focused);
+    }
+
+    #[test]
+    fn clients_looking_through_the_workspace_and_through_views_add_up() {
+        let out = format!(
+            "{}\n{}\n{}\n",
+            row("api", "1", "1", "1"),
+            row("flight-view-ab", "1", "1", "1"),
+            row("flight-view-cd", "1", "1", "1")
+        );
+        let panes = parse_panes_output(&out);
+        assert_eq!(panes.len(), 1);
+        assert_eq!(panes[0].session_attached, 3);
+        assert!(panes[0].focused_excluding(2));
+    }
+
+    #[test]
+    fn a_view_whose_workspace_session_is_gone_is_still_listed_once() {
+        let out = format!(
+            "{}\n{}\n",
+            row("flight-view-ab", "1", "1", "1"),
+            row("flight-view-cd", "1", "0", "1")
+        );
+        let panes = parse_panes_output(&out);
+        assert_eq!(panes.len(), 1);
+        assert!(panes[0].focused);
+    }
+
+    #[test]
+    fn a_pane_of_a_session_without_views_is_untouched() {
+        let out = row("api", "1", "0", "2");
+        let panes = parse_panes_output(&out);
+        assert_eq!(panes.len(), 1);
+        assert!(!panes[0].focused);
+        assert_eq!(panes[0].session_attached, 2);
     }
 
     #[test]

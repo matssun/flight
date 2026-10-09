@@ -93,6 +93,8 @@ enum ProgramCode {
   PROGRAM_CODE_CLAUDE = 1;
   // The node's normal shell: what tmux starts for a session created by hand.
   PROGRAM_CODE_SHELL = 2;
+  // `claude` started so that it does not ask before acting (`--dangerously-skip-permissions`).
+  PROGRAM_CODE_CLAUDE_SKIP_PERMISSIONS = 3;
 }
 
 // Why a terminal session ended (ADR-003).

@@ -213,6 +213,7 @@ impl NodeSession {
                 let program = match ProgramCode::try_from(c.program) {
                     Ok(ProgramCode::Claude) => Program::Claude,
                     Ok(ProgramCode::Shell) => Program::Shell,
+                    Ok(ProgramCode::ClaudeSkipPermissions) => Program::ClaudeSkipPermissions,
                     _ => {
                         return Err(ControlError::new(
                             ErrorKindCode::InvalidRequest,

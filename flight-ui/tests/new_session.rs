@@ -173,11 +173,36 @@ fn host_and_program_are_chosen_with_the_arrow_keys() {
         input(&mut vm, FormInput::Next);
     }
     input(&mut vm, FormInput::Right);
+    assert_eq!(vm.form().unwrap().program(), Program::ClaudeSkipPermissions);
+    input(&mut vm, FormInput::Right);
     assert_eq!(vm.form().unwrap().program(), Program::Shell);
+    input(&mut vm, FormInput::Left);
+    assert_eq!(vm.form().unwrap().program(), Program::ClaudeSkipPermissions);
     input(&mut vm, FormInput::Left);
     assert_eq!(vm.form().unwrap().program(), Program::Claude);
     input(&mut vm, FormInput::Char(' '));
-    assert_eq!(vm.form().unwrap().program(), Program::Shell);
+    assert_eq!(vm.form().unwrap().program(), Program::ClaudeSkipPermissions);
+}
+
+#[test]
+fn claude_without_permission_prompts_is_a_spelled_out_choice_that_is_sent_as_such() {
+    let mut vm = open();
+    while focus(&vm) != Field::Start {
+        input(&mut vm, FormInput::Next);
+    }
+    assert_eq!(
+        vm.form().unwrap().program(),
+        Program::Claude,
+        "never the default"
+    );
+    input(&mut vm, FormInput::Right);
+    let text = render_to_string(&vm, 100, 30);
+    assert!(text.contains("(•) Claude, no permission prompts"), "{text}");
+    let effect = submit(&mut vm, "api", "/srv/work");
+    let Effect::Create(req) = effect else {
+        panic!("{effect:?} / {:?}", error(&vm));
+    };
+    assert_eq!(req.program, Program::ClaudeSkipPermissions);
 }
 
 #[test]
@@ -188,6 +213,7 @@ fn create_sends_exactly_the_chosen_host_name_directory_and_program() {
     while focus(&vm) != Field::Start {
         input(&mut vm, FormInput::Next);
     }
+    input(&mut vm, FormInput::Right); // Claude, no permission prompts
     input(&mut vm, FormInput::Right); // Shell
     let effect = submit(&mut vm, "api", "/srv/work");
     let Effect::Create(req) = effect else {

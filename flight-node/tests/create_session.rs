@@ -156,6 +156,35 @@ fn claude_found_on_the_nodes_path_runs_in_the_requested_directory() {
 }
 
 #[test]
+fn claude_gets_the_skip_flag_only_when_that_program_is_chosen() {
+    let Some(live) = Live::start("skipflag") else {
+        return;
+    };
+    let dir = live.dir("proj");
+    let out = live.root.join("args");
+    live.script(
+        "claude",
+        &format!("echo \"[$@]\" >> {}; sleep 60", out.display()),
+    );
+    live.create("plain", &dir, Program::Claude).unwrap();
+    live.create("yolo", &dir, Program::ClaudeSkipPermissions)
+        .unwrap();
+    for _ in 0..50 {
+        if std::fs::read_to_string(&out).is_ok_and(|s| s.lines().count() == 2) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    let mut lines: Vec<String> = std::fs::read_to_string(&out)
+        .unwrap()
+        .lines()
+        .map(str::to_owned)
+        .collect();
+    lines.sort();
+    assert_eq!(lines, ["[--dangerously-skip-permissions]", "[]"]);
+}
+
+#[test]
 fn an_existing_name_is_refused_and_the_session_is_untouched() {
     let Some(live) = Live::start("exists") else {
         return;

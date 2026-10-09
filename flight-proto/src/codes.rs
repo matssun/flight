@@ -39,7 +39,7 @@ wire_enum! {
 
 wire_enum! {
     /// What a new session runs: a closed set, never a command line.
-    ProgramCode { Claude = 1, Shell = 2 }
+    ProgramCode { Claude = 1, Shell = 2, ClaudeSkipPermissions = 3 }
 }
 
 wire_enum! {

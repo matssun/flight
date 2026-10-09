@@ -209,6 +209,7 @@ impl Backend for OrchestratedBackend {
             program: match request.program {
                 Program::Claude => ProgramCode::Claude,
                 Program::Shell => ProgramCode::Shell,
+                Program::ClaudeSkipPermissions => ProgramCode::ClaudeSkipPermissions,
             } as i32,
         });
         self.runtime

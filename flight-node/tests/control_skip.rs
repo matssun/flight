@@ -106,7 +106,7 @@ impl TmuxRunner for Runner {
                     }),
                 }
             }
-            other => panic!("unexpected {other:?}"),
+            other => panic!("unexpected tmux command with {} arguments", other.len()),
         }
     }
 }

@@ -25,9 +25,10 @@ fn convert(c: vt100::Color) -> Colour {
     }
 }
 
-/// The smallest screen the parser is given. `vt100` panics on any screen of one row (fed random
-/// bytes, 200 of 200 runs at 80x1, 2x1 and 1x1), and cannot place a double-width character in one
-/// column; from 2x2 up, 200 runs of 120 KB of garbage each, at ten sizes, never panicked.
+/// The smallest screen the parser is given. `vt100` 0.15 panicked on any screen of one row (fed
+/// random bytes, 200 of 200 runs at 80x1, 2x1 and 1x1) and 0.16.2 still panics at 1x1; it also
+/// cannot place a double-width character in one column. From 2x2 up, 200 runs of 120 KB of
+/// garbage each, at ten sizes, never panicked when only fed.
 const MIN_COLS: u16 = 2;
 const MIN_ROWS: u16 = 2;
 
@@ -94,7 +95,7 @@ impl ScreenModel {
     pub fn cell(&self, col: u16, row: u16) -> Option<CellView> {
         let cell = self.parser.screen().cell(row, col)?;
         Some(CellView {
-            text: cell.contents(),
+            text: cell.contents().to_owned(),
             fg: convert(cell.fgcolor()),
             bg: convert(cell.bgcolor()),
             bold: cell.bold(),
@@ -116,7 +117,7 @@ impl ScreenModel {
                     continue;
                 }
                 let t = cell.contents();
-                text.push_str(if t.is_empty() { " " } else { &t });
+                text.push_str(if t.is_empty() { " " } else { t });
             }
         }
         text.trim_end().to_owned()
@@ -147,11 +148,6 @@ impl ScreenModel {
                 vt100::MouseProtocolMode::AnyMotion => MouseMode::Motion,
             },
         }
-    }
-
-    /// The title the program set, if any.
-    pub fn title(&self) -> &str {
-        self.parser.screen().title()
     }
 }
 

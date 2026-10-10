@@ -40,18 +40,33 @@ impl Server {
         String::from_utf8_lossy(&out.stdout).into_owned()
     }
 
+    /// Create a detached session. Right after `kill-server` the old server is still going down
+    /// and a client that reaches it is told "server exited unexpectedly" without creating
+    /// anything (reproduced on Linux), so a failed attempt is retried until the new server is up.
     fn session(&self, name: &str, command: &str) {
-        self.tmux(&[
-            "new-session",
-            "-d",
-            "-s",
-            name,
-            "-x",
-            "80",
-            "-y",
-            "24",
-            command,
-        ]);
+        let end = Instant::now() + Duration::from_secs(8);
+        loop {
+            let status = Command::new("tmux")
+                .args(["-u", "-L", &self.socket])
+                .args([
+                    "new-session",
+                    "-d",
+                    "-s",
+                    name,
+                    "-x",
+                    "80",
+                    "-y",
+                    "24",
+                    command,
+                ])
+                .output()
+                .map(|o| o.status.success());
+            if status.unwrap_or(false) {
+                return;
+            }
+            assert!(Instant::now() < end, "tmux never created session {name}");
+            std::thread::sleep(Duration::from_millis(20));
+        }
     }
 
     /// Type `echo MARK_<tag>` into the session's shell. The quotes keep the typed command
@@ -67,9 +82,12 @@ impl Server {
     }
 
     fn pane_of(&self, name: &str) -> String {
-        self.tmux(&["list-panes", "-t", name, "-F", "#{pane_id}"])
+        let id = self
+            .tmux(&["list-panes", "-t", name, "-F", "#{pane_id}"])
             .trim()
-            .to_owned()
+            .to_owned();
+        assert!(!id.is_empty(), "no pane for session {name}");
+        id
     }
 
     fn kill_server(&self) {

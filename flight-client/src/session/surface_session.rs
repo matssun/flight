@@ -2,11 +2,11 @@
 
 use crate::session::pump::{self, Ended, PumpEnd};
 use crate::session::{
-    Attachment, Binding, FromRemote, InputEvent, InputQueue, OpenFailure, OpenRequest,
-    SessionOutcome, SurfaceHost, ToRemote,
+    Attachment, Binding, FromRemote, InputEvent, InputQueue, Next, OpenFailure, OpenRequest,
+    Reattach, SessionOutcome, SurfaceHost, ToRemote,
 };
 use crate::terminal::{EscapeFilter, LocalTerminal, TerminalEnd};
-use flight_proto::{ExitReasonCode, MAX_TERMINAL_DATA, MAX_TERMINAL_DIM};
+use flight_proto::{MAX_TERMINAL_DATA, MAX_TERMINAL_DIM};
 use flight_ui::SurfaceChoice;
 use std::sync::Arc;
 use std::time::Duration;
@@ -48,11 +48,7 @@ impl SessionConfig {
             retire_wait: Duration::from_secs(3),
             input_stall: Duration::from_secs(3),
             lease_period: crate::terminal::LEASE_PERIOD,
-            reattach_delays: vec![
-                Duration::from_millis(250),
-                Duration::from_secs(1),
-                Duration::from_secs(3),
-            ],
+            reattach_delays: Reattach::default_delays(),
             reset: crate::terminal::reset::FULL_SCREEN.to_vec(),
             say,
         }
@@ -462,22 +458,24 @@ impl<H: SurfaceHost> Run<H> {
             ));
             return None;
         }
-        match failure {
-            OpenFailure::Unavailable(_) if self.attempts < self.cfg.reattach_delays.len() => {
-                self.schedule_retry(opening.choice, opening.expect, why);
-                None
-            }
-            _ => Some(TerminalEnd::Lost(why.clone())),
+        if Reattach::open_failure_is_transient(&failure)
+            && self.reattach().next(self.attempts) != Next::GiveUp
+        {
+            self.schedule_retry(opening.choice, opening.expect, why);
+            return None;
         }
+        Some(TerminalEnd::Lost(why.clone()))
+    }
+
+    fn reattach(&self) -> Reattach<'_> {
+        Reattach::new(&self.cfg.reattach_delays)
     }
 
     fn schedule_retry(&mut self, choice: SurfaceChoice, expect: Option<Binding>, why: &str) {
-        let delay = self
-            .cfg
-            .reattach_delays
-            .get(self.attempts)
-            .copied()
-            .unwrap_or_default();
+        let delay = match self.reattach().next(self.attempts) {
+            Next::After(delay) => delay,
+            Next::GiveUp => Duration::default(),
+        };
         self.attempts = self.attempts.saturating_add(1);
         self.say(&format!("connection lost ({why}); trying again"));
         self.retry = Some(Retry {
@@ -500,7 +498,7 @@ impl<H: SurfaceHost> Run<H> {
         match ended.end {
             PumpEnd::LocalGone => Some(TerminalEnd::UserLeft),
             PumpEnd::Remote(FromRemote::Exit { reason, status }) => {
-                if reason == ExitReasonCode::NodeLost {
+                if Reattach::exit_is_a_break(reason) {
                     self.lost("the node's connection was lost".to_owned())
                 } else {
                     Some(TerminalEnd::Exited { reason, status })
@@ -516,7 +514,7 @@ impl<H: SurfaceHost> Run<H> {
         let live = self.live.take()?;
         let (choice, binding) = (live.choice, live.binding.clone());
         close(live);
-        if self.attempts >= self.cfg.reattach_delays.len() {
+        if self.reattach().next(self.attempts) == Next::GiveUp {
             return Some(TerminalEnd::Lost(why));
         }
         self.schedule_retry(choice, Some(binding), &why);

@@ -40,7 +40,7 @@ impl ScreenModel {
         self.engine.size()
     }
 
-    pub fn cell(&self, col: u16, row: u16) -> Option<CellView> {
+    pub fn cell(&self, col: u16, row: u16) -> Option<CellView<'_>> {
         self.engine.cell(col, row)
     }
 
@@ -53,11 +53,7 @@ impl ScreenModel {
                 if cell.continuation {
                     continue;
                 }
-                text.push_str(if cell.text.is_empty() {
-                    " "
-                } else {
-                    &cell.text
-                });
+                text.push_str(if cell.text.is_empty() { " " } else { cell.text });
             }
         }
         text.trim_end().to_owned()

@@ -100,14 +100,14 @@ fn paint_tile(buf: &mut Buffer, tile: &Tile, model: Option<&ScreenModel>) {
                 continue;
             }
             if !cell.text.is_empty() {
-                target.set_symbol(&cell.text);
+                target.set_symbol(cell.text);
             }
             target.set_style(style_of(&cell));
         }
     }
 }
 
-fn style_of(cell: &super::CellView) -> Style {
+fn style_of(cell: &super::CellView<'_>) -> Style {
     let mut style = Style::default().fg(colour(cell.fg)).bg(colour(cell.bg));
     if cell.bold {
         style = style.add_modifier(Modifier::BOLD);

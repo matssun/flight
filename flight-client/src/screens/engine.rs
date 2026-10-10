@@ -33,7 +33,7 @@ pub(super) trait TerminalEngine {
     fn size(&self) -> (u16, u16);
 
     /// The cell at (column, row), if that is on the screen.
-    fn cell(&self, col: u16, row: u16) -> Option<CellView>;
+    fn cell(&self, col: u16, row: u16) -> Option<CellView<'_>>;
 
     /// Where the cursor is, (column, row), unless the program hid it.
     fn cursor(&self) -> Option<(u16, u16)>;

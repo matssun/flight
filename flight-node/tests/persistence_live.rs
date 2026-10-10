@@ -128,12 +128,7 @@ impl Live {
     }
 
     fn recover(&self, policy: &RecoveryPolicy) -> RecoveryReport {
-        self.servers
-            .persistence()
-            .unwrap()
-            .recover(&self.servers, policy)
-            .unwrap()
-            .unwrap()
+        self.servers.recover_saved(policy).unwrap().unwrap()
     }
 
     fn sessions(&self) -> Vec<String> {
@@ -257,12 +252,7 @@ fn two_passes_at_the_same_time_start_one_workspace() {
         .map(|_| {
             let servers = live.servers.clone();
             std::thread::spawn(move || {
-                servers
-                    .persistence()
-                    .unwrap()
-                    .recover(&servers, &go())
-                    .unwrap()
-                    .unwrap();
+                servers.recover_saved(&go()).unwrap().unwrap();
             })
         })
         .collect();
@@ -385,12 +375,7 @@ fn an_unreadable_saved_file_is_kept_byte_for_byte_and_creation_still_works() {
     live.workspace("nga", &dir);
     assert_eq!(live.sessions(), vec!["nga"]);
     assert_eq!(std::fs::read_to_string(&file).unwrap(), junk);
-    assert!(live
-        .servers
-        .persistence()
-        .unwrap()
-        .recover(&live.servers, &go())
-        .is_none());
+    assert!(live.servers.recover_saved(&go()).is_none());
 }
 
 #[test]

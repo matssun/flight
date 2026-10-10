@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 
 use crate::agent_resume::{AgentLaunch, AgentSession, Claude};
+use crate::pane_agent;
+use crate::persistence::NodeTmux;
 use crate::round::raw_placement;
 use crate::session_create::{Program, SessionRequest};
-use crate::{pane_agent, TmuxServers};
 use flight_classify::AgentKind;
 use flight_state::{HostId, SurfaceRole};
 use flight_tmux::ConfigMark;
@@ -33,16 +34,16 @@ pub(crate) struct NewReference {
 /// This node's tmux servers, seen as `flight-workspaces` sees a host: something to ask what is
 /// running, and something that starts a workspace or surface from a definition. Both only ever
 /// use the node's existing creation paths, which never create or alter a directory.
-pub(crate) struct NodeBackend<'a> {
-    servers: &'a TmuxServers,
+pub(crate) struct NodeBackend<'a, S: NodeTmux + ?Sized> {
+    servers: &'a S,
     host: HostId,
     resume: Option<ResumeContext<'a>>,
     /// References for the agents this backend started, for the caller to keep.
     pub(crate) new_references: Vec<NewReference>,
 }
 
-impl<'a> NodeBackend<'a> {
-    pub(crate) fn new(servers: &'a TmuxServers, host: &str) -> Self {
+impl<'a, S: NodeTmux + ?Sized> NodeBackend<'a, S> {
+    pub(crate) fn new(servers: &'a S, host: &str) -> Self {
         Self {
             servers,
             host: HostId::new(host),
@@ -96,7 +97,7 @@ fn key(text: &str) -> Option<ConfigKey> {
     ConfigKey::parse(text)
 }
 
-impl Observer for NodeBackend<'_> {
+impl<S: NodeTmux + ?Sized> Observer for NodeBackend<'_, S> {
     /// A node asks only itself. A server that is not running contributes nothing (that is what
     /// a lost tmux server looks like); any other failure makes the whole host unreadable
     /// rather than reporting an empty one, because "nothing running" would start duplicates.
@@ -134,7 +135,7 @@ impl Observer for NodeBackend<'_> {
     }
 }
 
-impl NodeBackend<'_> {
+impl<S: NodeTmux + ?Sized> NodeBackend<'_, S> {
     /// Start the workspace. `resume` is an earlier session already checked to be continuable;
     /// without it the agent is a new one.
     fn start_with(
@@ -196,7 +197,7 @@ impl NodeBackend<'_> {
     }
 }
 
-impl Executor for NodeBackend<'_> {
+impl<S: NodeTmux + ?Sized> Executor for NodeBackend<'_, S> {
     fn start_workspace(&mut self, def: &WorkspaceDefinition) -> Result<Started, ExecError> {
         self.start_with(def, None)
     }

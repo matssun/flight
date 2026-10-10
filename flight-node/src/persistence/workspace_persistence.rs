@@ -3,8 +3,9 @@
 use crate::agent_resume::{resume_support, AgentSession, Support};
 use crate::persistence::saved_report::{capped, saved_workspace, ResumeStatus};
 use crate::persistence::NodeBackend;
+use crate::persistence::NodeTmux;
 use crate::persistence::{canonical_root, NewReference, ResumeContext};
-use crate::{ControlError, Program, SavedAction, SavedActionRequest, SessionRequest, TmuxServers};
+use crate::{ControlError, Program, SavedAction, SavedActionRequest, SessionRequest};
 use flight_proto::ErrorKindCode;
 use flight_proto::SavedResumeCode;
 use flight_tmux::{ConfigMark, SurfaceMark, SurfaceTag};
@@ -275,7 +276,10 @@ impl WorkspacePersistence {
     /// The saved workspaces and how each stands now, for the wire. Reads only: it looks at the
     /// running workspaces and at the roots and changes nothing, saved or running. Empty when
     /// persistence is disabled.
-    pub fn report(&self, servers: &TmuxServers) -> Vec<flight_proto::SavedWorkspace> {
+    pub(crate) fn report<S: NodeTmux + ?Sized>(
+        &self,
+        servers: &S,
+    ) -> Vec<flight_proto::SavedWorkspace> {
         let guard = self.lock();
         let State::Active { doc, resume, .. } = &*guard else {
             return Vec::new();
@@ -303,9 +307,9 @@ impl WorkspacePersistence {
     /// Carry out a user's operation on one saved workspace of this node. `Retry` is handled by
     /// the caller (it only asks for an earlier report); every other action changes the saved
     /// file, or starts the workspace, and nothing here touches the filesystem outside it.
-    pub fn act(
+    pub(crate) fn act<S: NodeTmux + ?Sized>(
         &self,
-        servers: &TmuxServers,
+        servers: &S,
         request: &SavedActionRequest,
     ) -> Result<(), ControlError> {
         let key = ConfigKey::parse(&request.config_key)
@@ -410,9 +414,9 @@ impl WorkspacePersistence {
     /// Start one saved workspace again, as a replacement process, if its root is verified and
     /// nothing in the definition needs a permission the user has not given. Idempotent: a
     /// workspace that already runs is left alone.
-    fn restore(
+    fn restore<S: NodeTmux + ?Sized>(
         &self,
-        servers: &TmuxServers,
+        servers: &S,
         key: &ConfigKey,
         fresh: bool,
     ) -> Result<(), ControlError> {
@@ -471,9 +475,9 @@ impl WorkspacePersistence {
     /// One reconciliation pass of the saved workspaces against this node's tmux servers. The
     /// lock is held throughout, so two passes cannot interleave. Returns `None` when
     /// persistence is disabled.
-    pub fn recover(
+    pub(crate) fn recover<S: NodeTmux + ?Sized>(
         &self,
-        servers: &TmuxServers,
+        servers: &S,
         policy: &RecoveryPolicy,
     ) -> Option<Result<RecoveryReport, String>> {
         let mut guard = self.lock();

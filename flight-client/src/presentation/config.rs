@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::command::Shown;
+use super::surface_names::{surface_choice, surface_id};
 use crate::session::{FromRemote, OpenFailure, Reattach};
 use flight_present::Style;
 use flight_state::SurfaceId;
@@ -40,8 +41,8 @@ pub struct PresentationConfig {
 impl PresentationConfig {
     /// A workspace's agent and shell, by their usual names.
     pub fn for_workspace(say: Arc<dyn Fn(&str) + Send + Sync>) -> Self {
-        let agent = SurfaceId::new("agent");
-        let shell = SurfaceId::new("shell");
+        let agent = surface_id(SurfaceChoice::Agent);
+        let shell = surface_id(SurfaceChoice::Shell);
         Self {
             input_limit: 64 * 1024,
             open_timeout: Duration::from_secs(15),
@@ -49,11 +50,7 @@ impl PresentationConfig {
             lease_period: crate::terminal::LEASE_PERIOD,
             reattach_delays: Reattach::default_delays(),
             surfaces: vec![agent, shell],
-            resolve: Arc::new(|s| match s.as_str() {
-                "agent" => Some(SurfaceChoice::Agent),
-                "shell" => Some(SurfaceChoice::Shell),
-                _ => None,
-            }),
+            resolve: Arc::new(surface_choice),
             label: Arc::new(|s| s.to_string()),
             style: Style::default(),
             theme: Theme::default(),
@@ -63,11 +60,11 @@ impl PresentationConfig {
     }
 
     pub(super) fn surface_for(&self, shown: Shown) -> Option<SurfaceId> {
-        let name = match shown {
-            Shown::Agent => "agent",
-            Shown::Shell => "shell",
-        };
-        self.surfaces.iter().find(|s| s.as_str() == name).cloned()
+        let wanted = surface_id(match shown {
+            Shown::Agent => SurfaceChoice::Agent,
+            Shown::Shell => SurfaceChoice::Shell,
+        });
+        self.surfaces.iter().find(|s| **s == wanted).cloned()
     }
 }
 

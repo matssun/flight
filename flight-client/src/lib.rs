@@ -15,6 +15,7 @@ mod session;
 mod snapshot_view;
 mod switch;
 mod terminal;
+mod visit;
 
 pub use layout_store::LayoutStore;
 pub use link_host::LinkHost;
@@ -41,3 +42,4 @@ pub use terminal::{
     run_presentation, run_session, terminal_request_shape, EscapeFilter, LocalTerminal,
     SessionRequest, TerminalEnd, LEASE_PERIOD,
 };
+pub use visit::{visit, Returning, Terminals};

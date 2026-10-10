@@ -451,6 +451,28 @@ async fn a_lost_stream_is_attached_again_to_the_same_process_and_typing_waits() 
 }
 
 #[tokio::test(start_paused = true)]
+async fn a_node_that_was_lost_is_attached_again_to_the_same_process() {
+    let mut rig = rig(b"");
+    let agent = rig.next_remote().await;
+    rig.host.plan(Plan::Ok(Duration::from_millis(10)));
+    agent
+        .to_session
+        .send(FromRemote::Exit {
+            reason: ExitReasonCode::NodeLost,
+            status: 0,
+        })
+        .await
+        .unwrap();
+    let again = rig.next_remote().await;
+    assert_eq!(again.choice, Agent);
+    let calls = rig.host.calls.lock().unwrap().clone();
+    assert_eq!(
+        calls.last().map(|c| c.1.clone()),
+        Some(Some(binding(Agent, 100)))
+    );
+}
+
+#[tokio::test(start_paused = true)]
 async fn reattaching_gives_up_after_the_configured_attempts_and_reports_undelivered_input() {
     let mut rig = rig_with(4, b"", |c| {
         c.reattach_delays = vec![Duration::from_millis(10), Duration::from_millis(10)];

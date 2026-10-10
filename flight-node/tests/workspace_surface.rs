@@ -361,7 +361,15 @@ fn each_surface_is_attachable_alone_and_leaving_one_leaves_the_other_running() {
     };
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     while clients() < 2 {
-        assert!(std::time::Instant::now() < deadline, "two clients");
+        assert!(
+            std::time::Instant::now() < deadline,
+            "two clients; tmux has: {:?}; windows: {}",
+            live.tmux
+                .runner()
+                .run(&["list-clients", "-F", "#{client_session} #{client_pid}"])
+                .map(|o| o.stdout),
+            live.windows()
+        );
         std::thread::sleep(std::time::Duration::from_millis(30));
     }
     // Leaving the shell's presentation does not touch the agent, nor the shell itself.

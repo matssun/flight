@@ -7,8 +7,8 @@
 use flight_classify::AgentKind;
 use flight_client::{
     Attachment, Binding, ClientConfig, Handoff, LinkHost, LocalTerminal, OpenFailure, OpenRequest,
-    OrchestratedBackend, RemoteOps, SessionConfig, SessionOutcome, SessionStart, SurfaceHost,
-    SurfaceSession, Switcher, TerminalEnd,
+    OrchestratedBackend, RemoteError, RemoteOps, SessionConfig, SessionOutcome, SessionStart,
+    SurfaceHost, SurfaceSession, Switcher, TerminalEnd,
 };
 use flight_node::{NodeCore, NodeSession, PaneObservation, Round, ServerOutcome, TmuxServers};
 use flight_orchestrator::OrchestratorConfig;
@@ -273,6 +273,17 @@ impl Rig {
             .unwrap_or_default()
     }
 
+    /// The window the session itself is on (a terminal's view has a window of its own).
+    fn active_window(&self) -> String {
+        self.tmux
+            .runner()
+            .run(&["display-message", "-p", "-t", "work:", "#{window_id}"])
+            .expect("active window")
+            .stdout
+            .trim()
+            .to_owned()
+    }
+
     fn active_pane(&self) -> String {
         self.tmux
             .runner()
@@ -402,20 +413,43 @@ fn finish(rig: &Rig, shown: Shown) -> TerminalEnd {
 }
 
 #[test]
-fn enter_reveals_the_pane_opens_a_terminal_and_the_escape_leaves_cleanly() {
+fn enter_opens_a_terminal_on_the_pane_without_moving_the_node_and_the_escape_leaves_cleanly() {
     if !tmux_available() {
         return;
     }
-    let mut rig = start("enter", "cat", true);
-    // Pane 0 is shown first; Enter on pane 1 must select it before the terminal attaches.
-    assert_ne!(rig.active_pane(), rig.panes[1].0);
+    // Pane 1 is a window of its own. Enter on it shows it in the terminal's own view and leaves
+    // the node's session on the window it was on (whoever sits at the node keeps their window).
+    let mut rig = start_with("enter", "cat", true, true);
+    let before = rig.active_window();
     let entered = rig.enter(1);
-    assert_eq!(rig.active_pane(), rig.panes[1].0, "the pane was revealed");
 
     let mut shown = rig.show(&entered);
     rig.wait(
         "tmux client attached",
         |r| matches!(r.clients().as_slice(), [only] if only.starts_with("flight-view-")),
+    );
+    assert_eq!(
+        rig.active_window(),
+        before,
+        "the node's session was not moved"
+    );
+    let view = rig.clients().remove(0);
+    let shown_pane = rig
+        .tmux
+        .runner()
+        .run(&[
+            "display-message",
+            "-p",
+            "-t",
+            &format!("={view}:"),
+            "#{pane_id}",
+        ])
+        .expect("the view")
+        .stdout;
+    assert_eq!(
+        shown_pane.trim(),
+        rig.panes[1].0,
+        "the terminal shows pane 1"
     );
     rig.rt
         .block_on(shown.input.send(b"typed-through-the-session\r".to_vec()))
@@ -530,7 +564,7 @@ fn a_remote_detach_ends_the_session_with_the_reason() {
 }
 
 #[test]
-fn a_pane_that_changed_since_it_was_listed_reveals_nothing_and_opens_nothing() {
+fn a_pane_that_changed_since_it_was_listed_selects_nothing_and_opens_nothing() {
     if !tmux_available() {
         return;
     }
@@ -539,8 +573,8 @@ fn a_pane_that_changed_since_it_was_listed_reveals_nothing_and_opens_nothing() {
     let view = rig.view(1, 1);
     let err = rig.backend.switch_to(&view).expect_err("stale");
     assert!(err.contains("changed"), "{err}");
-    assert!(err.starts_with("could not select the pane"), "{err}");
-    assert_eq!(rig.active_pane(), before, "nothing was revealed");
+    assert!(err.starts_with("cannot open a terminal"), "{err}");
+    assert_eq!(rig.active_pane(), before, "nothing was selected");
     assert!(rig.backend.handoff().take().is_none());
     assert_eq!(rig.terminals_open(), 0);
     assert!(rig.clients().is_empty());
@@ -571,7 +605,7 @@ fn nothing_in_the_remote_path_needs_ssh() {
         fn reveal(&mut self, _: &PaneRef, _: u32) -> Result<(), String> {
             Ok(())
         }
-        fn open_terminal(&mut self, _: &PaneRef, _: u32) -> Result<Vec<u8>, String> {
+        fn open_terminal(&mut self, _: &PaneRef, _: u32) -> Result<Vec<u8>, RemoteError> {
             Ok(vec![0; 16])
         }
     }

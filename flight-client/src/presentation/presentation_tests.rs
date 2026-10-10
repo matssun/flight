@@ -3,7 +3,7 @@
 use super::*;
 use crate::screens::{Geometry, MouseEncoding, MouseMode, ScreenModel};
 use crate::session::{
-    Attachment, Binding, FromRemote, OpenFailure, OpenRequest, SurfaceHost, ToRemote,
+    Attachment, Binding, FromRemote, Handover, OpenFailure, OpenRequest, SurfaceHost, ToRemote,
 };
 use crate::terminal::{LocalTerminal, TerminalEnd};
 use flight_present::{Axis, Layout, Placement};
@@ -121,6 +121,16 @@ fn start(layout: Layout, size: (u16, u16)) -> Rig {
 
 /// As `start`, with the first `unavailable` opens failing as unreachable.
 fn start_with_unavailable(layout: Layout, size: (u16, u16), unavailable: usize) -> Rig {
+    start_from(layout, size, unavailable, None)
+}
+
+/// As `start`, carrying on from a surface that is already attached.
+fn start_from(
+    layout: Layout,
+    size: (u16, u16),
+    unavailable: usize,
+    handover: Option<Handover>,
+) -> Rig {
     let (attached, remotes) = mpsc::unbounded_channel();
     let host = Arc::new(FakeHost {
         attached,
@@ -136,7 +146,7 @@ fn start_with_unavailable(layout: Layout, size: (u16, u16), unavailable: usize) 
     let (resizes, resizes_rx) = mpsc::channel(4);
     let (output_tx, output) = mpsc::channel(64);
     let session = PresentationSession::new(host.clone(), config);
-    let outcome = tokio::spawn(session.run(
+    let outcome = tokio::spawn(session.run_from(
         LocalTerminal {
             input: input_rx,
             resizes: resizes_rx,
@@ -144,6 +154,7 @@ fn start_with_unavailable(layout: Layout, size: (u16, u16), unavailable: usize) 
         },
         layout,
         size,
+        handover,
     ));
     Rig {
         input,
@@ -704,4 +715,81 @@ async fn one_tile_whose_program_wants_no_mouse_leaves_the_mouse_to_the_terminal(
     let _agent = rig.remote().await;
     rig.settle().await;
     assert_eq!(rig.screen.modes().mouse, MouseMode::None);
+}
+
+/// A surface that is already attached, as a session hands it on: its far end is the returned
+/// `Remote`.
+fn handed(choice: SurfaceChoice, size: (u16, u16), typed_ahead: &[u8]) -> (Handover, Remote) {
+    let (to_remote, from_session) = mpsc::channel(16);
+    let (to_session, from_remote) = mpsc::channel(16);
+    let handover = Handover {
+        choice,
+        attachment: Attachment {
+            id: vec![choice as u8 + 1],
+            binding: binding(choice),
+            to_remote,
+            from_remote,
+            guard: None,
+            retired: None,
+        },
+        size,
+        typed_ahead: typed_ahead.to_vec(),
+    };
+    let remote = Remote {
+        choice,
+        expect: None,
+        size,
+        from_session,
+        to_session,
+    };
+    (handover, remote)
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_surface_handed_on_is_a_tile_without_being_attached_again_and_is_told_its_new_size() {
+    let (handover, mut agent) = handed(Agent, (81, 24), b"for-the-agent");
+    let mut rig = start_from(side_by_side(), (81, 24), 0, Some(handover));
+    // Only the shell is attached by the presentation; nothing is asked for the agent.
+    let mut shell = rig.remote().await;
+    assert_eq!(shell.choice, Shell);
+    rig.settle().await;
+    assert!(
+        rig.remotes.try_recv().is_err(),
+        "the agent was attached again"
+    );
+    // Its stream is its tile's: it hears the tile's size, shows its output there, and gets the
+    // keyboard (what was typed after the request first).
+    let heard = received(&mut agent).await;
+    assert_eq!(resizes_of(&heard), vec![(40, 24)]);
+    assert_eq!(data(&heard), b"for-the-agent");
+    agent
+        .to_session
+        .send(FromRemote::Data(b"still the same process".to_vec()))
+        .await
+        .unwrap();
+    rig.type_(b"more").await;
+    assert_eq!(data(&received(&mut agent).await), b"more");
+    assert!(rig.screen.row_text(0).contains("still the same process"));
+    assert!(data(&received(&mut shell).await).is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_surface_handed_on_into_a_tile_as_big_as_its_screen_is_nudged_so_it_redraws() {
+    let (handover, mut agent) = handed(Agent, (80, 24), b"");
+    let mut rig = start_from(Layout::single(id("agent")), (80, 24), 0, Some(handover));
+    rig.settle().await;
+    let heard = received(&mut agent).await;
+    // One row short, then the real size: tmux redraws on a change, not on being told the same.
+    assert_eq!(resizes_of(&heard), vec![(80, 23), (80, 24)]);
+    assert!(rig.remotes.try_recv().is_err());
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_surface_handed_on_that_the_arrangement_does_not_show_is_let_go() {
+    let (handover, mut shell) = handed(Shell, (80, 24), b"");
+    let mut rig = start_from(Layout::single(id("agent")), (80, 24), 0, Some(handover));
+    let agent = rig.remote().await;
+    assert_eq!(agent.choice, Agent);
+    rig.settle().await;
+    assert!(received(&mut shell).await.contains(&ToRemote::Close));
 }

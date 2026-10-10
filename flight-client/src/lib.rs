@@ -40,6 +40,6 @@ pub use switch::{
 };
 pub use terminal::{
     run_presentation, run_session, terminal_request_shape, EscapeFilter, LocalTerminal,
-    SessionRequest, TerminalEnd, LEASE_PERIOD,
+    SessionRequest, TerminalEnd, TerminalHold, LEASE_PERIOD,
 };
 pub use visit::{visit, Returning, Terminals};

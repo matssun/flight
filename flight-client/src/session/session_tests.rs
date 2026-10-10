@@ -626,3 +626,96 @@ async fn a_previous_attachment_that_never_finishes_does_not_hold_the_surface_for
     let mut shell2 = rig.next_remote().await;
     assert_eq!(shell2.data(2).await, b"go");
 }
+
+/// A session run the way the product runs it when the surfaces may be asked for side by side.
+async fn keeping(typed: &[&[u8]]) -> (SessionEnding, Remote, Vec<u8>) {
+    let (host, mut remotes) = FakeHost::new(4);
+    let (input, input_rx) = mpsc::channel(8);
+    let (resizes, resizes_rx) = mpsc::channel(4);
+    let (output_tx, mut output) = mpsc::channel(8);
+    let mut config = SessionConfig::new(Arc::new(|_| {}));
+    config.reset = b"<RESET>".to_vec();
+    let session = SurfaceSession::new(host, config);
+    let start = SessionStart {
+        id: vec![1],
+        choice: Agent,
+        binding: binding(Agent, 100),
+        typed_ahead: Vec::new(),
+        size: (80, 24),
+    };
+    let task = tokio::spawn(session.run_keeping(
+        LocalTerminal {
+            input: input_rx,
+            resizes: resizes_rx,
+            output: output_tx,
+        },
+        start,
+    ));
+    let agent = tokio::time::timeout(Duration::from_secs(60), remotes.recv())
+        .await
+        .expect("an attachment")
+        .expect("host alive");
+    agent
+        .to_session
+        .send(FromRemote::Data(b"on screen".to_vec()))
+        .await
+        .unwrap();
+    for bytes in typed {
+        input.send(bytes.to_vec()).await.unwrap();
+    }
+    let ending = tokio::time::timeout(Duration::from_secs(60), task)
+        .await
+        .expect("the session ends")
+        .expect("no panic");
+    drop((input, resizes));
+    // What reached the user's terminal, in order.
+    let mut shown = Vec::new();
+    while let Ok(chunk) = output.try_recv() {
+        shown.extend(chunk);
+    }
+    (ending, agent, shown)
+}
+
+#[tokio::test(start_paused = true)]
+async fn asking_for_both_hands_the_surface_on_screen_on_with_its_stream_still_up() {
+    let (ending, mut agent, shown) = keeping(&[b"abc\x00vwhat-comes-next"]).await;
+    assert_eq!(ending.outcome.end, TerminalEnd::Presenting);
+    assert_eq!(ending.outcome.shown, Some(Agent));
+    let mut handover = ending.handover.expect("the surface is handed on");
+    assert_eq!(handover.choice, Agent);
+    assert_eq!(handover.size, (80, 24));
+    assert_eq!(handover.typed_ahead, b"what-comes-next");
+    // Everything typed before the request reached the surface, and the stream was not closed.
+    let sent = agent.pending();
+    assert!(sent.contains(&ToRemote::Data(b"abc".to_vec())), "{sent:?}");
+    assert!(!sent.contains(&ToRemote::Close), "{sent:?}");
+    // The stream is the next holder's now, both ways.
+    agent
+        .to_session
+        .send(FromRemote::Data(b"more".to_vec()))
+        .await
+        .unwrap();
+    assert_eq!(
+        handover.attachment.from_remote.recv().await,
+        Some(FromRemote::Data(b"more".to_vec()))
+    );
+    handover
+        .attachment
+        .to_remote
+        .send(ToRemote::Data(b"next".to_vec()))
+        .await
+        .unwrap();
+    assert_eq!(agent.data(4).await, b"next");
+    // The surface's output reached the terminal, then the reset for whoever draws next.
+    let shown = String::from_utf8(shown).unwrap();
+    assert!(shown.starts_with("on screen"), "{shown:?}");
+    assert!(shown.ends_with("<RESET>"), "{shown:?}");
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_session_that_ends_any_other_way_hands_nothing_on_and_lets_the_surface_go() {
+    let (ending, mut agent, _) = keeping(&[b"x\x00q"]).await;
+    assert_eq!(ending.outcome.end, TerminalEnd::UserLeft);
+    assert!(ending.handover.is_none());
+    assert!(agent.pending().contains(&ToRemote::Close));
+}

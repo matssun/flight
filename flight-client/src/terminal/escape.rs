@@ -17,6 +17,9 @@ pub struct EscapeFilter {
     prefix_seen: bool,
     /// The surface being shown, if known: asking for it again does nothing.
     showing: Option<SurfaceChoice>,
+    /// What was typed after `Ctrl-Space v` in the same read: it is for what shows the surfaces
+    /// side by side, not for this.
+    unread: Vec<u8>,
 }
 
 impl EscapeFilter {
@@ -25,7 +28,13 @@ impl EscapeFilter {
         Self {
             prefix_seen: false,
             showing,
+            unread: Vec::new(),
         }
+    }
+
+    /// What came after `Ctrl-Space v` in the read that held it, once.
+    pub fn take_unread(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.unread)
     }
 
     /// The surface now on screen, after a switch that did not happen.
@@ -45,7 +54,7 @@ impl EscapeFilter {
                 events.push(InputEvent::Data(std::mem::take(run)));
             }
         };
-        for &b in input {
+        for (at, &b) in input.iter().enumerate() {
             if self.prefix_seen {
                 self.prefix_seen = false;
                 match b {
@@ -57,6 +66,10 @@ impl EscapeFilter {
                     b'v' | b'V' => {
                         flush(&mut run, &mut events);
                         events.push(InputEvent::Present);
+                        self.unread = input
+                            .get(at.saturating_add(1)..)
+                            .unwrap_or_default()
+                            .to_vec();
                         return events;
                     }
                     b'a' | b'A' | b's' | b'S' => {
@@ -117,6 +130,17 @@ mod tests {
                 InputEvent::Data(b"x".to_vec())
             ]
         );
+    }
+
+    #[test]
+    fn what_follows_a_request_for_both_in_the_same_read_is_kept_for_what_comes_next() {
+        let mut f = EscapeFilter::default();
+        assert_eq!(
+            f.events(b"a\x00vtyped-after"),
+            vec![InputEvent::Data(b"a".to_vec()), InputEvent::Present]
+        );
+        assert_eq!(f.take_unread(), b"typed-after");
+        assert_eq!(f.take_unread(), b"");
     }
 
     #[test]

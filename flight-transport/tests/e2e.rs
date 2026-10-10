@@ -233,6 +233,11 @@ async fn saved_workspaces_reach_the_ui_over_mutual_tls_and_survive_a_reconnect()
     // The node goes away; a UI that subscribes afterwards still sees the saved workspace.
     stop_tx.send(true).expect("stop");
     runner.await.expect("runner");
+    // The orchestrator learns of the closed stream on its own task; subscribe only after it has.
+    wait_until("node disconnected", || {
+        node_status(&server, &node_fp) == Some(NodeStatusCode::Disconnected as i32)
+    })
+    .await;
     let mut late = UiClient::connect(&addr, &ui_id, &orch).await.expect("ui");
     late.send(subscribe()).expect("send");
     let first = ui_until(&mut late, "fleet snapshot", |e| {

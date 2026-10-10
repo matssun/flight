@@ -7,7 +7,10 @@
 mod end;
 mod escape;
 mod local_terminal;
+pub(crate) mod reset;
 mod tty;
+#[cfg(test)]
+mod tty_tests;
 
 pub use end::TerminalEnd;
 pub use escape::EscapeFilter;

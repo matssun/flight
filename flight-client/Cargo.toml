@@ -21,7 +21,7 @@ vt100 = "0.16"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 flight-present = { path = "../flight-present" }
-rustix = { version = "0.38", features = ["event", "stdio", "fs", "pipe", "termios"] }
+rustix = { version = "0.38", features = ["event", "stdio", "fs", "pipe", "termios", "pty"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 
 [dev-dependencies]

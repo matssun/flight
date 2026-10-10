@@ -29,7 +29,7 @@ trait Probe {
 
 impl<E: TerminalEngine> Probe for E {
     fn feed(&mut self, bytes: &[u8]) -> bool {
-        TerminalEngine::feed(self, bytes)
+        TerminalEngine::feed(self, bytes).is_ok()
     }
     fn resize(&mut self, cols: u16, rows: u16) {
         TerminalEngine::resize(self, geometry(cols, rows));

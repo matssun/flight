@@ -14,7 +14,7 @@ fn id(s: &str) -> SurfaceId {
 #[test]
 fn text_attributes_and_colours_are_kept() {
     let mut m = ScreenModel::new(Geometry::new(40, 5).unwrap());
-    m.feed(b"plain \x1b[1;31mbold red\x1b[0m \x1b[4mu\x1b[0m\x1b[7mi\x1b[0m\r\n\x1b[48;5;21mblue\x1b[0m \x1b[38;2;1;2;3mrgb\x1b[0m");
+    m.feed(b"plain \x1b[1;31mbold red\x1b[0m \x1b[4mu\x1b[0m\x1b[7mi\x1b[0m\r\n\x1b[48;5;21mblue\x1b[0m \x1b[38;2;1;2;3mrgb\x1b[0m").unwrap();
     assert_eq!(m.row_text(0), "plain bold red ui");
     let red = m.cell(6, 0).unwrap();
     assert!(red.bold && red.fg == Colour::Indexed(1), "{red:?}");
@@ -27,7 +27,7 @@ fn text_attributes_and_colours_are_kept() {
 #[test]
 fn wide_and_combining_characters_take_the_cells_they_should() {
     let mut m = ScreenModel::new(Geometry::new(20, 2).unwrap());
-    m.feed("日本e\u{301}🙂x".as_bytes());
+    m.feed("日本e\u{301}🙂x".as_bytes()).unwrap();
     assert_eq!(m.row_text(0), "日本e\u{301}🙂x");
     let first = m.cell(0, 0).unwrap();
     assert!(first.wide && !first.continuation);
@@ -40,11 +40,11 @@ fn wide_and_combining_characters_take_the_cells_they_should() {
 #[test]
 fn the_cursor_and_its_hiding_are_reported() {
     let mut m = ScreenModel::new(Geometry::new(20, 5).unwrap());
-    m.feed(b"ab\r\ncd");
+    m.feed(b"ab\r\ncd").unwrap();
     assert_eq!(m.cursor(), Some((2, 1)));
-    m.feed(b"\x1b[?25l");
+    m.feed(b"\x1b[?25l").unwrap();
     assert_eq!(m.cursor(), None);
-    m.feed(b"\x1b[?25h\x1b[3;4H");
+    m.feed(b"\x1b[?25h\x1b[3;4H").unwrap();
     assert_eq!(m.cursor(), Some((3, 2)));
 }
 
@@ -54,11 +54,13 @@ fn the_modes_the_program_asks_for_are_visible() {
     let none = m.modes();
     assert!(!none.alternate_screen && !none.bracketed_paste && !none.application_cursor_keys);
     assert_eq!(none.mouse, MouseMode::None);
-    m.feed(b"\x1b[?1049h\x1b[?2004h\x1b[?1h\x1b[?1002h");
+    m.feed(b"\x1b[?1049h\x1b[?2004h\x1b[?1h\x1b[?1002h")
+        .unwrap();
     let on = m.modes();
     assert!(on.alternate_screen && on.bracketed_paste && on.application_cursor_keys);
     assert_eq!(on.mouse, MouseMode::Drag);
-    m.feed(b"\x1b[?1049l\x1b[?2004l\x1b[?1l\x1b[?1002l\x1b[?1000h");
+    m.feed(b"\x1b[?1049l\x1b[?2004l\x1b[?1l\x1b[?1002l\x1b[?1000h")
+        .unwrap();
     let off = m.modes();
     assert!(!off.alternate_screen && !off.bracketed_paste && !off.application_cursor_keys);
     assert_eq!(off.mouse, MouseMode::Press);
@@ -67,8 +69,8 @@ fn the_modes_the_program_asks_for_are_visible() {
 #[test]
 fn a_sequence_cut_between_two_feeds_is_not_lost() {
     let mut m = ScreenModel::new(Geometry::new(20, 2).unwrap());
-    m.feed(b"\x1b[3");
-    m.feed(b"1mred\x1b[0m");
+    m.feed(b"\x1b[3").unwrap();
+    m.feed(b"1mred\x1b[0m").unwrap();
     assert_eq!(m.cell(0, 0).unwrap().fg, Colour::Indexed(1));
     assert_eq!(m.row_text(0), "red");
 }
@@ -76,7 +78,7 @@ fn a_sequence_cut_between_two_feeds_is_not_lost() {
 #[test]
 fn a_resize_keeps_the_old_picture_until_the_surface_repaints_at_the_new_size() {
     let mut m = ScreenModel::new(Geometry::new(40, 10).unwrap());
-    m.feed(b"hello");
+    m.feed(b"hello").unwrap();
     m.resize(Geometry::new(20, 5).unwrap());
     assert_eq!(m.size(), (20, 5));
     assert_eq!(
@@ -85,12 +87,12 @@ fn a_resize_keeps_the_old_picture_until_the_surface_repaints_at_the_new_size() {
         "no blank flash while the surface redraws"
     );
     // The first bytes of the repaint are the new picture.
-    assert!(m.feed(b"\x1b[H\x1b[2Jworld"));
+    assert!(m.feed(b"\x1b[H\x1b[2Jworld").is_ok());
     assert_eq!(m.row_text(0), "world");
     assert_eq!(m.size(), (20, 5));
     // Asking for the size it already has changes nothing.
     m.resize(Geometry::new(20, 5).unwrap());
-    m.feed(b"!");
+    m.feed(b"!").unwrap();
     assert_eq!(m.row_text(0), "world!");
     // A size below the smallest cannot be asked for; the screen keeps the one it has.
     assert!(Geometry::new(0, 0).is_err() && Geometry::new(80, 1).is_err());
@@ -112,7 +114,7 @@ fn whatever_a_program_writes_cannot_break_the_model() {
             // A lot of escapes, so the parser spends its time in the interesting places.
             chunk.push(if b < 24 { 0x1b } else { b });
         }
-        assert!(m.feed(&chunk));
+        assert!(m.feed(&chunk).is_ok());
         m.resize(Geometry::new(2 + (chunk[0] as u16 % 119), 2 + (chunk[1] as u16 % 49)).unwrap());
     }
     let (cols, rows) = m.size();
@@ -163,8 +165,10 @@ fn two_screens_are_drawn_side_by_side_with_a_line_and_the_cursor_of_the_focused_
     );
     let mut agent = ScreenModel::new(Geometry::new(a.cols, a.rows).unwrap());
     let mut shell = ScreenModel::new(Geometry::new(s.cols, s.rows).unwrap());
-    agent.feed(b"\x1b[1;32magent here\x1b[0m\r\n> typing");
-    shell.feed(b"$ ls\r\nfile.txt");
+    agent
+        .feed(b"\x1b[1;32magent here\x1b[0m\r\n> typing")
+        .unwrap();
+    shell.feed(b"$ ls\r\nfile.txt").unwrap();
     let mut buf = buffer(41, 6);
     let painted = paint(
         &mut buf,
@@ -205,8 +209,10 @@ fn a_wide_character_never_spills_into_the_next_tile_and_a_blank_tile_is_blank() 
     let a = solved.tile(&id("agent")).unwrap().area;
     // A model wider than its tile (the surface has not heard of the new size yet).
     let mut agent = ScreenModel::new(Geometry::new(a.cols + 4, a.rows).unwrap());
-    agent.feed("x".repeat(usize::from(a.cols) - 1).as_bytes());
-    agent.feed("日本".as_bytes());
+    agent
+        .feed("x".repeat(usize::from(a.cols) - 1).as_bytes())
+        .unwrap();
+    agent.feed("日本".as_bytes()).unwrap();
     let mut buf = buffer(41, 6);
     paint(
         &mut buf,
@@ -241,7 +247,7 @@ fn tabs_are_drawn_as_a_strip_with_the_active_one_marked() {
     .unwrap();
     let solved = solve(&layout, Rect::new(0, 0, 40, 6), &LayoutStyle::default());
     let mut shell = ScreenModel::new(Geometry::new(40, 5).unwrap());
-    shell.feed(b"in the shell");
+    shell.feed(b"in the shell").unwrap();
     let mut buf = buffer(40, 6);
     let theme = Theme::default();
     paint(
@@ -267,7 +273,7 @@ fn a_squeezed_layout_paints_the_focused_screen_across_everything() {
     let solved = solve(&layout, Rect::new(0, 0, 25, 6), &LayoutStyle::default());
     assert!(solved.squeezed);
     let mut agent = ScreenModel::new(Geometry::new(25, 6).unwrap());
-    agent.feed(b"alone");
+    agent.feed(b"alone").unwrap();
     let mut buf = buffer(25, 6);
     let painted = paint(
         &mut buf,
@@ -284,7 +290,7 @@ fn a_squeezed_layout_paints_the_focused_screen_across_everything() {
 fn a_tile_too_small_for_any_screen_shows_a_placeholder_and_never_a_cropped_screen() {
     let layout = Layout::single(id("agent"));
     let mut agent = ScreenModel::new(Geometry::new(80, 24).unwrap());
-    agent.feed(b"hello");
+    agent.feed(b"hello").unwrap();
     for (cols, rows) in [(1, 1), (1, 5), (5, 1)] {
         let solved = solve(
             &layout,
@@ -321,4 +327,21 @@ fn a_tile_too_small_for_any_screen_shows_a_placeholder_and_never_a_cropped_scree
         &|s| s.to_string(),
         &Theme::default(),
     );
+}
+
+#[test]
+fn a_failure_of_the_emulator_is_reported_with_what_it_was_given_and_leaves_a_usable_empty_screen() {
+    use super::faulty_engine::FAIL;
+    let mut m = ScreenModel::new(Geometry::new(30, 6).unwrap());
+    m.feed(b"before").unwrap();
+    let mut bytes = b"some output".to_vec();
+    bytes.extend_from_slice(FAIL);
+    let failure = m.feed(&bytes).unwrap_err();
+    assert_eq!(failure.bytes, bytes.len());
+    assert_eq!(failure.geometry.pair(), (30, 6));
+    assert!(failure.to_string().contains("30x6"), "{failure}");
+    assert_eq!(m.size(), (30, 6), "the geometry is kept");
+    assert_eq!(m.row_text(0), "", "what it showed is gone");
+    m.feed(b"after").unwrap();
+    assert_eq!(m.row_text(0), "after", "and it works again");
 }

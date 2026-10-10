@@ -2,10 +2,14 @@
 
 use super::emulator::Emulator;
 use super::engine::TerminalEngine;
-use super::{CellView, Geometry, Modes};
+use super::{CellView, EngineFailure, Geometry, Modes};
 
-/// The one place that says which terminal emulator Flight uses.
+/// The one place that says which terminal emulator Flight uses. (Unit tests use the same one,
+/// made to fail on request: see `faulty_engine.rs`.)
+#[cfg(not(test))]
 type Engine = Emulator;
+#[cfg(test)]
+type Engine = super::faulty_engine::FaultyEngine<Emulator>;
 
 /// What one surface has drawn: one screen of cells. No scrollback is kept here (tmux, inside the
 /// surface, keeps the history); the model costs about 150 KiB at 80x24 and 870 KiB at 200x60
@@ -24,9 +28,9 @@ impl ScreenModel {
         }
     }
 
-    /// Take what the surface wrote. `false` means the emulator failed on it: the model was
-    /// emptied (same size) and the caller should have the surface redrawn.
-    pub fn feed(&mut self, bytes: &[u8]) -> bool {
+    /// Take what the surface wrote. An error means the emulator failed on it: the model was
+    /// emptied (same size) and the caller should have the surface drawn again.
+    pub fn feed(&mut self, bytes: &[u8]) -> Result<(), EngineFailure> {
         self.engine.feed(bytes)
     }
 

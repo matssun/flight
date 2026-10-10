@@ -147,7 +147,7 @@ fn the_model_shows_what_tmux_shows_for_text_wide_characters_and_scrolling() {
         return;
     };
     let mut model = ScreenModel::new(Geometry::new(100, 30).unwrap());
-    assert!(model.feed(&rig.drain()));
+    assert!(model.feed(&rig.drain()).is_ok());
     let want = rig.capture();
     let got = pane_rows(&model, 30);
     for (i, row) in got.iter().enumerate() {
@@ -167,7 +167,7 @@ fn attributes_and_colours_reach_the_cells() {
         return;
     };
     let mut model = ScreenModel::new(Geometry::new(100, 30).unwrap());
-    model.feed(&rig.drain());
+    model.feed(&rig.drain()).unwrap();
     // Find the rows by their text: the script scrolled, so they are where tmux put them.
     let row_of = |needle: &str| (0..29u16).find(|r| model.row_text(*r).contains(needle));
     let bold_row = row_of("bold").expect("the attribute line is on screen");
@@ -190,7 +190,7 @@ fn after_a_resize_the_surface_repaints_and_the_model_follows() {
         return;
     };
     let mut model = ScreenModel::new(Geometry::new(100, 30).unwrap());
-    model.feed(&rig.drain());
+    model.feed(&rig.drain()).unwrap();
     // The terminal is made smaller: the client is told, the model is told, tmux repaints.
     rig.master
         .resize(PtySize {
@@ -203,7 +203,7 @@ fn after_a_resize_the_surface_repaints_and_the_model_follows() {
     model.resize(Geometry::new(60, 20).unwrap());
     assert_eq!(model.size(), (60, 20));
     std::thread::sleep(Duration::from_millis(500));
-    assert!(model.feed(&rig.drain()));
+    assert!(model.feed(&rig.drain()).is_ok());
     let want = rig.capture();
     let got = pane_rows(&model, 20);
     for (i, row) in got.iter().enumerate() {

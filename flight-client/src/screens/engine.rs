@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use super::{CellView, Geometry, Modes};
+use super::{CellView, EngineFailure, Geometry, Modes};
 
 /// What Flight needs from a terminal emulator, and nothing more: take the bytes a surface wrote,
 /// keep the screen they draw, and say what is on it. The terminal emulation library is behind
@@ -14,8 +14,8 @@ use super::{CellView, Geometry, Modes};
 /// Invariants every implementation keeps (`engine_contract_tests` runs them against each):
 ///
 /// - `feed` never panics and never ends the process. If the emulator fails on some input it
-///   empties the screen (same size) and returns `false`, so the caller can have the surface
-///   redrawn.
+///   empties the screen (same size), stays usable, and returns an [`EngineFailure`] saying what
+///   happened, so the caller can have the surface drawn again.
 /// - `size` is exactly the geometry most recently given to `new` or `resize`: the engine never
 ///   adjusts it. A [`Geometry`] cannot be smaller than the engine can work with. `cell` answers
 ///   every position inside it; a position outside it is `None`.
@@ -24,8 +24,8 @@ use super::{CellView, Geometry, Modes};
 pub(super) trait TerminalEngine {
     fn new(geometry: Geometry) -> Self;
 
-    /// Take what the surface wrote; `false` means the emulator failed on it (see above).
-    fn feed(&mut self, bytes: &[u8]) -> bool;
+    /// Take what the surface wrote; an error means the emulator failed on it (see above).
+    fn feed(&mut self, bytes: &[u8]) -> Result<(), EngineFailure>;
 
     /// The surface was told a new size.
     fn resize(&mut self, geometry: Geometry);

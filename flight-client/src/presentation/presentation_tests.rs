@@ -26,6 +26,8 @@ struct Remote {
 struct FakeHost {
     attached: mpsc::UnboundedSender<Remote>,
     refuse: Mutex<Vec<SurfaceChoice>>,
+    /// The next this many opens fail as unreachable.
+    unavailable: Mutex<usize>,
 }
 
 fn binding(choice: SurfaceChoice) -> Binding {
@@ -43,6 +45,13 @@ impl SurfaceHost for FakeHost {
     async fn open(&self, request: OpenRequest) -> Result<Attachment, OpenFailure> {
         if self.refuse.lock().unwrap().contains(&request.choice) {
             return Err(OpenFailure::Refused("gone".to_owned()));
+        }
+        {
+            let mut left = self.unavailable.lock().unwrap();
+            if *left > 0 {
+                *left -= 1;
+                return Err(OpenFailure::Unavailable("not there yet".to_owned()));
+            }
         }
         let (to_remote, from_session) = mpsc::channel(16);
         let (to_session, from_remote) = mpsc::channel(16);
@@ -107,10 +116,16 @@ fn side_by_side() -> Layout {
 }
 
 fn start(layout: Layout, size: (u16, u16)) -> Rig {
+    start_with_unavailable(layout, size, 0)
+}
+
+/// As `start`, with the first `unavailable` opens failing as unreachable.
+fn start_with_unavailable(layout: Layout, size: (u16, u16), unavailable: usize) -> Rig {
     let (attached, remotes) = mpsc::unbounded_channel();
     let host = Arc::new(FakeHost {
         attached,
         refuse: Mutex::new(Vec::new()),
+        unavailable: Mutex::new(unavailable),
     });
     let notices = Arc::new(Mutex::new(Vec::new()));
     let said = notices.clone();
@@ -548,4 +563,37 @@ async fn a_surface_that_keeps_failing_the_emulator_is_given_up_alone_and_the_ses
     let outcome = rig.outcome.await.unwrap();
     assert_eq!(outcome.end, TerminalEnd::UserLeft);
     assert!(outcome.layout.contains(&id("agent")) && outcome.layout.contains(&id("shell")));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_node_that_was_lost_is_reattached_in_a_tile_as_it_is_in_full_screen() {
+    let mut rig = start(side_by_side(), (81, 24));
+    let (a, s) = (rig.remote().await, rig.remote().await);
+    let (agent, mut shell) = if a.choice == Agent { (a, s) } else { (s, a) };
+    received(&mut shell).await;
+    agent
+        .to_session
+        .send(FromRemote::Exit {
+            reason: ExitReasonCode::NodeLost,
+            status: 0,
+        })
+        .await
+        .unwrap();
+    rig.settle().await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    let again = rig.remote().await;
+    assert_eq!(again.choice, Agent);
+    assert_eq!(again.expect, Some(binding(Agent)), "only the same process");
+    assert!(received(&mut shell).await.is_empty());
+    assert!(!rig.outcome.is_finished());
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_surface_that_is_unreachable_on_first_open_is_tried_again_as_it_is_in_full_screen() {
+    let mut rig = start_with_unavailable(Layout::single(id("agent")), (80, 24), 2);
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let attached = rig.remote().await;
+    assert_eq!(attached.choice, Agent);
+    assert_eq!(*rig.host.unavailable.lock().unwrap(), 0);
+    assert!(!rig.outcome.is_finished());
 }

@@ -15,6 +15,7 @@ mod input_event;
 mod input_queue;
 mod outcome;
 mod pump;
+mod reattach;
 #[cfg(test)]
 mod session_tests;
 mod surface_session;
@@ -24,4 +25,5 @@ pub use host::{OpenFailure, OpenRequest, SurfaceHost};
 pub use input_event::InputEvent;
 pub use input_queue::InputQueue;
 pub use outcome::SessionOutcome;
+pub(crate) use reattach::{Next, Reattach};
 pub use surface_session::{SessionConfig, SessionStart, SurfaceSession};

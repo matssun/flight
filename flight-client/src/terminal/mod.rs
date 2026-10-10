@@ -15,7 +15,9 @@ mod tty_tests;
 pub use end::TerminalEnd;
 pub use escape::EscapeFilter;
 pub use local_terminal::LocalTerminal;
-pub use tty::{run_presentation, run_session, terminal_request_shape, SessionRequest};
+pub use tty::{
+    run_presentation, run_session, terminal_request_shape, SessionRequest, TerminalHold,
+};
 
 /// How often a presentation renews its terminal's lease. The orchestrator lets a lease run
 /// for three of these.

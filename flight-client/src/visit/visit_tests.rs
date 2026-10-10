@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use crate::presentation::{side_by_side, PresentationOutcome};
+use crate::presentation::{side_by_side, PresentationOutcome, WorkspaceSurfaces};
 use crate::session::{Binding, SessionOutcome};
 use crate::terminal::{SessionRequest, TerminalEnd};
 use crate::ShownSurface;
@@ -41,10 +41,16 @@ fn request(choice: SurfaceChoice) -> SessionRequest {
 struct Fake {
     session_end: TerminalEnd,
     session_undelivered: usize,
+    /// The surface on screen when the session ends, if not the one it began with.
+    session_last_shown: Option<SurfaceChoice>,
     presentation_end: TerminalEnd,
     presentation_layout: Option<Layout>,
     sessions: RefCell<Vec<SurfaceChoice>>,
     presentations: RefCell<Vec<Layout>>,
+    /// What each presentation was handed.
+    handed: RefCell<Vec<Option<SurfaceChoice>>>,
+    /// The surfaces the workspace has.
+    surfaces: WorkspaceSurfaces,
 }
 
 impl Fake {
@@ -52,25 +58,45 @@ impl Fake {
         Self {
             session_end,
             session_undelivered: 0,
+            session_last_shown: None,
             presentation_end: TerminalEnd::UserLeft,
             presentation_layout: None,
             sessions: RefCell::default(),
             presentations: RefCell::default(),
+            handed: RefCell::default(),
+            surfaces: WorkspaceSurfaces::standard(),
         }
     }
 }
 
 impl Terminals for Fake {
-    fn session(&self, request: SessionRequest) -> SessionOutcome {
+    /// The surface that was on screen.
+    type Held = SurfaceChoice;
+
+    fn session(&self, request: SessionRequest) -> (SessionOutcome, Option<SurfaceChoice>) {
         self.sessions.borrow_mut().push(request.shown.choice);
-        SessionOutcome {
+        let shown = self.session_last_shown.unwrap_or(request.shown.choice);
+        let outcome = SessionOutcome {
             end: self.session_end.clone(),
-            shown: Some(request.shown.choice),
+            shown: Some(shown),
             undelivered: self.session_undelivered,
-        }
+        };
+        let held = (self.session_end == TerminalEnd::Presenting).then_some(shown);
+        (outcome, held)
     }
 
-    fn presentation(&self, _workspace: WorkspaceKey, layout: Layout) -> PresentationOutcome {
+    fn surfaces(&self, _workspace: &WorkspaceKey) -> WorkspaceSurfaces {
+        self.surfaces.clone()
+    }
+
+    fn presentation(
+        &self,
+        _workspace: WorkspaceKey,
+        _surfaces: WorkspaceSurfaces,
+        layout: Layout,
+        held: Option<SurfaceChoice>,
+    ) -> PresentationOutcome {
+        self.handed.borrow_mut().push(held);
         self.presentations.borrow_mut().push(layout.clone());
         PresentationOutcome {
             end: self.presentation_end.clone(),
@@ -158,4 +184,70 @@ fn a_layout_store_that_cannot_be_used_is_said_and_the_default_arrangement_is_sho
     assert_eq!(fake.presentations.borrow().len(), 1);
     assert_eq!(fake.presentations.borrow()[0].surfaces().len(), 2);
     assert_eq!(back.select, workspace());
+}
+
+#[test]
+fn what_the_session_kept_goes_to_the_presentation_and_the_keyboard_is_where_the_user_last_was() {
+    let mut fake = Fake::new(TerminalEnd::Presenting);
+    // Opened on the agent, switched to the shell, then asked for both.
+    fake.session_last_shown = Some(SurfaceChoice::Shell);
+    visit(&fake, &dir("handed"), request(SurfaceChoice::Agent));
+    assert_eq!(*fake.handed.borrow(), [Some(SurfaceChoice::Shell)]);
+    assert_eq!(
+        fake.presentations.borrow()[0].focus(),
+        &SurfaceId::new("shell")
+    );
+    // A session that does not end in a presentation keeps nothing.
+    let plain = Fake::new(TerminalEnd::UserLeft);
+    visit(&plain, &dir("nothing-kept"), request(SurfaceChoice::Agent));
+    assert!(plain.handed.borrow().is_empty());
+}
+
+#[test]
+fn a_remembered_arrangement_keeps_a_third_surface_while_it_exists_and_the_agent_and_shell_always() {
+    use crate::presentation::workspace_surfaces::fixtures::{pane, snapshot};
+    let dir = dir("third");
+    let with_third = {
+        let snapshot = snapshot(vec![
+            pane(
+                "s-1",
+                flight_ui::SurfaceKind::Agent(flight_classify::AgentKind::Claude),
+                "agent",
+                1,
+            ),
+            pane("s-2", flight_ui::SurfaceKind::Shell, "shell", 2),
+            pane("s-3", flight_ui::SurfaceKind::Shell, "logs", 3),
+        ]);
+        WorkspaceSurfaces::of(&flight_ui::workspaces(&snapshot, "")[0])
+    };
+    let (agent, shell, logs) = (
+        SurfaceId::new("agent"),
+        SurfaceId::new("shell"),
+        SurfaceId::new("s-3"),
+    );
+    let three = side_by_side(&agent)
+        .split(
+            &shell,
+            flight_present::Axis::Down,
+            logs.clone(),
+            flight_present::Placement::After,
+        )
+        .unwrap();
+    // The user leaves with three tiles.
+    let mut first = Fake::new(TerminalEnd::Presenting);
+    first.surfaces = with_third.clone();
+    first.presentation_layout = Some(three.clone());
+    visit(&first, &dir, request(SurfaceChoice::Agent));
+    // Next time the workspace still has it: all three come back.
+    let mut again = Fake::new(TerminalEnd::Presenting);
+    again.surfaces = with_third;
+    visit(&again, &dir, request(SurfaceChoice::Agent));
+    assert_eq!(again.presentations.borrow()[0].surfaces().len(), 3);
+    // When it is gone the arrangement is cut down to what is there; the agent and shell stay
+    // even if they are down for a moment.
+    let gone = Fake::new(TerminalEnd::Presenting);
+    visit(&gone, &dir, request(SurfaceChoice::Agent));
+    let shown = gone.presentations.borrow();
+    assert_eq!(shown[0].surfaces().len(), 2);
+    assert!(shown[0].contains(&agent) && shown[0].contains(&shell));
 }

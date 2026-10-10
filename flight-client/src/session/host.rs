@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::session::{Attachment, Binding};
+use flight_state::SurfaceId;
 use flight_ui::SurfaceChoice;
 use std::future::Future;
 
@@ -17,6 +18,9 @@ pub enum OpenFailure {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpenRequest {
     pub choice: SurfaceChoice,
+    /// Which surface of that kind, when the workspace has more than one: its own id. `None`:
+    /// the workspace's agent or shell, found by kind.
+    pub surface: Option<SurfaceId>,
     pub cols: u16,
     pub rows: u16,
     /// Set when re-attaching after a lost stream: only this exact process may be attached.

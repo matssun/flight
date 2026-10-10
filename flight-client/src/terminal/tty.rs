@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 use crate::presentation::{PresentationConfig, PresentationSession};
-use crate::session::{Binding, SessionConfig, SessionOutcome, SessionStart, SurfaceSession};
+use crate::session::{
+    Binding, Handover, SessionConfig, SessionEnding, SessionOutcome, SessionStart, SurfaceSession,
+};
 use crate::terminal::{reset, LocalTerminal, TerminalEnd};
 use crate::{LinkHost, OrchestratedBackend, ShownSurface};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, size};
@@ -166,6 +168,23 @@ pub(super) struct Ending {
     pub(super) flush_keys: bool,
 }
 
+/// The user's terminal, kept in raw mode with its threads running between a session and the
+/// presentation that follows it, together with the surface the session had on screen. Dropping
+/// it gives the terminal back.
+pub struct TerminalHold {
+    plumbing: Option<Plumbing>,
+    local: Option<LocalTerminal>,
+    handover: Option<Handover>,
+}
+
+impl Drop for TerminalHold {
+    fn drop(&mut self) {
+        if let Some(plumbing) = self.plumbing.take() {
+            plumbing.finish(reset::FULL_SCREEN, true);
+        }
+    }
+}
+
 /// Run `run` on the user's real terminal and give the terminal back, whatever happened: raw
 /// mode, the keyboard, size and output threads are started before, and stopped, the terminal
 /// restored and `ending` applied after. `lost` is the result when the terminal cannot be taken
@@ -175,22 +194,46 @@ pub(super) fn on_real_terminal<T>(
     run: impl FnOnce(LocalTerminal, (u16, u16)) -> T,
     ending: impl FnOnce(&T) -> Ending,
 ) -> T {
+    on_real_terminal_keeping(lost, |local, size| (run(local, size), None), ending).0
+}
+
+/// As [`on_real_terminal`], except that `run` may hand the terminal back instead of finishing
+/// with it (the user asked for the surfaces side by side): then the terminal is not restored
+/// and `ending` is not applied; it stays ours, and is held for what comes next.
+pub(super) fn on_real_terminal_keeping<T>(
+    lost: impl FnOnce(String) -> T,
+    run: impl FnOnce(LocalTerminal, (u16, u16)) -> (T, Option<(LocalTerminal, Option<Handover>)>),
+    ending: impl FnOnce(&T) -> Ending,
+) -> (T, Option<TerminalHold>) {
     let (plumbing, local) = match Plumbing::start() {
         Ok(started) => started,
-        Err(why) => return lost(why.to_owned()),
+        Err(why) => return (lost(why.to_owned()), None),
     };
     let (cols, rows, _) = terminal_request_shape();
-    let result = run(local, (cols, rows));
+    let (result, kept) = run(local, (cols, rows));
+    if let Some((local, handover)) = kept {
+        let hold = TerminalHold {
+            plumbing: Some(plumbing),
+            local: Some(local),
+            handover,
+        };
+        return (result, Some(hold));
+    }
     let Ending { reset, flush_keys } = ending(&result);
     plumbing.finish(reset, flush_keys);
-    result
+    (result, None)
 }
 
 /// Show the surfaces of a workspace in the user's terminal until the session ends, then
 /// restore the terminal. The link the dashboard already holds carries everything: nothing is
-/// dialed to start, and switching surface does not leave this function.
-pub fn run_session(link: &OrchestratedBackend, request: SessionRequest) -> SessionOutcome {
-    on_real_terminal(
+/// dialed to start, and switching surface does not leave this function. When the user asks for
+/// the surfaces side by side the terminal is not given back: it is returned held, with the
+/// surface that was on screen, for [`run_presentation`].
+pub fn run_session(
+    link: &OrchestratedBackend,
+    request: SessionRequest,
+) -> (SessionOutcome, Option<TerminalHold>) {
+    on_real_terminal_keeping(
         |why| SessionOutcome {
             end: TerminalEnd::Lost(why),
             shown: None,
@@ -199,7 +242,11 @@ pub fn run_session(link: &OrchestratedBackend, request: SessionRequest) -> Sessi
         |local, size| {
             let host = Arc::new(LinkHost::new(link.clone(), request.shown.workspace.clone()));
             let session = SurfaceSession::new(host, SessionConfig::new(say_on_stderr()));
-            link.runtime().block_on(session.run(
+            let SessionEnding {
+                outcome,
+                handover,
+                local,
+            } = link.runtime().block_on(session.run_keeping(
                 local,
                 SessionStart {
                     id: request.id,
@@ -208,7 +255,9 @@ pub fn run_session(link: &OrchestratedBackend, request: SessionRequest) -> Sessi
                     typed_ahead: request.typed_ahead,
                     size,
                 },
-            ))
+            ));
+            let kept = (outcome.end == TerminalEnd::Presenting).then_some((local, handover));
+            (outcome, kept)
         },
         |outcome| Ending {
             reset: reset::FULL_SCREEN,
@@ -220,31 +269,56 @@ pub fn run_session(link: &OrchestratedBackend, request: SessionRequest) -> Sessi
 
 /// Show several surfaces of a workspace at once, arranged by `layout`, until the user leaves or
 /// nothing can be shown, then restore the terminal. Returns how it ended, with the layout as
-/// the user left it.
+/// the user left it. `held` is the terminal (and the surface on screen) a session kept for this;
+/// without it the terminal is taken here.
 pub fn run_presentation(
     link: &OrchestratedBackend,
     workspace: flight_ui::WorkspaceKey,
+    surfaces: &crate::presentation::WorkspaceSurfaces,
     layout: flight_present::Layout,
+    held: Option<TerminalHold>,
 ) -> crate::presentation::PresentationOutcome {
     let kept = layout.clone();
-    on_real_terminal(
-        |why| crate::presentation::PresentationOutcome {
-            end: TerminalEnd::Lost(why),
-            layout: kept,
-            undelivered: 0,
-        },
-        |local, size| {
-            let host = Arc::new(LinkHost::new(link.clone(), workspace));
-            let session =
-                PresentationSession::new(host, PresentationConfig::for_workspace(say_on_stderr()));
-            link.runtime().block_on(session.run(local, layout, size))
-        },
-        |outcome| Ending {
-            // The presentation writes its own reset as it ends.
-            reset: b"",
-            flush_keys: outcome.end != TerminalEnd::UserLeft,
-        },
-    )
+    let ending = |outcome: &crate::presentation::PresentationOutcome| Ending {
+        // The presentation writes its own reset as it ends.
+        reset: b"",
+        flush_keys: outcome.end != TerminalEnd::UserLeft,
+    };
+    let present = |local: LocalTerminal, size: (u16, u16), handover: Option<Handover>| {
+        let host = Arc::new(LinkHost::new(link.clone(), workspace));
+        let session = PresentationSession::new(
+            host,
+            PresentationConfig::for_surfaces(say_on_stderr(), surfaces),
+        );
+        link.runtime()
+            .block_on(session.run_from(local, layout, size, handover))
+    };
+    match held {
+        Some(mut held) => {
+            let (Some(plumbing), Some(local)) = (held.plumbing.take(), held.local.take()) else {
+                return crate::presentation::PresentationOutcome {
+                    end: TerminalEnd::Lost("the terminal was not kept".to_owned()),
+                    layout: kept,
+                    undelivered: 0,
+                };
+            };
+            let handover = held.handover.take();
+            let (cols, rows, _) = terminal_request_shape();
+            let outcome = present(local, (cols, rows), handover);
+            let Ending { reset, flush_keys } = ending(&outcome);
+            plumbing.finish(reset, flush_keys);
+            outcome
+        }
+        None => on_real_terminal(
+            |why| crate::presentation::PresentationOutcome {
+                end: TerminalEnd::Lost(why),
+                layout: kept,
+                undelivered: 0,
+            },
+            |local, size| present(local, size, None),
+            ending,
+        ),
+    }
 }
 
 /// Raw bytes from the terminal. Waits on the keyboard and the wake-up pipe together, so it ends

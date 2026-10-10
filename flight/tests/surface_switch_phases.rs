@@ -170,6 +170,7 @@ fn where_the_time_of_a_switch_goes() {
         let mut attachment = runtime
             .block_on(host.open(OpenRequest {
                 choice: flight_ui::SurfaceChoice::Agent,
+                surface: None,
                 cols: 100,
                 rows: 30,
                 expect: None,

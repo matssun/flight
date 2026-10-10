@@ -310,6 +310,19 @@ fn workspace_with_shell(rig: &mut Rig) {
     });
 }
 
+/// The view sessions of the terminals attached to the workspace (control clients left out).
+fn terminal_views(rig: &Rig) -> Vec<String> {
+    rig.tmux(&[
+        "list-clients",
+        "-F",
+        "#{client_control_mode} #{client_session}",
+    ])
+    .lines()
+    .filter_map(|l| l.strip_prefix("0 "))
+    .map(str::to_owned)
+    .collect()
+}
+
 fn pane(rig: &Rig, window: &str) -> String {
     rig.tmux(&["capture-pane", "-p", "-t", &format!("=quick:{window}")])
 }
@@ -387,9 +400,17 @@ fn the_agent_and_the_shell_are_shown_side_by_side_each_with_its_own_keys_size_an
     workspace_with_shell(&mut rig);
 
     // Ctrl-Space v: both surfaces at once, each its own tmux client of half the width, the
-    // keyboard where it was (the shell).
+    // keyboard where it was (the shell). The shell that was on screen is not attached again: its
+    // tmux client (a view session of its own) is the same one before and after.
+    let view_before = terminal_views(&rig);
+    assert_eq!(view_before.len(), 1, "{view_before:?}");
     rig.send(b"\x00v");
     wait("two clients", || rig.clients() == 2);
+    assert!(
+        terminal_views(&rig).contains(&view_before[0]),
+        "the shell's client was replaced: {view_before:?} then {:?}",
+        terminal_views(&rig)
+    );
     // Both tiles are on one screen: a line between them and a status line in each (cut to fit
     // half the width). What the shell prompt looks like depends on the machine.
     wait("both tiles on screen", || {
@@ -491,5 +512,56 @@ fn a_click_moves_the_keyboard_between_tiles_and_a_program_that_asked_for_the_mou
     assert!(
         !pane(&rig, "agent").contains("^[[<"),
         "the click reached the agent's program"
+    );
+}
+
+#[test]
+fn another_window_of_the_workspace_can_be_shown_beside_the_agent_and_the_shell() {
+    let mut rig = boot("third");
+    workspace_with_shell(&mut rig);
+    // A window nobody asked Flight for: the user's own, in the workspace's session.
+    rig.tmux(&["new-window", "-d", "-t", "=quick:", "-n", "logs", "cat"]);
+    // The node publishes it with the rest of the workspace; the dashboard hears within a round.
+    wait("the window to be published", || {
+        std::thread::sleep(Duration::from_millis(300));
+        rig.tmux(&["list-windows", "-t", "=quick:", "-F", "#{window_name}"])
+            .contains("logs")
+    });
+    std::thread::sleep(Duration::from_secs(3));
+
+    // The agent and the shell side by side, then a third tile for the next surface, below the
+    // focused one.
+    rig.send(b"\x00v");
+    wait("two clients", || rig.clients() == 2);
+    rig.send(b"\x00-");
+    wait("three clients", || rig.clients() == 3);
+    // The keyboard moves down to it, and what is typed reaches that window and no other.
+    rig.send(b"\x00j");
+    rig.send(b"FOR-THE-LOGS");
+    wait("the third window got its keys", || {
+        pane(&rig, "logs").contains("FOR-THE-LOGS")
+    });
+    assert!(
+        !pane(&rig, "shell").contains("FOR-THE-LOGS"),
+        "misdelivered to the shell"
+    );
+    assert!(
+        !pane(&rig, "agent").contains("FOR-THE-LOGS"),
+        "misdelivered to the agent"
+    );
+    // Leaving remembers the three, and the next visit starts with them.
+    rig.send(b"\x00q");
+    wait("the dashboard again", || {
+        rig.seen("Workspaces") && rig.clients() == 0
+    });
+    let saved = std::fs::read_to_string(rig.ui_config().join("ui").join("layouts.toml"))
+        .expect("the arrangement was remembered");
+    // The agent and the shell by their usual names, the third by its own id (and the keyboard
+    // on it, where the user left it).
+    assert!(
+        saved.contains("\"agent\"")
+            && saved.contains("\"shell\"")
+            && saved.contains("focus = \"w-"),
+        "{saved}"
     );
 }

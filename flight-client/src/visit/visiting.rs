@@ -2,7 +2,7 @@
 
 use super::returning::Returning;
 use super::terminals::Terminals;
-use crate::presentation::{remember, side_by_side, starting_layout, surface_choice, surface_id};
+use crate::presentation::{remember, side_by_side, starting_layout, surface_id};
 use crate::session::SessionOutcome;
 use crate::terminal::{SessionRequest, TerminalEnd};
 use crate::LayoutStore;
@@ -16,10 +16,19 @@ use std::path::Path;
 pub fn visit<T: Terminals>(terminals: &T, layout_dir: &Path, request: SessionRequest) -> Returning {
     let workspace = request.shown.workspace.clone();
     let choice = request.shown.choice;
-    let mut outcome = terminals.session(request);
+    let (mut outcome, held) = terminals.session(request);
     let mut problems = Vec::new();
     if outcome.end == TerminalEnd::Presenting {
-        outcome = present(terminals, layout_dir, &workspace, choice, &mut problems);
+        // The surface the user was last looking at has the keyboard.
+        let focus = outcome.shown.unwrap_or(choice);
+        outcome = present(
+            terminals,
+            layout_dir,
+            &workspace,
+            focus,
+            held,
+            &mut problems,
+        );
     }
     let mut notice = format!("terminal: {}", outcome.end);
     if outcome.undelivered > 0 {
@@ -43,17 +52,17 @@ fn present<T: Terminals>(
     layout_dir: &Path,
     workspace: &flight_ui::WorkspaceKey,
     choice: flight_ui::SurfaceChoice,
+    held: Option<T::Held>,
     problems: &mut Vec<String>,
 ) -> SessionOutcome {
     let focus = surface_id(choice);
+    let surfaces = terminals.surfaces(workspace);
     let mut store = LayoutStore::open(layout_dir);
     let layout = match &store {
-        Ok(store) => starting_layout(Some(store), workspace, &focus, |s| {
-            surface_choice(s).is_some()
-        }),
+        Ok(store) => starting_layout(Some(store), workspace, &focus, |s| surfaces.is_known(s)),
         Err(_) => side_by_side(&focus),
     };
-    let outcome = terminals.presentation(workspace.clone(), layout);
+    let outcome = terminals.presentation(workspace.clone(), surfaces, layout, held);
     let saved = match &mut store {
         Ok(store) => remember(store, workspace, &outcome.layout),
         Err(why) => Err(why.clone()),

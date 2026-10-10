@@ -12,8 +12,8 @@ use super::rebuild_budget::RebuildBudget;
 use super::tile_link::{LinkState, Live, TileLink};
 use crate::screens::{paint, EngineFailure, Geometry, ScreenModel};
 use crate::session::{
-    Attachment, Binding, FromRemote, Next, OpenFailure, OpenRequest, Reattach, SurfaceHost,
-    ToRemote,
+    Attachment, Binding, FromRemote, Handover, Next, OpenFailure, OpenRequest, Reattach,
+    SurfaceHost, ToRemote,
 };
 use crate::terminal::reset::PRESENTATION as PRESENTATION_RESET;
 use crate::terminal::{LocalTerminal, TerminalEnd};
@@ -77,6 +77,18 @@ impl<H: SurfaceHost> PresentationSession<H> {
         layout: Layout,
         size: (u16, u16),
     ) -> PresentationOutcome {
+        self.run_from(local, layout, size, None).await
+    }
+
+    /// As [`run`](Self::run), carrying on from a surface that is already attached: its stream is
+    /// the first tile's, not asked for again.
+    pub async fn run_from(
+        self,
+        local: LocalTerminal,
+        layout: Layout,
+        size: (u16, u16),
+        handover: Option<Handover>,
+    ) -> PresentationOutcome {
         let LocalTerminal {
             mut input,
             mut resizes,
@@ -105,6 +117,9 @@ impl<H: SurfaceHost> PresentationSession<H> {
             last_end: None,
         };
         let _ = output.send(b"\x1b[?1049h\x1b[2J".to_vec()).await;
+        if let Some(handover) = handover {
+            run.adopt(handover);
+        }
         run.reconcile();
         let mut tick = tokio::time::interval(run.cfg.frame.max(Duration::from_millis(1)));
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -255,6 +270,74 @@ impl<H: SurfaceHost> Run<H> {
         self.dirty = true;
     }
 
+    /// Take over a surface that is already attached, as the tile that shows it. Its screen starts
+    /// empty and fills from the surface's redraw, which a change of size brings: a tile as big
+    /// as the old screen is first told a size one row short, so there is always a change.
+    fn adopt(&mut self, handover: Handover) {
+        let Handover {
+            choice,
+            attachment,
+            size,
+            typed_ahead,
+        } = handover;
+        if !typed_ahead.is_empty() {
+            // For the surface that has the keyboard, which the user chose: not run through the
+            // key commands again (the session already took those out).
+            let focus = self.layout.focus().clone();
+            self.log.push(&focus, typed_ahead);
+        }
+        let solved = self.solved();
+        let Some(tile) = solved.tiles.iter().find(|t| {
+            (self.cfg.resolve)(&t.surface)
+                .is_some_and(|target| target.surface.is_none() && target.choice == choice)
+        }) else {
+            // Not on screen in this arrangement: the surface keeps running, only this stream goes.
+            let _ = attachment.to_remote.try_send(ToRemote::Close);
+            return;
+        };
+        let surface = tile.surface.clone();
+        let geometry = Geometry::new(tile.area.cols, tile.area.rows).unwrap_or(Geometry::STANDARD);
+        let Attachment {
+            id,
+            binding,
+            to_remote,
+            from_remote,
+            guard,
+            retired,
+        } = attachment;
+        let mut sent_size = size;
+        if size == geometry.pair() && size.1 > 1 {
+            sent_size = (size.0, size.1.saturating_sub(1));
+            let _ = to_remote.try_send(ToRemote::Resize(sent_size.0, sent_size.1));
+        }
+        self.generation = self.generation.saturating_add(1);
+        let generation = self.generation;
+        let pump = pump(
+            surface.clone(),
+            generation,
+            from_remote,
+            self.events_tx.clone(),
+        );
+        self.tiles.insert(
+            surface,
+            TileLink {
+                model: ScreenModel::new(geometry),
+                state: LinkState::Live(Live {
+                    id,
+                    binding,
+                    to_remote,
+                    pump,
+                    sent_size,
+                    attempts: 0,
+                    _guard: guard,
+                    retired,
+                }),
+                generation,
+                budget: RebuildBudget::default(),
+            },
+        );
+    }
+
     fn let_go(&mut self, surface: &SurfaceId) {
         let Some(tile) = self.tiles.remove(surface) else {
             return;
@@ -285,7 +368,7 @@ impl<H: SurfaceHost> Run<H> {
         if self.retiring.contains(&surface) {
             return;
         }
-        let Some(choice) = (self.cfg.resolve)(&surface) else {
+        let Some(target) = (self.cfg.resolve)(&surface) else {
             let mut model = ScreenModel::new(size);
             notice(&mut model, "this surface cannot be attached");
             self.last_end = Some(TerminalEnd::Lost("nothing to attach".to_owned()));
@@ -301,7 +384,8 @@ impl<H: SurfaceHost> Run<H> {
         );
         let expect_kept = expect.clone();
         let request = OpenRequest {
-            choice,
+            choice: target.choice,
+            surface: target.surface,
             cols: size.cols(),
             rows: size.rows(),
             expect,

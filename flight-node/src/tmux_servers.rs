@@ -13,8 +13,8 @@ use crate::{
 use flight_proto::ErrorKindCode;
 use flight_state::{HostId, PaneId, ServerId, SurfaceRole, WorkspaceId};
 use flight_tmux::{
-    ConfigMark, CreateError, Launch, SurfaceMark, SurfaceTag, Tmux, TmuxEndpoint, TmuxError,
-    TmuxRunner,
+    ConfigMark, CreateError, GuardError, Launch, SurfaceMark, SurfaceTag, Tmux, TmuxEndpoint,
+    TmuxError, TmuxRunner,
 };
 use flight_workspaces::ConfigKey;
 use std::collections::BTreeMap;
@@ -313,6 +313,21 @@ fn failed(e: TmuxError) -> ControlError {
     ControlError::new(kind, e.to_string())
 }
 
+/// What a failed guarded lookup is, to the caller: the same fact, the same words, whichever
+/// action asked.
+fn refused(e: GuardError, pane: &PaneId) -> ControlError {
+    match e {
+        GuardError::Tmux(e) => failed(e),
+        GuardError::Missing => {
+            ControlError::new(ErrorKindCode::UnknownPane, format!("no pane {pane}"))
+        }
+        GuardError::Changed { .. } => ControlError::new(
+            ErrorKindCode::PaneChanged,
+            format!("pane {pane} is no longer the process this request targeted"),
+        ),
+    }
+}
+
 impl Control for TmuxServers {
     fn capture(
         &self,
@@ -333,18 +348,9 @@ impl Control for TmuxServers {
     ) -> Result<(), ControlError> {
         let tmux = self.tmux(server)?;
         // The request was issued against one process; only kill the pane if it still is it.
-        let current = tmux
-            .list_panes()
-            .map_err(failed)?
-            .into_iter()
-            .find(|p| p.pane_id == pane.as_str());
-        match current {
-            Some(p) if p.pane_pid == expected_pid => tmux.kill_pane(pane.as_str()).map_err(failed),
-            _ => Err(ControlError::new(
-                ErrorKindCode::UnknownPane,
-                format!("pane {pane} is no longer the process this request targeted"),
-            )),
-        }
+        tmux.guarded_pane(pane.as_str(), expected_pid)
+            .map_err(|e| refused(e, pane))?;
+        tmux.kill_pane(pane.as_str()).map_err(failed)
     }
 
     fn reveal_pane(
@@ -354,21 +360,10 @@ impl Control for TmuxServers {
         expected_pid: u32,
     ) -> Result<(), ControlError> {
         let tmux = self.tmux(server)?;
-        let current = tmux
-            .list_panes()
-            .map_err(failed)?
-            .into_iter()
-            .find(|p| p.pane_id == pane.as_str())
-            .ok_or_else(|| {
-                ControlError::new(ErrorKindCode::UnknownPane, format!("no pane {pane}"))
-            })?;
         // The request was issued against one process; only act if tmux still shows it.
-        if current.pane_pid != expected_pid {
-            return Err(ControlError::new(
-                ErrorKindCode::PaneChanged,
-                format!("pane {pane} is no longer the process this request targeted"),
-            ));
-        }
+        let current = tmux
+            .guarded_pane(pane.as_str(), expected_pid)
+            .map_err(|e| refused(e, pane))?;
         tmux.reveal_pane(&current.window_id, pane.as_str())
             .map_err(failed)
     }
@@ -383,22 +378,8 @@ impl Control for TmuxServers {
         // The same check as a reveal, before any PTY exists.
         let tmux = self.tmux(&spec.server)?;
         let current = tmux
-            .list_panes()
-            .map_err(failed)?
-            .into_iter()
-            .find(|p| p.pane_id == spec.pane.as_str())
-            .ok_or_else(|| {
-                ControlError::new(ErrorKindCode::UnknownPane, format!("no pane {}", spec.pane))
-            })?;
-        if current.pane_pid != spec.pid {
-            return Err(ControlError::new(
-                ErrorKindCode::PaneChanged,
-                format!(
-                    "pane {} is no longer the process this request targeted",
-                    spec.pane
-                ),
-            ));
-        }
+            .guarded_pane(spec.pane.as_str(), spec.pid)
+            .map_err(|e| refused(e, &spec.pane))?;
         // tmux repeats the check inside the command that attaches, to a view of its own.
         let view = flight_tmux::view_session_name(&spec.terminal_id);
         let args = tmux_attach_command(

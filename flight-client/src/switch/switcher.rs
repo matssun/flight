@@ -5,7 +5,7 @@ use crate::switch::{
     TmuxEnv, UiContext,
 };
 use flight_state::HostId;
-use flight_tmux::{Tmux, TmuxEndpoint};
+use flight_tmux::{GuardError, Tmux, TmuxEndpoint};
 
 /// How a switch ended, when it did not fail.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,16 +87,14 @@ fn local_tmux(target: &SwitchTarget) -> Result<Tmux, SwitchError> {
 /// The local twin of the node's guarded reveal: act only on the process the user saw.
 fn reveal_local(tmux: &Tmux, target: &SwitchTarget) -> Result<(), SwitchError> {
     let current = tmux
-        .list_panes()
-        .map_err(|e| SwitchError::Reveal(e.to_string()))?
-        .into_iter()
-        .find(|p| p.pane_id == target.pane.pane.as_str())
-        .ok_or_else(|| SwitchError::Reveal("the pane no longer exists".to_owned()))?;
-    if current.pane_pid != target.pid {
-        return Err(SwitchError::Reveal(
-            "the pane changed since it was listed; refresh".to_owned(),
-        ));
-    }
+        .guarded_pane(target.pane.pane.as_str(), target.pid)
+        .map_err(|e| match e {
+            GuardError::Tmux(e) => SwitchError::Reveal(e.to_string()),
+            GuardError::Missing => SwitchError::Reveal("the pane no longer exists".to_owned()),
+            GuardError::Changed { .. } => {
+                SwitchError::Reveal("the pane changed since it was listed; refresh".to_owned())
+            }
+        })?;
     tmux.reveal_pane(&current.window_id, target.pane.pane.as_str())
         .map_err(|e| SwitchError::Reveal(e.to_string()))
 }

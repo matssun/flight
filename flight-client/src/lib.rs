@@ -23,7 +23,9 @@ pub use presentation::{
     remember, side_by_side, starting_layout, Command, Key, KeyFilter, PresentationConfig,
     PresentationOutcome, PresentationSession, Shown,
 };
-pub use screens::{paint, CellView, Colour, Modes, MouseMode, Painted, ScreenModel, Theme};
+pub use screens::{
+    paint, CellView, Colour, Geometry, Modes, MouseMode, Painted, ScreenModel, Theme, TooSmall,
+};
 pub use session::{
     Attachment, Binding, FromRemote, InputEvent, InputQueue, OpenFailure, OpenRequest,
     SessionConfig, SessionOutcome, SessionStart, SurfaceHost, SurfaceSession, ToRemote,

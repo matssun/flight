@@ -12,11 +12,13 @@
 mod cell;
 mod emulator;
 mod engine;
+mod geometry;
 mod modes;
 mod paint;
 mod screen_model;
 
 pub use cell::{CellView, Colour};
+pub use geometry::{Geometry, TooSmall};
 pub use modes::{Modes, MouseMode};
 pub use paint::{paint, Painted, Theme};
 pub use screen_model::ScreenModel;

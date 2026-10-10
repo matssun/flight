@@ -113,6 +113,8 @@ The terminal emulator is behind one Flight-owned trait, `TerminalEngine` (`fligh
 
 Everything that depends on how the library behaves lives in `emulator.rs`: the minimum screen size, the deferred resize, and the containment of parser panics (above). `tests/engine_isolation.rs` fails the build if any other `.rs` or `.toml` file in the workspace names the library.
 
-What is not yet done (tracked in the terminal-engine series of PRs): the minimum size is clamped silently inside the adapter instead of being a stated rule of the interface; and a parser failure is a `bool`.
+What is not yet done (tracked in the terminal-engine series of PRs): a parser failure is a `bool`.
 
 Cells are read in place: `CellView` borrows its text from the screen. Painting a full 200x60 screen went from 9313 allocations and 253 µs per frame to none and 146 µs (release build, same content).
+
+**Geometry.** Two sizes exist and are kept apart. The *viewport* is the area the layout gives a tile; it can be anything, zero included. The *effective geometry* is what the screen and the surface's pseudo-terminal both use, always the same, and is a `Geometry`: a value that cannot be smaller than 2x2 (the emulator library's floor). The engine takes a `Geometry`, so it never clamps; there is no size it silently adjusts. In `PresentationSession::reconcile`, a tile whose viewport cannot hold a `Geometry` leaves its screen and its surface at their last geometry (no resize is sent, nothing is closed) and `paint` shows a `…` placeholder in it; a terminal too small for any screen changes nothing at all until it grows. A surface attached before it has any usable viewport is attached at `Geometry::STANDARD` (80x24) and follows once it has one.

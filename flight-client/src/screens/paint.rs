@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::cell::Colour;
-use super::ScreenModel;
+use super::{Geometry, ScreenModel};
 use flight_present::{Divider, Rect, Solved, TabBar, Tile};
 use flight_state::SurfaceId;
 use ratatui::buffer::Buffer;
@@ -77,7 +77,11 @@ fn tile_cursor(tile: &Tile, model: &ScreenModel) -> Option<(u16, u16)> {
     })
 }
 
+/// What a tile too small for any screen shows, in its first cell.
+const PLACEHOLDER: &str = "…";
+
 fn paint_tile(buf: &mut Buffer, tile: &Tile, model: Option<&ScreenModel>) {
+    let too_small = Geometry::new(tile.area.cols, tile.area.rows).is_err();
     for row in 0..tile.area.rows {
         for col in 0..tile.area.cols {
             let (x, y) = (
@@ -89,6 +93,12 @@ fn paint_tile(buf: &mut Buffer, tile: &Tile, model: Option<&ScreenModel>) {
             }
             let target = &mut buf[(x, y)];
             target.reset();
+            if too_small {
+                if col == 0 && row == 0 {
+                    target.set_symbol(PLACEHOLDER);
+                }
+                continue;
+            }
             let Some(cell) = model.and_then(|m| m.cell(col, row)) else {
                 continue;
             };

@@ -2,7 +2,7 @@
 
 use super::emulator::Emulator;
 use super::engine::TerminalEngine;
-use super::{CellView, Modes};
+use super::{CellView, Geometry, Modes};
 
 /// The one place that says which terminal emulator Flight uses.
 type Engine = Emulator;
@@ -18,9 +18,9 @@ pub struct ScreenModel {
 }
 
 impl ScreenModel {
-    pub fn new(cols: u16, rows: u16) -> Self {
+    pub fn new(geometry: Geometry) -> Self {
         Self {
-            engine: Engine::new(cols, rows),
+            engine: Engine::new(geometry),
         }
     }
 
@@ -31,13 +31,18 @@ impl ScreenModel {
     }
 
     /// The surface was told a new size. The old picture stays until the surface repaints.
-    pub fn resize(&mut self, cols: u16, rows: u16) {
-        self.engine.resize(cols, rows);
+    pub fn resize(&mut self, geometry: Geometry) {
+        self.engine.resize(geometry);
     }
 
-    /// (columns, rows) the surface was last told, which the screen follows with its next write.
-    pub fn size(&self) -> (u16, u16) {
+    /// The geometry the surface was last told, which the screen follows with its next write.
+    pub fn geometry(&self) -> Geometry {
         self.engine.size()
+    }
+
+    /// (columns, rows) of [`Self::geometry`].
+    pub fn size(&self) -> (u16, u16) {
+        self.engine.size().pair()
     }
 
     pub fn cell(&self, col: u16, row: u16) -> Option<CellView<'_>> {

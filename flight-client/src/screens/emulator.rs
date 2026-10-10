@@ -4,7 +4,7 @@
 //! file that names it.
 
 use super::engine::TerminalEngine;
-use super::{CellView, Colour, Modes, MouseMode};
+use super::{CellView, Colour, Geometry, Modes, MouseMode};
 
 /// A resize does not resize the parser: `vt100` panics when a populated screen is resized (found
 /// by feeding it random bytes with random resizes; feeding alone never panics, over 72 MB of
@@ -24,13 +24,6 @@ fn convert(c: vt100::Color) -> Colour {
     }
 }
 
-/// The smallest screen the parser is given. `vt100` 0.15 panicked on any screen of one row (fed
-/// random bytes, 200 of 200 runs at 80x1, 2x1 and 1x1) and 0.16.2 still panics at 1x1; it also
-/// cannot place a double-width character in one column. From 2x2 up, 200 runs of 120 KB of
-/// garbage each, at ten sizes, never panicked when only fed.
-const MIN_COLS: u16 = 2;
-const MIN_ROWS: u16 = 2;
-
 /// Run `work`, and say whether it finished. What a program writes to a terminal is untrusted
 /// input to a parser that is not ours; if it ever panics, the surface must lose its picture, not
 /// take the dashboard (and every other surface) with it.
@@ -46,9 +39,9 @@ impl Emulator {
 }
 
 impl TerminalEngine for Emulator {
-    fn new(cols: u16, rows: u16) -> Self {
+    fn new(geometry: Geometry) -> Self {
         Self {
-            parser: vt100::Parser::new(rows.max(MIN_ROWS), cols.max(MIN_COLS), 0),
+            parser: vt100::Parser::new(geometry.rows(), geometry.cols(), 0),
             resized: None,
         }
     }
@@ -72,21 +65,21 @@ impl TerminalEngine for Emulator {
         false
     }
 
-    fn resize(&mut self, cols: u16, rows: u16) {
-        let (rows, cols) = (rows.max(MIN_ROWS), cols.max(MIN_COLS));
-        if self.size() != (cols, rows) {
-            self.resized = Some(vt100::Parser::new(rows, cols, 0));
+    fn resize(&mut self, geometry: Geometry) {
+        if self.size() != geometry {
+            self.resized = Some(vt100::Parser::new(geometry.rows(), geometry.cols(), 0));
         }
     }
 
-    fn size(&self) -> (u16, u16) {
+    fn size(&self) -> Geometry {
         let (rows, cols) = self
             .resized
             .as_ref()
             .unwrap_or(&self.parser)
             .screen()
             .size();
-        (cols, rows)
+        // Both parsers were made from a `Geometry`, so this always holds.
+        Geometry::new(cols, rows).unwrap_or(Geometry::STANDARD)
     }
 
     fn cell(&self, col: u16, row: u16) -> Option<CellView<'_>> {

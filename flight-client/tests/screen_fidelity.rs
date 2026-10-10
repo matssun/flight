@@ -4,7 +4,7 @@
 //! (a private server, never the default one) draws a pane; its output is fed to a `ScreenModel`;
 //! the model's rows must equal `tmux capture-pane` of the same pane. Skipped without tmux.
 
-use flight_client::ScreenModel;
+use flight_client::{Geometry, ScreenModel};
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use std::io::Read;
 use std::process::Command;
@@ -146,7 +146,7 @@ fn the_model_shows_what_tmux_shows_for_text_wide_characters_and_scrolling() {
     let Some(rig) = Rig::start("text", 100, 30) else {
         return;
     };
-    let mut model = ScreenModel::new(100, 30);
+    let mut model = ScreenModel::new(Geometry::new(100, 30).unwrap());
     assert!(model.feed(&rig.drain()));
     let want = rig.capture();
     let got = pane_rows(&model, 30);
@@ -166,7 +166,7 @@ fn attributes_and_colours_reach_the_cells() {
     let Some(rig) = Rig::start_with("attrs", 100, 30, &short_script()) else {
         return;
     };
-    let mut model = ScreenModel::new(100, 30);
+    let mut model = ScreenModel::new(Geometry::new(100, 30).unwrap());
     model.feed(&rig.drain());
     // Find the rows by their text: the script scrolled, so they are where tmux put them.
     let row_of = |needle: &str| (0..29u16).find(|r| model.row_text(*r).contains(needle));
@@ -189,7 +189,7 @@ fn after_a_resize_the_surface_repaints_and_the_model_follows() {
     let Some(rig) = Rig::start("resize", 100, 30) else {
         return;
     };
-    let mut model = ScreenModel::new(100, 30);
+    let mut model = ScreenModel::new(Geometry::new(100, 30).unwrap());
     model.feed(&rig.drain());
     // The terminal is made smaller: the client is told, the model is told, tmux repaints.
     rig.master
@@ -200,7 +200,7 @@ fn after_a_resize_the_surface_repaints_and_the_model_follows() {
             pixel_height: 0,
         })
         .unwrap();
-    model.resize(60, 20);
+    model.resize(Geometry::new(60, 20).unwrap());
     assert_eq!(model.size(), (60, 20));
     std::thread::sleep(Duration::from_millis(500));
     assert!(model.feed(&rig.drain()));

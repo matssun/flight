@@ -7,7 +7,7 @@ use super::input_log::InputLog;
 use super::keys::{Key, KeyFilter};
 use super::outcome::PresentationOutcome;
 use super::tile_link::{LinkState, Live, TileLink};
-use crate::screens::{paint, ScreenModel};
+use crate::screens::{paint, Geometry, ScreenModel};
 use crate::session::{
     Attachment, Binding, FromRemote, OpenFailure, OpenRequest, SurfaceHost, ToRemote,
 };
@@ -204,8 +204,18 @@ impl<H: SurfaceHost> Run<H> {
     }
 
     /// Make the attachments match what is showing: attach what has a tile and none yet, let go
-    /// of what has no tile, and tell each screen its tile's size.
+    /// of what has no tile, and tell each screen its tile's size. A tile too small to hold a
+    /// screen (a terminal squeezed to nothing for a moment) changes nothing: its screen and its
+    /// surface keep the last size they had, and the tile shows a placeholder until the viewport
+    /// is big enough again. A terminal too small for any screen changes nothing at all.
     fn reconcile(&mut self) {
+        if !self.tiles.is_empty() && Geometry::new(self.size.0, self.size.1).is_err() {
+            // Nothing can be shown in this, and the next size may bring everything back: let go
+            // of nothing, resize nothing. (Attaching, before anything is, still goes ahead, at the
+            // standard size.)
+            self.dirty = true;
+            return;
+        }
         let solved = self.solved();
         let showing: Vec<(SurfaceId, (u16, u16))> = solved
             .tiles
@@ -222,9 +232,13 @@ impl<H: SurfaceHost> Run<H> {
             self.let_go(&surface);
         }
         for (surface, (cols, rows)) in showing {
-            match self.tiles.get_mut(&surface) {
-                Some(tile) => tile.model.resize(cols, rows),
-                None => self.attach(surface, (cols, rows), None, 0),
+            let fitted = Geometry::new(cols, rows).ok();
+            match (self.tiles.get_mut(&surface), fitted) {
+                (Some(tile), Some(geometry)) => tile.model.resize(geometry),
+                (Some(_), None) => {}
+                (None, geometry) => {
+                    self.attach(surface, geometry.unwrap_or(Geometry::STANDARD), None, 0);
+                }
             }
         }
         self.dirty = true;
@@ -253,7 +267,7 @@ impl<H: SurfaceHost> Run<H> {
     fn attach(
         &mut self,
         surface: SurfaceId,
-        size: (u16, u16),
+        size: Geometry,
         expect: Option<Binding>,
         attempts: usize,
     ) {
@@ -261,7 +275,7 @@ impl<H: SurfaceHost> Run<H> {
             return;
         }
         let Some(choice) = (self.cfg.resolve)(&surface) else {
-            let mut model = ScreenModel::new(size.0, size.1);
+            let mut model = ScreenModel::new(size);
             notice(&mut model, "this surface cannot be attached");
             self.last_end = Some(TerminalEnd::Lost("nothing to attach".to_owned()));
             self.put(surface, model, LinkState::Down);
@@ -277,8 +291,8 @@ impl<H: SurfaceHost> Run<H> {
         let expect_kept = expect.clone();
         let request = OpenRequest {
             choice,
-            cols: size.0,
-            rows: size.1,
+            cols: size.cols(),
+            rows: size.rows(),
             expect,
         };
         let named = surface.clone();
@@ -299,7 +313,7 @@ impl<H: SurfaceHost> Run<H> {
         });
         let model = match self.tiles.remove(&surface) {
             Some(old) => old.model,
-            None => ScreenModel::new(size.0, size.1),
+            None => ScreenModel::new(size),
         };
         self.tiles.insert(
             surface,
@@ -476,7 +490,10 @@ impl<H: SurfaceHost> Run<H> {
             })
             .collect();
         for (surface, binding, attempts) in due {
-            let size = self.tiles.get(&surface).map_or((1, 1), |t| t.model.size());
+            let size = self
+                .tiles
+                .get(&surface)
+                .map_or(Geometry::STANDARD, |t| t.model.geometry());
             self.attach(surface, size, binding, attempts);
         }
     }

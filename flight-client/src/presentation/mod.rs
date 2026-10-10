@@ -17,6 +17,7 @@ mod keys;
 mod outcome;
 mod presentation_session;
 mod rebuild_budget;
+mod surface_names;
 mod tile_link;
 
 #[cfg(test)]
@@ -28,3 +29,4 @@ pub use config::PresentationConfig;
 pub use keys::{Key, KeyFilter};
 pub use outcome::PresentationOutcome;
 pub use presentation_session::PresentationSession;
+pub use surface_names::{surface_choice, surface_id};

@@ -207,7 +207,7 @@ fn kill_targets_the_published_process_not_just_the_pane_id() {
     let stale = t
         .kill_pane(&server(), &flight_state::PaneId::new("%1"), 11)
         .unwrap_err();
-    assert_eq!(stale.kind, ErrorKindCode::UnknownPane);
+    assert_eq!(stale.kind, ErrorKindCode::PaneChanged);
     assert!(
         !calls
             .lock()

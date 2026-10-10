@@ -164,3 +164,5 @@ Composing two interactive byte streams into one terminal needs a screen model pe
 1. Persistence and recovery (ADR-008).
 2. Persistent transport experiment (A), with keystroke-loss tests.
 3. Only then, emulation/composition for side by side.
+
+**One guarded lookup.** "Is this still the process the caller saw" is answered in one place, `Tmux::guarded_pane` (`flight-tmux/src/pane_guard.rs`): the pane, or `Missing`, or `Changed`, or tmux could not be asked. The node's kill, reveal and terminal-open and the client's local reveal all use it and only translate the answer into their own error (a changed pane is `PaneChanged` everywhere; a kill used to report it as `UnknownPane`). The check inside the tmux command that attaches (`tmux_attach_command`) stays: it repeats the guard atomically with the attach, which a lookup before the command cannot.

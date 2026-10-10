@@ -17,6 +17,8 @@ struct Solo {
     child: Box<dyn portable_pty::Child + Send + Sync>,
     writer: Box<dyn Write + Send>,
     screen: Arc<Mutex<Screen>>,
+    /// What the orchestrator and node it started wrote, for a failure to show.
+    log: PathBuf,
     _master: Box<dyn portable_pty::MasterPty + Send>,
 }
 
@@ -40,7 +42,11 @@ impl Solo {
             if check(&text) {
                 return;
             }
-            assert!(Instant::now() < deadline, "no {what}:\n{text}");
+            assert!(
+                Instant::now() < deadline,
+                "no {what}:\n{text}\n-- solo.log:\n{}",
+                std::fs::read_to_string(&self.log).unwrap_or_default()
+            );
             std::thread::sleep(Duration::from_millis(100));
         }
     }
@@ -71,8 +77,16 @@ fn start_solo(base: &std::path::Path, socket: &str, path: &str) -> Solo {
             pixel_height: 0,
         })
         .expect("pty");
+    // The orchestrator listens on a port of its own, so nothing else on the machine (another
+    // run, a left-over process) can be in its way.
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .and_then(|l| l.local_addr())
+        .map(|a| a.port())
+        .expect("a free port");
     let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_flight"));
-    cmd.args(["solo", "--socket", socket, "--config-dir"]);
+    cmd.args(["solo", "--socket", socket, "--listen"]);
+    cmd.arg(format!("127.0.0.1:{port}"));
+    cmd.arg("--config-dir");
     cmd.arg(base);
     cmd.env_clear();
     cmd.env("TERM", "xterm-256color");
@@ -103,11 +117,13 @@ fn start_solo(base: &std::path::Path, socket: &str, path: &str) -> Solo {
         child,
         writer,
         screen,
+        log: base.join("solo.log"),
         _master: pair.master,
     }
 }
 
-/// Plain flight starts its orchestrator on a fixed port, so these tests take turns.
+/// Each run has a port and a session server of its own; they still take turns, to keep a loaded
+/// machine from starting several orchestrators and nodes at once.
 static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
 
 fn have_tmux() -> bool {

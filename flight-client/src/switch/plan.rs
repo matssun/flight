@@ -45,8 +45,8 @@ pub enum SwitchPlan {
         server: String,
         target: SwitchTarget,
     },
-    /// Reveal through the orchestrator, then show the node's terminal session over Flight's
-    /// own connections (no ssh, no direct path to the node).
+    /// Show the node's terminal session over Flight's own connections (no ssh, no direct path
+    /// to the node).
     RemoteTerminal {
         host: HostId,
         server: String,

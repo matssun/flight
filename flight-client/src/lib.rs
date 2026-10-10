@@ -35,8 +35,8 @@ pub use session::{
 pub use snapshot_view::ui_snapshot;
 pub use switch::{
     detect_placement, plan_switch, AttachCommand, Handoff, HandoffSlot, Presented, Refusal,
-    RemoteOps, ShownSurface, SwitchError, SwitchPlan, SwitchTarget, Switcher, TmuxEnv, UiContext,
-    UiPlacement,
+    RemoteError, RemoteOps, ShownSurface, SwitchError, SwitchPlan, SwitchTarget, Switcher, TmuxEnv,
+    UiContext, UiPlacement,
 };
 pub use terminal::{
     run_presentation, run_session, terminal_request_shape, EscapeFilter, LocalTerminal,

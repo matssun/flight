@@ -10,6 +10,7 @@ mod handoff_slot;
 mod placement;
 mod plan;
 mod refusal;
+mod remote_error;
 mod remote_ops;
 mod switcher;
 
@@ -20,5 +21,6 @@ pub use handoff_slot::HandoffSlot;
 pub use placement::{detect_placement, TmuxEnv, UiPlacement};
 pub use plan::{plan_switch, SwitchPlan, SwitchTarget, UiContext};
 pub use refusal::Refusal;
+pub use remote_error::RemoteError;
 pub use remote_ops::RemoteOps;
 pub use switcher::{Presented, Switcher};

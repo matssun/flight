@@ -84,6 +84,7 @@ impl SimNode {
 
 /// Orchestrator + simulated nodes + UI mirrors, wired by delivering Effects.
 pub struct World {
+    config: OrchestratorConfig,
     pub orch: OrchestratorCore,
     pub nodes: Vec<SimNode>,
     pub uis: BTreeMap<UiId, FleetImage>,
@@ -111,9 +112,13 @@ pub struct World {
 
 impl World {
     pub fn new(nodes: Vec<SimNode>) -> Self {
+        Self::with_config(nodes, OrchestratorConfig::default())
+    }
+
+    pub fn with_config(nodes: Vec<SimNode>, config: OrchestratorConfig) -> Self {
         Self {
-            orch: OrchestratorCore::new(OrchestratorConfig::default(), inc(200))
-                .with_terminal_ids(counting_ids()),
+            config: config.clone(),
+            orch: OrchestratorCore::new(config, inc(200)).with_terminal_ids(counting_ids()),
             nodes,
             uis: BTreeMap::new(),
             now: 1_000,
@@ -140,8 +145,7 @@ impl World {
 
     pub fn restart_orchestrator(&mut self) {
         self.orch_incarnation = self.orch_incarnation.wrapping_add(1).max(1);
-        self.orch =
-            OrchestratorCore::new(OrchestratorConfig::default(), inc(self.orch_incarnation));
+        self.orch = OrchestratorCore::new(self.config.clone(), inc(self.orch_incarnation));
         for n in &mut self.nodes {
             n.conn = None;
         }

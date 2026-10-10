@@ -100,7 +100,7 @@ configuration and no direct UI-to-node path; everything travels over the authent
   `OpenTerminal` (`terminal_v1`, on unless the node runs with `--no-terminal`). The node runs a real tmux client in a
   PTY it owns (the pid is checked again inside the tmux command that attaches), and the terminal bytes travel
   node -> orchestrator -> UI on their own streams. The orchestrator mints single-use ids bound to the asking identity and
-  the node connection, enforces limits (4 per node, 2 per UI, 32 total), and copies the bytes without interpreting them.
+  the node connection, enforces limits (16 per node, 8 per UI, 64 total, configurable; ADR-009), and copies the bytes without interpreting them.
   `Ctrl-Space` `q` leaves, `Ctrl-Space` `Ctrl-Space` sends a literal `Ctrl-Space`; the dashboard returns with the reason.
 - Output is bounded and lossy under sustained backpressure (the node keeps draining tmux, discards, then asks tmux to
   repaint); input is never dropped. Measured: without this a wedged UI grew the tmux server by about 23 MB a second.

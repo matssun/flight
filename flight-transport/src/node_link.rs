@@ -24,8 +24,9 @@ use tonic_prost::ProstCodec;
 
 /// Control operations (tmux capture, kill, ...) running at once.
 const MAX_CONCURRENT_JOBS: usize = 4;
-/// Terminals open at once on one node.
-const MAX_TERMINALS: usize = 4;
+/// Terminals open at once on one node, unless told otherwise (the orchestrator's own per-node
+/// limit is the same).
+pub const DEFAULT_MAX_TERMINALS: usize = 16;
 /// A control operation that has not finished by then is answered as failed.
 const JOB_TIMEOUT: Duration = Duration::from_secs(10);
 /// Outbox class of heartbeats: at most one waits to be sent.
@@ -93,7 +94,7 @@ impl NodeLink {
             session: Arc::new(Mutex::new(session)),
             control,
             jobs: Arc::new(Semaphore::new(MAX_CONCURRENT_JOBS)),
-            terminals: Arc::new(Semaphore::new(MAX_TERMINALS)),
+            terminals: Arc::new(Semaphore::new(DEFAULT_MAX_TERMINALS)),
             out: Arc::default(),
             log: None,
             repeat_report: Duration::from_secs(30),
@@ -108,6 +109,13 @@ impl NodeLink {
     /// (default 30 s).
     pub fn with_terminal_stall(mut self, stall: Duration) -> Self {
         self.terminal_stall = stall;
+        self
+    }
+
+    /// How many terminals this node offers at once (default [`DEFAULT_MAX_TERMINALS`]). Set it
+    /// before the link runs.
+    pub fn with_max_terminals(mut self, limit: usize) -> Self {
+        self.terminals = Arc::new(Semaphore::new(limit));
         self
     }
 

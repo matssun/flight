@@ -50,6 +50,19 @@ impl Args {
             .collect()
     }
 
+    /// A whole number from 1 to 1024 (a limit on how many of something), if the flag is given.
+    pub fn limit(&self, flag: &str) -> Result<Option<usize>, String> {
+        let Some(text) = self.value(flag) else {
+            return Ok(None);
+        };
+        match text.parse::<usize>() {
+            Ok(n) if (1..=1024).contains(&n) => Ok(Some(n)),
+            _ => Err(format!(
+                "{flag} wants a number from 1 to 1024, not {text:?}"
+            )),
+        }
+    }
+
     pub fn switch(&self, flag: &str) -> bool {
         self.switches.iter().any(|s| s == flag)
     }
@@ -118,5 +131,16 @@ mod tests {
     fn unknown_flags_and_missing_values_are_errors() {
         assert!(Args::parse(&a(&["--nope"]), &[], &[]).is_err());
         assert!(Args::parse(&a(&["--socket"]), &["--socket"], &[]).is_err());
+    }
+
+    #[test]
+    fn a_limit_is_a_whole_number_from_one_to_1024_or_absent() {
+        let parse = |words: &[&str]| Args::parse(&a(words), &["--n"], &[]).unwrap().limit("--n");
+        assert_eq!(parse(&[]), Ok(None));
+        assert_eq!(parse(&["--n", "8"]), Ok(Some(8)));
+        assert_eq!(parse(&["--n", "1024"]), Ok(Some(1024)));
+        for bad in ["0", "1025", "-1", "many", ""] {
+            assert!(parse(&["--n", bad]).is_err(), "{bad:?}");
+        }
     }
 }

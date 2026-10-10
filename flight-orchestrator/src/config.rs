@@ -18,7 +18,9 @@ pub struct OrchestratorConfig {
 }
 
 /// How many terminals may be open at once. Beyond a limit an open fails at once with `Busy`
-/// and nothing is created.
+/// and nothing is created. A presentation holds one terminal per tile on screen, and a terminal
+/// that is closing still counts toward the node's and the total until it is gone; the defaults
+/// leave room for eight tiles on each of two interfaces at one node.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TerminalLimits {
     pub per_node: usize,
@@ -29,9 +31,9 @@ pub struct TerminalLimits {
 impl Default for TerminalLimits {
     fn default() -> Self {
         Self {
-            per_node: 4,
-            per_ui: 2,
-            total: 32,
+            per_node: 16,
+            per_ui: 8,
+            total: 64,
         }
     }
 }

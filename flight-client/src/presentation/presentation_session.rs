@@ -12,6 +12,7 @@ use crate::screens::{paint, EngineFailure, Geometry, ScreenModel};
 use crate::session::{
     Attachment, Binding, FromRemote, OpenFailure, OpenRequest, SurfaceHost, ToRemote,
 };
+use crate::terminal::reset::PRESENTATION as PRESENTATION_RESET;
 use crate::terminal::{LocalTerminal, TerminalEnd};
 use flight_present::{cycle, neighbor, solve, Layout, Placement, Rect, Solved};
 use flight_proto::{MAX_TERMINAL_DATA, MAX_TERMINAL_DIM};
@@ -22,8 +23,6 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::time::Instant;
 
-/// The terminal shown, at the end, back to what the shell expects.
-const RESET: &[u8] = b"\x1b[?1049l\x1b[?25h\x1b[0m\x1b[?2004l\x1b[?1l";
 const HINT: &str = "Ctrl-Space: | or - split, t tab, x close, n/p tab, h j k l or o focus, < > + _ resize, a s show agent or shell, q leave";
 /// A nudge of a surface's share, in percent of the whole.
 const NUDGE: i32 = 10;
@@ -164,7 +163,11 @@ impl<H: SurfaceHost> PresentationSession<H> {
             }
         };
         let outcome = run.finish(end);
-        let _ = tokio::time::timeout(Duration::from_secs(1), output.send(RESET.to_vec())).await;
+        let _ = tokio::time::timeout(
+            Duration::from_secs(1),
+            output.send(PRESENTATION_RESET.to_vec()),
+        )
+        .await;
         outcome
     }
 }

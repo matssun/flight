@@ -2,7 +2,7 @@
 
 use crate::presentation::{PresentationConfig, PresentationSession};
 use crate::session::{Binding, SessionConfig, SessionOutcome, SessionStart, SurfaceSession};
-use crate::terminal::{LocalTerminal, TerminalEnd};
+use crate::terminal::{reset, LocalTerminal, TerminalEnd};
 use crate::{LinkHost, OrchestratedBackend, ShownSurface};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, size};
 use flight_proto::valid_term;
@@ -138,12 +138,14 @@ impl Plumbing {
         let _ = out.write_all(reset);
         let _ = out.flush();
         if flush_keys {
-            let _ = rustix::termios::tcflush(
-                rustix::stdio::stdin(),
-                rustix::termios::QueueSelector::IFlush,
-            );
+            discard_unread_keys(rustix::stdio::stdin());
         }
     }
+}
+
+/// Throw away what was typed on `tty` and not yet read.
+pub(super) fn discard_unread_keys(tty: impl rustix::fd::AsFd) {
+    let _ = rustix::termios::tcflush(tty, rustix::termios::QueueSelector::IFlush);
 }
 
 /// Notices can carry words from a peer (a refusal's message): none of it may carry a control
@@ -155,38 +157,65 @@ fn say_on_stderr() -> Arc<dyn Fn(&str) + Send + Sync> {
     })
 }
 
+/// How the user's terminal is handed back.
+pub(super) struct Ending {
+    /// Written last, after everything else has stopped.
+    pub(super) reset: &'static [u8],
+    /// Keys typed for something that is gone are discarded, so the dashboard does not read them
+    /// as commands.
+    pub(super) flush_keys: bool,
+}
+
+/// Run `run` on the user's real terminal and give the terminal back, whatever happened: raw
+/// mode, the keyboard, size and output threads are started before, and stopped, the terminal
+/// restored and `ending` applied after. `lost` is the result when the terminal cannot be taken
+/// over at all. The one place that owns terminal restoration.
+pub(super) fn on_real_terminal<T>(
+    lost: impl FnOnce(String) -> T,
+    run: impl FnOnce(LocalTerminal, (u16, u16)) -> T,
+    ending: impl FnOnce(&T) -> Ending,
+) -> T {
+    let (plumbing, local) = match Plumbing::start() {
+        Ok(started) => started,
+        Err(why) => return lost(why.to_owned()),
+    };
+    let (cols, rows, _) = terminal_request_shape();
+    let result = run(local, (cols, rows));
+    let Ending { reset, flush_keys } = ending(&result);
+    plumbing.finish(reset, flush_keys);
+    result
+}
+
 /// Show the surfaces of a workspace in the user's terminal until the session ends, then
 /// restore the terminal. The link the dashboard already holds carries everything: nothing is
 /// dialed to start, and switching surface does not leave this function.
 pub fn run_session(link: &OrchestratedBackend, request: SessionRequest) -> SessionOutcome {
-    let (plumbing, local) = match Plumbing::start() {
-        Ok(started) => started,
-        Err(why) => {
-            return SessionOutcome {
-                end: TerminalEnd::Lost(why.to_owned()),
-                shown: None,
-                undelivered: 0,
-            }
-        }
-    };
-    let host = Arc::new(LinkHost::new(link.clone(), request.shown.workspace.clone()));
-    let session = SurfaceSession::new(host, SessionConfig::new(say_on_stderr()));
-    let (cols, rows, _) = terminal_request_shape();
-    let outcome = link.runtime().block_on(session.run(
-        local,
-        SessionStart {
-            id: request.id,
-            choice: request.shown.choice,
-            binding: request.binding,
-            typed_ahead: request.typed_ahead,
-            size: (cols, rows),
+    on_real_terminal(
+        |why| SessionOutcome {
+            end: TerminalEnd::Lost(why),
+            shown: None,
+            undelivered: 0,
         },
-    ));
-    plumbing.finish(
-        &SessionConfig::new(Arc::new(|_| {})).reset,
-        outcome.end != TerminalEnd::UserLeft && outcome.end != TerminalEnd::Presenting,
-    );
-    outcome
+        |local, size| {
+            let host = Arc::new(LinkHost::new(link.clone(), request.shown.workspace.clone()));
+            let session = SurfaceSession::new(host, SessionConfig::new(say_on_stderr()));
+            link.runtime().block_on(session.run(
+                local,
+                SessionStart {
+                    id: request.id,
+                    choice: request.shown.choice,
+                    binding: request.binding,
+                    typed_ahead: request.typed_ahead,
+                    size,
+                },
+            ))
+        },
+        |outcome| Ending {
+            reset: reset::FULL_SCREEN,
+            flush_keys: outcome.end != TerminalEnd::UserLeft
+                && outcome.end != TerminalEnd::Presenting,
+        },
+    )
 }
 
 /// Show several surfaces of a workspace at once, arranged by `layout`, until the user leaves or
@@ -197,25 +226,25 @@ pub fn run_presentation(
     workspace: flight_ui::WorkspaceKey,
     layout: flight_present::Layout,
 ) -> crate::presentation::PresentationOutcome {
-    let (plumbing, local) = match Plumbing::start() {
-        Ok(started) => started,
-        Err(why) => {
-            return crate::presentation::PresentationOutcome {
-                end: TerminalEnd::Lost(why.to_owned()),
-                layout,
-                undelivered: 0,
-            }
-        }
-    };
-    let host = Arc::new(LinkHost::new(link.clone(), workspace));
-    let session =
-        PresentationSession::new(host, PresentationConfig::for_workspace(say_on_stderr()));
-    let (cols, rows, _) = terminal_request_shape();
-    let outcome = link
-        .runtime()
-        .block_on(session.run(local, layout, (cols, rows)));
-    plumbing.finish(b"", outcome.end != TerminalEnd::UserLeft);
-    outcome
+    let kept = layout.clone();
+    on_real_terminal(
+        |why| crate::presentation::PresentationOutcome {
+            end: TerminalEnd::Lost(why),
+            layout: kept,
+            undelivered: 0,
+        },
+        |local, size| {
+            let host = Arc::new(LinkHost::new(link.clone(), workspace));
+            let session =
+                PresentationSession::new(host, PresentationConfig::for_workspace(say_on_stderr()));
+            link.runtime().block_on(session.run(local, layout, size))
+        },
+        |outcome| Ending {
+            // The presentation writes its own reset as it ends.
+            reset: b"",
+            flush_keys: outcome.end != TerminalEnd::UserLeft,
+        },
+    )
 }
 
 /// Raw bytes from the terminal. Waits on the keyboard and the wake-up pipe together, so it ends

@@ -53,8 +53,7 @@ impl SessionConfig {
                 Duration::from_secs(1),
                 Duration::from_secs(3),
             ],
-            reset: b"\x1b[?1049l\x1b[?25h\x1b[0m\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?2004l"
-                .to_vec(),
+            reset: crate::terminal::reset::FULL_SCREEN.to_vec(),
             say,
         }
     }

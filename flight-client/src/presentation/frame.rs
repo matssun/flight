@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use crate::screens::Painted;
+use crate::screens::{MouseMode, Painted};
 use ratatui::backend::{Backend, CrosstermBackend};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
@@ -32,6 +32,7 @@ pub(super) struct Frame {
     backend: CrosstermBackend<Sink>,
     sink: Sink,
     applied: Option<(bool, bool)>,
+    pointer: Option<MouseMode>,
     cursor_visible: bool,
 }
 
@@ -43,6 +44,7 @@ impl Frame {
             backend: CrosstermBackend::new(sink.clone()),
             sink,
             applied: None,
+            pointer: None,
             cursor_visible: true,
         }
     }
@@ -83,6 +85,10 @@ impl Frame {
                 self.applied = Some(want);
             }
         }
+        if self.pointer != Some(painted.pointer) {
+            let _ = self.sink.write_all(pointer(painted.pointer).as_bytes());
+            self.pointer = Some(painted.pointer);
+        }
         let _ = Backend::flush(&mut self.backend);
         self.sink
             .0
@@ -108,4 +114,21 @@ impl Frame {
 
 fn mode(number: u16, on: bool) -> String {
     format!("\x1b[?{number}{}", if on { 'h' } else { 'l' })
+}
+
+/// Switch the real terminal's mouse reporting to `wanted`: the one level, in the SGR form (the
+/// only one with no limit on position that Flight reads), or all off.
+fn pointer(wanted: MouseMode) -> String {
+    let level = match wanted {
+        MouseMode::None => None,
+        MouseMode::Press | MouseMode::PressRelease => Some(1000),
+        MouseMode::Drag => Some(1002),
+        MouseMode::Motion => Some(1003),
+    };
+    let mut out = String::new();
+    for number in [1000, 1002, 1003] {
+        out.push_str(&mode(number, level == Some(number)));
+    }
+    out.push_str(&mode(1006, level.is_some()));
+    out
 }

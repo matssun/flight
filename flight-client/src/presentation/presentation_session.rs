@@ -5,7 +5,9 @@ use super::config::{failure_text, remote_text, PresentationConfig};
 use super::frame::Frame;
 use super::input_log::InputLog;
 use super::keys::{Key, KeyFilter};
+use super::mouse_filter::{Input, MouseFilter};
 use super::outcome::PresentationOutcome;
+use super::pointer::{Pointer, Routed};
 use super::rebuild_budget::RebuildBudget;
 use super::tile_link::{LinkState, Live, TileLink};
 use crate::screens::{paint, EngineFailure, Geometry, ScreenModel};
@@ -89,6 +91,8 @@ impl<H: SurfaceHost> PresentationSession<H> {
             layout,
             size,
             keys: KeyFilter::default(),
+            mouse: MouseFilter::default(),
+            pointer: Pointer::default(),
             frame: Frame::new(size.0, size.1),
             tiles: HashMap::new(),
             retiring: Vec::new(),
@@ -184,6 +188,8 @@ struct Run<H: SurfaceHost> {
     layout: Layout,
     size: (u16, u16),
     keys: KeyFilter,
+    mouse: MouseFilter,
+    pointer: Pointer,
     log: InputLog,
     frame: Frame,
     tiles: HashMap<SurfaceId, TileLink>,
@@ -568,6 +574,20 @@ impl<H: SurfaceHost> Run<H> {
     }
 
     fn take_input(&mut self, bytes: &[u8]) -> Option<TerminalEnd> {
+        for input in self.mouse.split(bytes) {
+            match input {
+                Input::Bytes(bytes) => {
+                    if let Some(end) = self.take_keys(&bytes) {
+                        return Some(end);
+                    }
+                }
+                Input::Mouse(event) => self.take_mouse(event),
+            }
+        }
+        None
+    }
+
+    fn take_keys(&mut self, bytes: &[u8]) -> Option<TerminalEnd> {
         for key in self.keys.keys(bytes) {
             match key {
                 Key::Data(data) => {
@@ -581,6 +601,26 @@ impl<H: SurfaceHost> Run<H> {
             }
         }
         None
+    }
+
+    /// A mouse event goes to the program under it if that program asked for it, and a click
+    /// moves the keyboard to the tile it is in.
+    fn take_mouse(&mut self, event: super::mouse_event::MouseEvent) {
+        let solved = self.solved();
+        let tiles = &self.tiles;
+        let routed = self
+            .pointer
+            .route(event, &solved, &|s| tiles.get(s).map(|t| t.model.modes()));
+        match routed {
+            Some(Routed::Focus(surface)) => {
+                if let Ok(layout) = self.layout.focus_on(&surface) {
+                    self.layout = layout;
+                    self.reconcile();
+                }
+            }
+            Some(Routed::Send(surface, report)) => self.log.push(&surface, report),
+            None => {}
+        }
     }
 
     /// What needs sending to an attachment, and the channel to wait on for room: a tile's new

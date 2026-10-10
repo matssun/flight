@@ -21,7 +21,7 @@ mod screen_model;
 pub use cell::{CellView, Colour};
 pub use engine_failure::EngineFailure;
 pub use geometry::{Geometry, TooSmall};
-pub use modes::{Modes, MouseMode};
+pub use modes::{Modes, MouseEncoding, MouseMode};
 pub use paint::{paint, Painted, Theme};
 pub use screen_model::ScreenModel;
 

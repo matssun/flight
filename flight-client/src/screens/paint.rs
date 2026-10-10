@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::cell::Colour;
-use super::{Geometry, Modes, ScreenModel};
+use super::{Geometry, Modes, MouseMode, ScreenModel};
 use flight_present::{Divider, Rect, Solved, TabBar, Tile};
 use flight_state::SurfaceId;
 use ratatui::buffer::Buffer;
@@ -41,6 +41,10 @@ pub struct Painted {
     /// has one. The focused surface is the one the keyboard (and so the cursor and the key
     /// reporting) belongs to; no other surface's modes reach the real terminal.
     pub modes: Option<Modes>,
+    /// What the real terminal has to report of the mouse: what the focused program asked for,
+    /// and at least presses and releases while there is more than one place to click (a tile
+    /// to move the keyboard to, a tab), which the program has not asked for.
+    pub pointer: MouseMode,
 }
 
 /// Draw a solved layout into `buf`: every showing surface's screen in its tile, the lines
@@ -70,7 +74,18 @@ pub fn paint<'a>(
     for bar in &solved.tab_bars {
         paint_tabs(buf, bar, label, theme);
     }
-    Painted { cursor, modes }
+    let several = solved.tiles.len() > 1 || !solved.tab_bars.is_empty();
+    let asked = modes.map_or(MouseMode::None, |m| m.mouse);
+    let pointer = if several {
+        asked.max(MouseMode::PressRelease)
+    } else {
+        asked
+    };
+    Painted {
+        cursor,
+        modes,
+        pointer,
+    }
 }
 
 fn tile_cursor(tile: &Tile, model: &ScreenModel) -> Option<(u16, u16)> {

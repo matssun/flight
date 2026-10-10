@@ -144,3 +144,13 @@ Now the session ends with a `SessionEnding` instead of only an outcome: for this
 
 Order on the user's terminal: the session's reader is stopped (it gives back the receiver rather than being aborted), what it had written is already in the writer's queue, then the full-screen reset, then the presentation's first bytes; all go through the same channel, so they cannot overtake each other. The keyboard goes to the surface the user was last looking at (`SessionOutcome.shown`), which used to be the one the dashboard opened first.
 
+## Surfaces beyond the agent and the shell (#33)
+
+The layout model never cared what a surface was; `present()` and `LayoutStore` did (only `agent` and `shell` were accepted, anything else in a saved layout was dropped). ADR-007 already says how a workspace lists its surfaces: whatever its node publishes for it, each with its own `SurfaceId` (a window Flight did not mark is a surface too, with an id derived from its window). So the decision was not new: a workspace's surfaces are the ones the dashboard lists.
+
+- **Names in a layout.** The first agent is `agent` and the first shell is `shell`, as layouts have always called them (these keep meaning "the workspace's agent" when its window is replaced); every other surface is named by its own id. `WorkspaceSurfaces::of(workspace)` is the one place that says so, and gives each its tab label (the window's name for the others).
+- **Opening.** `OpenRequest` gains `surface: Option<SurfaceId>`: `None` finds the agent or shell by kind as before, `Some(id)` finds exactly that surface and refuses another (`LinkHost::find`, tested without a link). The single-surface session (`Ctrl-Space a`, `s`) is unchanged: it only ever asks for the agent or the shell.
+- **Showing more.** A split or a new tab takes the next surface the workspace has that is not yet in the layout, in the order agent, shell, the others; when none is left it says so. The default arrangement is still the agent and the shell.
+- **Saved layouts.** A layout may keep `agent` and `shell` whether or not they exist at the moment (a surface that is down for a moment is still the user's arrangement; the tile says so), and any other surface while the workspace has it. When it is gone the layout is cut down to what is left and the result is what is remembered.
+- **Not done.** Creating more surfaces (a second shell is still refused, ADR-007) and any surface that is not a terminal; both are new kinds, which ADR-007 already reserves as new `SurfaceKindCode` values.
+

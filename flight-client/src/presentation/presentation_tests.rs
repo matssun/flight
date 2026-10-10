@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::presentation::workspace_surfaces::fixtures::{pane, snapshot};
 use crate::screens::{Geometry, MouseEncoding, MouseMode, ScreenModel};
 use crate::session::{
     Attachment, Binding, FromRemote, Handover, OpenFailure, OpenRequest, SurfaceHost, ToRemote,
@@ -17,6 +18,8 @@ use tokio::sync::mpsc;
 /// The far end of one attachment, as the test sees it.
 struct Remote {
     choice: SurfaceChoice,
+    /// The surface named in the request, if it named one.
+    surface: Option<SurfaceId>,
     expect: Option<Binding>,
     size: (u16, u16),
     from_session: mpsc::Receiver<ToRemote>,
@@ -57,6 +60,7 @@ impl SurfaceHost for FakeHost {
         let (to_session, from_remote) = mpsc::channel(16);
         let _ = self.attached.send(Remote {
             choice: request.choice,
+            surface: request.surface.clone(),
             expect: request.expect,
             size: (request.cols, request.rows),
             from_session,
@@ -80,6 +84,7 @@ impl SurfaceHost for FakeHost {
     ) -> Result<Attachment, OpenFailure> {
         self.open(OpenRequest {
             choice,
+            surface: None,
             cols: 80,
             rows: 24,
             expect: None,
@@ -131,6 +136,22 @@ fn start_from(
     unavailable: usize,
     handover: Option<Handover>,
 ) -> Rig {
+    start_with_surfaces(
+        layout,
+        size,
+        unavailable,
+        handover,
+        &WorkspaceSurfaces::standard(),
+    )
+}
+
+fn start_with_surfaces(
+    layout: Layout,
+    size: (u16, u16),
+    unavailable: usize,
+    handover: Option<Handover>,
+    surfaces: &WorkspaceSurfaces,
+) -> Rig {
     let (attached, remotes) = mpsc::unbounded_channel();
     let host = Arc::new(FakeHost {
         attached,
@@ -139,9 +160,12 @@ fn start_from(
     });
     let notices = Arc::new(Mutex::new(Vec::new()));
     let said = notices.clone();
-    let config = PresentationConfig::for_workspace(Arc::new(move |t| {
-        said.lock().unwrap().push(t.to_owned());
-    }));
+    let config = PresentationConfig::for_surfaces(
+        Arc::new(move |t| {
+            said.lock().unwrap().push(t.to_owned());
+        }),
+        surfaces,
+    );
     let (input, input_rx) = mpsc::channel(16);
     let (resizes, resizes_rx) = mpsc::channel(4);
     let (output_tx, output) = mpsc::channel(64);
@@ -737,6 +761,7 @@ fn handed(choice: SurfaceChoice, size: (u16, u16), typed_ahead: &[u8]) -> (Hando
     };
     let remote = Remote {
         choice,
+        surface: None,
         expect: None,
         size,
         from_session,
@@ -792,4 +817,40 @@ async fn a_surface_handed_on_that_the_arrangement_does_not_show_is_let_go() {
     assert_eq!(agent.choice, Agent);
     rig.settle().await;
     assert!(received(&mut shell).await.contains(&ToRemote::Close));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_workspace_with_a_third_surface_can_show_it_next_and_it_is_asked_for_by_its_own_id() {
+    let panes = vec![
+        pane(
+            "s-1",
+            flight_ui::SurfaceKind::Agent(flight_classify::AgentKind::Claude),
+            "agent",
+            1,
+        ),
+        pane("s-2", flight_ui::SurfaceKind::Shell, "shell", 2),
+        pane("s-3", flight_ui::SurfaceKind::Shell, "logs", 3),
+    ];
+    let snapshot = snapshot(panes);
+    let all = flight_ui::workspaces(&snapshot, "");
+    let surfaces = WorkspaceSurfaces::of(&all[0]);
+    let mut rig = start_with_surfaces(side_by_side(), (121, 24), 0, None, &surfaces);
+    let (a, b) = (rig.remote().await, rig.remote().await);
+    assert!(
+        a.surface.is_none() && b.surface.is_none(),
+        "the agent and shell are found by kind"
+    );
+    // Ctrl-Space - splits the focused tile and shows the next surface the workspace has.
+    rig.type_(b"\x00-").await;
+    let third = rig.remote().await;
+    assert_eq!(third.surface, Some(id("s-3")));
+    assert_eq!(third.choice, Shell);
+    // Nothing is left to split with now.
+    rig.type_(b"\x00-").await;
+    assert!(rig
+        .notices
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|n| n.contains("already shown")));
 }

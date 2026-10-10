@@ -274,6 +274,7 @@ pub fn run_session(
 pub fn run_presentation(
     link: &OrchestratedBackend,
     workspace: flight_ui::WorkspaceKey,
+    surfaces: &crate::presentation::WorkspaceSurfaces,
     layout: flight_present::Layout,
     held: Option<TerminalHold>,
 ) -> crate::presentation::PresentationOutcome {
@@ -285,8 +286,10 @@ pub fn run_presentation(
     };
     let present = |local: LocalTerminal, size: (u16, u16), handover: Option<Handover>| {
         let host = Arc::new(LinkHost::new(link.clone(), workspace));
-        let session =
-            PresentationSession::new(host, PresentationConfig::for_workspace(say_on_stderr()));
+        let session = PresentationSession::new(
+            host,
+            PresentationConfig::for_surfaces(say_on_stderr(), surfaces),
+        );
         link.runtime()
             .block_on(session.run_from(local, layout, size, handover))
     };

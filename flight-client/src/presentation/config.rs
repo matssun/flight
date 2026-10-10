@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 use super::command::Shown;
-use super::surface_names::{surface_choice, surface_id};
+use super::surface_names::surface_id;
+use super::target::Target;
+use super::workspace_surfaces::WorkspaceSurfaces;
 use crate::session::{FromRemote, OpenFailure, Reattach};
 use flight_present::Style;
 use flight_state::SurfaceId;
@@ -12,7 +14,7 @@ use crate::screens::Theme;
 use flight_ui::SurfaceChoice;
 
 /// What a surface of a layout is, for the host.
-pub type Resolve = Arc<dyn Fn(&SurfaceId) -> Option<SurfaceChoice> + Send + Sync>;
+pub type Resolve = Arc<dyn Fn(&SurfaceId) -> Option<Target> + Send + Sync>;
 
 /// How a presentation runs.
 pub struct PresentationConfig {
@@ -41,17 +43,24 @@ pub struct PresentationConfig {
 impl PresentationConfig {
     /// A workspace's agent and shell, by their usual names.
     pub fn for_workspace(say: Arc<dyn Fn(&str) + Send + Sync>) -> Self {
-        let agent = surface_id(SurfaceChoice::Agent);
-        let shell = surface_id(SurfaceChoice::Shell);
+        Self::for_surfaces(say, &WorkspaceSurfaces::standard())
+    }
+
+    /// The surfaces a workspace has, each called what its layouts call it.
+    pub fn for_surfaces(
+        say: Arc<dyn Fn(&str) + Send + Sync>,
+        surfaces: &WorkspaceSurfaces,
+    ) -> Self {
+        let (known, labelled) = (surfaces.clone(), surfaces.clone());
         Self {
             input_limit: 64 * 1024,
             open_timeout: Duration::from_secs(15),
             retire_wait: Duration::from_secs(3),
             lease_period: crate::terminal::LEASE_PERIOD,
             reattach_delays: Reattach::default_delays(),
-            surfaces: vec![agent, shell],
-            resolve: Arc::new(surface_choice),
-            label: Arc::new(|s| s.to_string()),
+            surfaces: surfaces.names(),
+            resolve: Arc::new(move |s| known.target(s)),
+            label: Arc::new(move |s| labelled.label(s)),
             style: Style::default(),
             theme: Theme::default(),
             frame: Duration::from_millis(16),

@@ -22,7 +22,7 @@ pub use link_host::LinkHost;
 pub use orchestrated::{ClientConfig, OrchestratedBackend};
 pub use presentation::{
     remember, side_by_side, starting_layout, Command, Key, KeyFilter, PresentationConfig,
-    PresentationOutcome, PresentationSession, Shown,
+    PresentationOutcome, PresentationSession, Shown, Target, WorkspaceSurfaces,
 };
 pub use screens::{
     paint, CellView, Colour, EngineFailure, Geometry, Modes, MouseEncoding, MouseMode, Painted,

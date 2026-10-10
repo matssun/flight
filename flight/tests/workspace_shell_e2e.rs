@@ -514,3 +514,54 @@ fn a_click_moves_the_keyboard_between_tiles_and_a_program_that_asked_for_the_mou
         "the click reached the agent's program"
     );
 }
+
+#[test]
+fn another_window_of_the_workspace_can_be_shown_beside_the_agent_and_the_shell() {
+    let mut rig = boot("third");
+    workspace_with_shell(&mut rig);
+    // A window nobody asked Flight for: the user's own, in the workspace's session.
+    rig.tmux(&["new-window", "-d", "-t", "=quick:", "-n", "logs", "cat"]);
+    // The node publishes it with the rest of the workspace; the dashboard hears within a round.
+    wait("the window to be published", || {
+        std::thread::sleep(Duration::from_millis(300));
+        rig.tmux(&["list-windows", "-t", "=quick:", "-F", "#{window_name}"])
+            .contains("logs")
+    });
+    std::thread::sleep(Duration::from_secs(3));
+
+    // The agent and the shell side by side, then a third tile for the next surface, below the
+    // focused one.
+    rig.send(b"\x00v");
+    wait("two clients", || rig.clients() == 2);
+    rig.send(b"\x00-");
+    wait("three clients", || rig.clients() == 3);
+    // The keyboard moves down to it, and what is typed reaches that window and no other.
+    rig.send(b"\x00j");
+    rig.send(b"FOR-THE-LOGS");
+    wait("the third window got its keys", || {
+        pane(&rig, "logs").contains("FOR-THE-LOGS")
+    });
+    assert!(
+        !pane(&rig, "shell").contains("FOR-THE-LOGS"),
+        "misdelivered to the shell"
+    );
+    assert!(
+        !pane(&rig, "agent").contains("FOR-THE-LOGS"),
+        "misdelivered to the agent"
+    );
+    // Leaving remembers the three, and the next visit starts with them.
+    rig.send(b"\x00q");
+    wait("the dashboard again", || {
+        rig.seen("Workspaces") && rig.clients() == 0
+    });
+    let saved = std::fs::read_to_string(rig.ui_config().join("ui").join("layouts.toml"))
+        .expect("the arrangement was remembered");
+    // The agent and the shell by their usual names, the third by its own id (and the keyboard
+    // on it, where the user left it).
+    assert!(
+        saved.contains("\"agent\"")
+            && saved.contains("\"shell\"")
+            && saved.contains("focus = \"w-"),
+        "{saved}"
+    );
+}

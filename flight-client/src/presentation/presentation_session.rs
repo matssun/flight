@@ -721,8 +721,7 @@ impl<H: SurfaceHost> Run<H> {
             &|s| label(s),
             &self.cfg.theme,
         );
-        let modes = tiles.get(self.layout.focus()).map(|t| t.model.modes());
-        self.frame.bytes(buf, painted, modes)
+        self.frame.bytes(buf, painted)
     }
 
     fn finish(mut self, end: TerminalEnd) -> PresentationOutcome {

@@ -345,3 +345,49 @@ fn a_failure_of_the_emulator_is_reported_with_what_it_was_given_and_leaves_a_usa
     m.feed(b"after").unwrap();
     assert_eq!(m.row_text(0), "after", "and it works again");
 }
+
+#[test]
+fn only_the_focused_screens_modes_are_for_the_real_terminal() {
+    let layout = two_up();
+    let solved = solve(
+        &layout,
+        Rect::new(0, 0, 41, 6),
+        &LayoutStyle {
+            min_cols: 10,
+            min_rows: 3,
+        },
+    );
+    let (a, s) = (
+        solved.tile(&id("agent")).unwrap().area,
+        solved.tile(&id("shell")).unwrap().area,
+    );
+    let mut agent = ScreenModel::new(Geometry::new(a.cols, a.rows).unwrap());
+    let mut shell = ScreenModel::new(Geometry::new(s.cols, s.rows).unwrap());
+    agent.feed(b"\x1b[?2004h").unwrap();
+    shell.feed(b"\x1b[?1002h\x1b[?1h").unwrap();
+    let painted = paint(
+        &mut buffer(41, 6),
+        &solved,
+        &|surface| match surface.as_str() {
+            "agent" => Some(&agent),
+            "shell" => Some(&shell),
+            _ => None,
+        },
+        &|surface| surface.to_string(),
+        &Theme::default(),
+    );
+    // The agent has the keyboard.
+    let modes = painted.modes.expect("the focused screen's modes");
+    assert!(modes.bracketed_paste);
+    assert!(!modes.application_cursor_keys);
+    assert_eq!(modes.mouse, MouseMode::None);
+    // A focused surface with no screen yet has no modes to apply.
+    let none = paint(
+        &mut buffer(41, 6),
+        &solved,
+        &|_| None,
+        &|surface| surface.to_string(),
+        &Theme::default(),
+    );
+    assert_eq!(none.modes, None);
+}

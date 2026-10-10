@@ -148,3 +148,5 @@ On a selected saved workspace: **Enter** starts it (explicit and idempotent, so 
 - Agent-session resumption: needs provider support (Claude's session continuation); the policy and the action exist so adding it is additive.
 - Multi-writer detection (lock file): single node process per config dir today.
 - Multi-host profiles and sync: no requirement; export/import covers moving a definition.
+
+**The node interface persistence uses.** Persistence no longer names `TmuxServers`. It owns `NodeTmux` (`flight-node/src/persistence/node_tmux.rs`): the panes the node publishes, creating a workspace, creating a shell. `TmuxServers` implements it, which removes the cycle (the servers owned the persistence and persistence called back into the servers), and the reconciliation logic is exercised against a node with no tmux (`persistence_without_tmux_tests.rs`). `TmuxServers` itself is split by job into `observe.rs`, `act.rs` (pane and terminal actions) and `create.rs` (creation and hand-over to persistence); `add_local` registers a local socket for observing and terminals in one step.

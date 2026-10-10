@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: MIT
 
+use super::surface_names::surface_id;
 use crate::LayoutStore;
 use flight_present::{saved, Axis, Layout, Placement};
 use flight_state::SurfaceId;
-use flight_ui::WorkspaceKey;
+use flight_ui::{SurfaceChoice, WorkspaceKey};
 
 /// The agent and the shell side by side, with the keyboard on `focus` (or the agent).
 pub fn side_by_side(focus: &SurfaceId) -> Layout {
-    let agent = SurfaceId::new("agent");
-    let shell = SurfaceId::new("shell");
+    let (agent, shell) = (
+        surface_id(SurfaceChoice::Agent),
+        surface_id(SurfaceChoice::Shell),
+    );
     let layout = Layout::single(agent.clone())
         .split(&agent, Axis::Across, shell.clone(), Placement::After)
         .unwrap_or_else(|_| Layout::single(agent.clone()));

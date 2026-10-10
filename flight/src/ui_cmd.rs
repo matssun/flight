@@ -3,12 +3,8 @@
 use crate::args::{config_dir, now, Args};
 use crate::join_cmd::join_command;
 use crate::roles::ui_dir;
-use flight_client::{
-    remember, run_presentation, run_session, side_by_side, starting_layout, ClientConfig, Handoff,
-    LayoutStore, OrchestratedBackend, SessionRequest, Switcher, TerminalEnd,
-};
+use flight_client::{visit, ClientConfig, Handoff, OrchestratedBackend, SessionRequest, Switcher};
 use flight_proto::RoleCode;
-use flight_state::SurfaceId;
 use flight_ui::{render_to_string, run_with_start, Backend, Exit, Start, ViewModel};
 use std::time::Duration;
 
@@ -85,75 +81,25 @@ fn dashboard(args: &[String]) -> Result<(), String> {
                 return Err(format!("pane selected, but cannot attach: {why}"));
             }
             Some(Handoff::Terminal { id, shown, binding }) => {
-                let outcome = run_session(
+                let back = visit(
                     &link,
+                    &dir,
                     SessionRequest {
                         id,
-                        shown: shown.clone(),
+                        shown,
                         binding,
                         typed_ahead,
                     },
                 );
-                let outcome = if outcome.end == TerminalEnd::Presenting {
-                    present(&link, &dir, &shown)
-                } else {
-                    outcome
-                };
-                let mut notice = format!("terminal: {}", outcome.end);
-                if outcome.undelivered > 0 {
-                    notice.push_str(&format!(
-                        " ({} typed bytes were not delivered)",
-                        outcome.undelivered
-                    ));
-                }
                 // Back on the workspace that was just shown.
                 begin = Start {
-                    notice: Some(notice),
-                    select: Some(shown.workspace),
+                    notice: Some(back.notice),
+                    select: Some(back.select),
                     ..Start::default()
                 };
             }
             None => return Ok(()),
         }
-    }
-}
-
-/// Show a workspace's surfaces side by side (or as the user arranged them last time), remember
-/// the arrangement they leave, and report as a finished session. A layout that cannot be read or
-/// saved is said, and the arrangement is simply not remembered.
-fn present(
-    link: &OrchestratedBackend,
-    dir: &std::path::Path,
-    shown: &flight_client::ShownSurface,
-) -> flight_client::SessionOutcome {
-    let focus = SurfaceId::new(match shown.choice {
-        flight_ui::SurfaceChoice::Agent => "agent",
-        flight_ui::SurfaceChoice::Shell => "shell",
-    });
-    let mut store = LayoutStore::open(dir);
-    let layout = match &store {
-        Ok(store) => starting_layout(Some(store), &shown.workspace, &focus, |s| {
-            matches!(s.as_str(), "agent" | "shell")
-        }),
-        Err(_) => side_by_side(&focus),
-    };
-    let outcome = run_presentation(link, shown.workspace.clone(), layout);
-    let mut said = None;
-    match &mut store {
-        Ok(store) => {
-            if let Err(why) = remember(store, &shown.workspace, &outcome.layout) {
-                said = Some(format!("layout not remembered: {why}"));
-            }
-        }
-        Err(why) => said = Some(format!("layout not remembered: {why}")),
-    }
-    if let Some(said) = said {
-        eprintln!("{said}");
-    }
-    flight_client::SessionOutcome {
-        end: outcome.end,
-        shown: Some(shown.choice),
-        undelivered: outcome.undelivered,
     }
 }
 

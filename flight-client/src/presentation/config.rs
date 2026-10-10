@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::command::Shown;
-use crate::session::{FromRemote, OpenFailure};
+use crate::session::{FromRemote, OpenFailure, Reattach};
 use flight_present::Style;
 use flight_state::SurfaceId;
 use std::sync::Arc;
@@ -47,11 +47,7 @@ impl PresentationConfig {
             open_timeout: Duration::from_secs(15),
             retire_wait: Duration::from_secs(3),
             lease_period: crate::terminal::LEASE_PERIOD,
-            reattach_delays: vec![
-                Duration::from_millis(250),
-                Duration::from_secs(1),
-                Duration::from_secs(3),
-            ],
+            reattach_delays: Reattach::default_delays(),
             surfaces: vec![agent, shell],
             resolve: Arc::new(|s| match s.as_str() {
                 "agent" => Some(SurfaceChoice::Agent),

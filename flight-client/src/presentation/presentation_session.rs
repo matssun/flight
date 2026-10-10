@@ -10,7 +10,8 @@ use super::rebuild_budget::RebuildBudget;
 use super::tile_link::{LinkState, Live, TileLink};
 use crate::screens::{paint, EngineFailure, Geometry, ScreenModel};
 use crate::session::{
-    Attachment, Binding, FromRemote, OpenFailure, OpenRequest, SurfaceHost, ToRemote,
+    Attachment, Binding, FromRemote, Next, OpenFailure, OpenRequest, Reattach, SurfaceHost,
+    ToRemote,
 };
 use crate::terminal::{LocalTerminal, TerminalEnd};
 use flight_present::{cycle, neighbor, solve, Layout, Placement, Rect, Solved};
@@ -393,11 +394,12 @@ impl<H: SurfaceHost> Run<H> {
                     retired: attachment.retired,
                 });
             }
-            Err(OpenFailure::Unavailable(why)) if attempts > 0 => {
-                match self.cfg.reattach_delays.get(attempts) {
-                    Some(delay) => {
+            Err(failure) if Reattach::open_failure_is_transient(&failure) => {
+                let why = failure_text(&failure);
+                match Reattach::new(&self.cfg.reattach_delays).next(attempts) {
+                    Next::After(delay) => {
                         let at = Instant::now()
-                            .checked_add(*delay)
+                            .checked_add(delay)
                             .unwrap_or_else(Instant::now);
                         tile.state = LinkState::Retrying {
                             binding: expect,
@@ -405,7 +407,7 @@ impl<H: SurfaceHost> Run<H> {
                             at,
                         };
                     }
-                    None => {
+                    Next::GiveUp => {
                         notice(&mut tile.model, &format!("connection lost: {why}"));
                         tile.state = LinkState::Down;
                         self.last_end = Some(TerminalEnd::Lost(why));
@@ -451,6 +453,37 @@ impl<H: SurfaceHost> Run<H> {
         self.dirty = true;
     }
 
+    /// The stream of `surface` broke while the process may still be there: attach the same
+    /// process again, a bounded number of times, then give the tile up.
+    fn stream_broke(&mut self, surface: &SurfaceId, why: String) {
+        let Some(tile) = self.tiles.get_mut(surface) else {
+            return;
+        };
+        let LinkState::Live(live) = &tile.state else {
+            return;
+        };
+        live.pump.abort();
+        let (binding, attempts) = (live.binding.clone(), live.attempts);
+        match Reattach::new(&self.cfg.reattach_delays).next(attempts) {
+            Next::After(delay) => {
+                let at = Instant::now()
+                    .checked_add(delay)
+                    .unwrap_or_else(Instant::now);
+                tile.state = LinkState::Retrying {
+                    binding: Some(binding),
+                    attempts: attempts.saturating_add(1),
+                    at,
+                };
+            }
+            Next::GiveUp => {
+                notice(&mut tile.model, &format!("connection lost: {why}"));
+                tile.state = LinkState::Down;
+                self.last_end = Some(TerminalEnd::Lost(why));
+            }
+        }
+        self.dirty = true;
+    }
+
     fn on_remote(&mut self, surface: SurfaceId, generation: u64, what: FromRemote) {
         let Some(tile) = self.tiles.get_mut(&surface) else {
             return;
@@ -468,6 +501,9 @@ impl<H: SurfaceHost> Run<H> {
                     Err(failure) => self.screen_failed(&surface, &failure),
                 }
             }
+            FromRemote::Exit { reason, .. } if Reattach::exit_is_a_break(reason) => {
+                self.stream_broke(&surface, "the node's connection was lost".to_owned());
+            }
             FromRemote::Exit { reason, status } => {
                 let end = FromRemote::Exit { reason, status };
                 notice(&mut tile.model, &remote_text(&end));
@@ -477,30 +513,7 @@ impl<H: SurfaceHost> Run<H> {
                 tile.state = LinkState::Down;
                 self.last_end = Some(TerminalEnd::Exited { reason, status });
             }
-            FromRemote::Lost(why) => {
-                let LinkState::Live(live) = &tile.state else {
-                    return;
-                };
-                live.pump.abort();
-                let (binding, attempts) = (live.binding.clone(), live.attempts);
-                match self.cfg.reattach_delays.get(attempts) {
-                    Some(delay) => {
-                        let at = Instant::now()
-                            .checked_add(*delay)
-                            .unwrap_or_else(Instant::now);
-                        tile.state = LinkState::Retrying {
-                            binding: Some(binding),
-                            attempts: attempts.saturating_add(1),
-                            at,
-                        };
-                    }
-                    None => {
-                        notice(&mut tile.model, &format!("connection lost: {why}"));
-                        tile.state = LinkState::Down;
-                        self.last_end = Some(TerminalEnd::Lost(why));
-                    }
-                }
-            }
+            FromRemote::Lost(why) => self.stream_broke(&surface, why),
         }
         self.dirty = true;
     }

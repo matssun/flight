@@ -10,20 +10,24 @@
 //! which attachment each key belongs to.
 
 mod attachment;
+mod handover;
 mod host;
 mod input_event;
 mod input_queue;
 mod outcome;
 mod pump;
 mod reattach;
+mod session_ending;
 #[cfg(test)]
 mod session_tests;
 mod surface_session;
 
 pub use attachment::{Attachment, Binding, FromRemote, ToRemote};
+pub use handover::Handover;
 pub use host::{OpenFailure, OpenRequest, SurfaceHost};
 pub use input_event::InputEvent;
 pub use input_queue::InputQueue;
 pub use outcome::SessionOutcome;
 pub(crate) use reattach::{Next, Reattach};
+pub use session_ending::SessionEnding;
 pub use surface_session::{SessionConfig, SessionStart, SurfaceSession};

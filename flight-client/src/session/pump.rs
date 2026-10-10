@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::session::FromRemote;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
 /// Why an attachment's output stopped.
@@ -21,33 +21,65 @@ pub(super) struct Ended {
     pub(super) end: PumpEnd,
 }
 
-/// Copy one attachment's output to the user's terminal until it ends. `first` is written
-/// before anything else (the terminal reset between two surfaces). Output is written with
-/// backpressure: while the terminal is not taking it, nothing more is read from the stream.
+/// The task copying one attachment's output to the user's terminal.
+pub(super) struct Pump {
+    task: JoinHandle<mpsc::Receiver<FromRemote>>,
+    stop: oneshot::Sender<()>,
+}
+
+impl Pump {
+    /// Stop reading the attachment's output at once.
+    pub(super) fn abort(self) {
+        self.task.abort();
+    }
+
+    /// Stop copying and give back what the attachment's output is read from, so another reader
+    /// can take over where this one left off (output not yet copied is not lost, only what was in
+    /// this reader's hands). `None` if the task could not be finished.
+    pub(super) async fn take_back(self) -> Option<mpsc::Receiver<FromRemote>> {
+        let _ = self.stop.send(());
+        self.task.await.ok()
+    }
+}
+
+/// Copy one attachment's output to the user's terminal until it ends or is stopped. `first` is
+/// written before anything else (the terminal reset between two surfaces). Output is written
+/// with backpressure: while the terminal is not taking it, nothing more is read from the stream.
 pub(super) fn spawn(
     generation: u64,
     mut from_remote: mpsc::Receiver<FromRemote>,
     output: mpsc::Sender<Vec<u8>>,
     ended: mpsc::Sender<Ended>,
     first: Option<Vec<u8>>,
-) -> JoinHandle<()> {
-    tokio::spawn(async move {
+) -> Pump {
+    let (stop, mut stopped) = oneshot::channel::<()>();
+    let task = tokio::spawn(async move {
         if let Some(first) = first {
-            if output.send(first).await.is_err() {
-                let _ = ended
-                    .send(Ended {
-                        generation,
-                        end: PumpEnd::LocalGone,
-                    })
-                    .await;
-                return;
+            tokio::select! {
+                biased;
+                _ = &mut stopped => return from_remote,
+                sent = output.send(first) => if sent.is_err() {
+                    let _ = ended
+                        .send(Ended { generation, end: PumpEnd::LocalGone })
+                        .await;
+                    return from_remote;
+                },
             }
         }
         let end = loop {
-            match from_remote.recv().await {
+            let next = tokio::select! {
+                biased;
+                _ = &mut stopped => return from_remote,
+                next = from_remote.recv() => next,
+            };
+            match next {
                 Some(FromRemote::Data(bytes)) => {
-                    if output.send(bytes).await.is_err() {
-                        break PumpEnd::LocalGone;
+                    tokio::select! {
+                        biased;
+                        _ = &mut stopped => return from_remote,
+                        sent = output.send(bytes) => if sent.is_err() {
+                            break PumpEnd::LocalGone;
+                        },
                     }
                 }
                 Some(other) => break PumpEnd::Remote(other),
@@ -55,5 +87,7 @@ pub(super) fn spawn(
             }
         };
         let _ = ended.send(Ended { generation, end }).await;
-    })
+        from_remote
+    });
+    Pump { task, stop }
 }

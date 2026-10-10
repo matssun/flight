@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-use crate::session::pump::{self, Ended, PumpEnd};
+use crate::session::pump::{self, Ended, Pump, PumpEnd};
 use crate::session::{
-    Attachment, Binding, FromRemote, InputEvent, InputQueue, Next, OpenFailure, OpenRequest,
-    Reattach, SessionOutcome, SurfaceHost, ToRemote,
+    Attachment, Binding, FromRemote, Handover, InputEvent, InputQueue, Next, OpenFailure,
+    OpenRequest, Reattach, SessionEnding, SessionOutcome, SurfaceHost, ToRemote,
 };
 use crate::terminal::{EscapeFilter, LocalTerminal, TerminalEnd};
 use flight_proto::{MAX_TERMINAL_DATA, MAX_TERMINAL_DIM};
@@ -88,7 +88,7 @@ struct Live {
     id: Vec<u8>,
     binding: Binding,
     to_remote: mpsc::Sender<ToRemote>,
-    pump: JoinHandle<()>,
+    pump: Pump,
     generation: u64,
     /// The size the attachment last heard of.
     sent_size: (u16, u16),
@@ -122,11 +122,19 @@ impl<H: SurfaceHost> SurfaceSession<H> {
 
     /// Run until the user leaves, a surface ends, or the link is gone.
     pub async fn run(self, local: LocalTerminal, start: SessionStart) -> SessionOutcome {
+        self.run_keeping(local, start).await.outcome
+    }
+
+    /// As [`run`](Self::run), but when the user asks for the surfaces side by side the surface
+    /// on screen is not let go: its stream is handed on, with the user's terminal, so what shows
+    /// the surfaces next carries on from here.
+    pub async fn run_keeping(self, local: LocalTerminal, start: SessionStart) -> SessionEnding {
         let LocalTerminal {
             mut input,
             mut resizes,
             output,
         } = local;
+        let kept_output = output.clone();
         let (ended_tx, mut ended_rx) = mpsc::channel::<Ended>(4);
         let (retired_tx, mut retired_rx) = mpsc::channel::<u64>(8);
         let mut run = Run {
@@ -213,7 +221,20 @@ impl<H: SurfaceHost> SurfaceSession<H> {
                 break end;
             }
         };
-        run.finish(end)
+        let (handover, outcome) = if end == TerminalEnd::Presenting {
+            run.finish_presenting(end).await
+        } else {
+            (None, run.finish(end))
+        };
+        SessionEnding {
+            outcome,
+            handover,
+            local: LocalTerminal {
+                input,
+                resizes,
+                output: kept_output,
+            },
+        }
     }
 }
 
@@ -542,6 +563,48 @@ impl<H: SurfaceHost> Run<H> {
             let _ = tokio::time::timeout(wait, retired).await;
             let _ = tx.send(id).await;
         });
+    }
+
+    /// As [`finish`](Self::finish), for a session that ends because the surfaces are to be shown
+    /// side by side: the terminal is reset for what comes next, and the surface on screen is
+    /// handed on instead of let go.
+    async fn finish_presenting(mut self, end: TerminalEnd) -> (Option<Handover>, SessionOutcome) {
+        let handover = match self.live.take() {
+            Some(live) => {
+                let size = live.sent_size;
+                let (choice, id, binding, to_remote, guard, retired) = (
+                    live.choice,
+                    live.id,
+                    live.binding,
+                    live.to_remote,
+                    live._guard,
+                    live.retired,
+                );
+                let typed_ahead = self.filter.take_unread();
+                live.pump.take_back().await.map(|from_remote| Handover {
+                    choice,
+                    attachment: Attachment {
+                        id,
+                        binding,
+                        to_remote,
+                        from_remote,
+                        guard,
+                        retired,
+                    },
+                    size,
+                    typed_ahead,
+                })
+            }
+            None => None,
+        };
+        // Whatever the surface left switched on in the terminal is switched off before the next
+        // holder draws; the writer takes this after everything the surface wrote.
+        let _ = tokio::time::timeout(
+            Duration::from_secs(1),
+            self.output.send(self.cfg.reset.clone()),
+        )
+        .await;
+        (handover, self.finish(end))
     }
 
     fn finish(mut self, end: TerminalEnd) -> SessionOutcome {

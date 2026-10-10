@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use crate::screens::ScreenModel;
+use crate::screens::{Geometry, ScreenModel};
 use crate::session::{
     Attachment, Binding, FromRemote, OpenFailure, OpenRequest, SurfaceHost, ToRemote,
 };
@@ -133,7 +133,7 @@ fn start(layout: Layout, size: (u16, u16)) -> Rig {
     Rig {
         input,
         resizes,
-        screen: ScreenModel::new(size.0, size.1),
+        screen: ScreenModel::new(Geometry::new(size.0, size.1).unwrap_or(Geometry::STANDARD)),
         output,
         notices,
         outcome,
@@ -238,6 +238,89 @@ async fn a_terminal_resize_reaches_each_attachment_as_its_own_tile_size() {
             .collect();
         assert_eq!(sizes.last(), Some(&(60, 40)), "{sizes:?}");
     }
+}
+
+fn resizes_of(parts: &[ToRemote]) -> Vec<(u16, u16)> {
+    parts
+        .iter()
+        .filter_map(|m| match m {
+            ToRemote::Resize(c, r) => Some((*c, *r)),
+            _ => None,
+        })
+        .collect()
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_terminal_squeezed_to_nothing_keeps_every_surface_at_its_last_size_and_alive() {
+    let mut rig = start(side_by_side(), (81, 24));
+    let (a, s) = (rig.remote().await, rig.remote().await);
+    let (mut agent, mut shell) = if a.choice == Agent { (a, s) } else { (s, a) };
+    received(&mut agent).await;
+    received(&mut shell).await;
+    for size in [(1, 1), (0, 0), (1, 30), (30, 1), (0, 5), (1, 1)] {
+        rig.resizes.send(size).await.unwrap();
+        rig.settle().await;
+    }
+    for remote in [&mut agent, &mut shell] {
+        let got = received(remote).await;
+        assert!(!got.contains(&ToRemote::Close), "{got:?}");
+        // The surface is told no size at all while the viewport cannot hold a screen.
+        assert!(resizes_of(&got).is_empty(), "{got:?}");
+    }
+    // The session is still running, and the keyboard still reaches the focused surface.
+    assert!(!rig.outcome.is_finished());
+    rig.type_(b"still here").await;
+    assert_eq!(data(&received(&mut agent).await), b"still here");
+    // Room again: each surface hears its tile's size.
+    rig.resizes.send((121, 40)).await.unwrap();
+    rig.settle().await;
+    for remote in [&mut agent, &mut shell] {
+        assert_eq!(resizes_of(&received(remote).await).last(), Some(&(60, 40)));
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn rapid_resizes_end_with_each_surface_told_the_size_of_the_final_tile() {
+    let mut rig = start(side_by_side(), (81, 24));
+    let (a, s) = (rig.remote().await, rig.remote().await);
+    let (mut agent, mut shell) = if a.choice == Agent { (a, s) } else { (s, a) };
+    let (mut told_agent, mut told_shell) = (Vec::new(), Vec::new());
+    for i in 0u16..40 {
+        let size = if i % 5 == 0 {
+            (1, 1)
+        } else {
+            (41 + i * 3, 5 + i % 17)
+        };
+        rig.resizes.send(size).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(1)).await;
+        told_agent.extend(resizes_of(&received(&mut agent).await));
+        told_shell.extend(resizes_of(&received(&mut shell).await));
+    }
+    rig.resizes.send((101, 30)).await.unwrap();
+    rig.settle().await;
+    told_agent.extend(resizes_of(&received(&mut agent).await));
+    told_shell.extend(resizes_of(&received(&mut shell).await));
+    for sizes in [told_agent, told_shell] {
+        assert_eq!(sizes.last(), Some(&(50, 30)), "{sizes:?}");
+        // Whatever was sent in between was a size a screen can have.
+        assert!(sizes.iter().all(|&(c, r)| c >= 2 && r >= 2), "{sizes:?}");
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_terminal_that_starts_too_small_attaches_the_focused_surface_at_the_standard_size_then_follows(
+) {
+    let mut rig = start(side_by_side(), (1, 1));
+    let mut agent = rig.remote().await;
+    assert_eq!(agent.choice, Agent);
+    assert_eq!(agent.size, (80, 24));
+    rig.resizes.send((81, 24)).await.unwrap();
+    rig.settle().await;
+    assert_eq!(
+        resizes_of(&received(&mut agent).await).last(),
+        Some(&(40, 24))
+    );
+    assert_eq!(rig.remote().await.size, (40, 24));
 }
 
 #[tokio::test(start_paused = true)]

@@ -5,10 +5,14 @@
 
 use super::emulator::Emulator;
 use super::engine::TerminalEngine;
-use super::{Colour, MouseMode};
+use super::{Colour, Geometry, MouseMode};
 
 fn every_engine(check: impl Fn(fn(u16, u16) -> Box<dyn Probe>)) {
-    check(|c, r| Box::new(Emulator::new(c, r)));
+    check(|c, r| Box::new(Emulator::new(geometry(c, r))));
+}
+
+fn geometry(cols: u16, rows: u16) -> Geometry {
+    Geometry::new(cols, rows).expect("a size the test means to be valid")
 }
 
 /// `TerminalEngine` is not object safe (`new`), so the checks go through this.
@@ -28,10 +32,10 @@ impl<E: TerminalEngine> Probe for E {
         TerminalEngine::feed(self, bytes)
     }
     fn resize(&mut self, cols: u16, rows: u16) {
-        TerminalEngine::resize(self, cols, rows);
+        TerminalEngine::resize(self, geometry(cols, rows));
     }
     fn size(&self) -> (u16, u16) {
-        TerminalEngine::size(self)
+        TerminalEngine::size(self).pair()
     }
     fn text(&self, col: u16, row: u16) -> Option<String> {
         self.cell(col, row).map(|c| c.text.to_owned())
@@ -103,12 +107,58 @@ fn feeding_never_panics_whatever_the_size_or_the_bytes() {
         let noise: Vec<u8> = (0..4000u32)
             .map(|i| (i.wrapping_mul(2_654_435_761) >> 13) as u8)
             .collect();
-        for (c, r) in [(1, 1), (1, 9), (9, 1), (2, 2), (80, 24)] {
+        let smallest = (Geometry::MIN_COLS, Geometry::MIN_ROWS);
+        for (c, r) in [smallest, (2, 9), (9, 2), (80, 24)] {
             let mut e = new(c, r);
             e.feed(&noise);
             e.feed("日本\x1b[2J\x1b[5L\x1b[3;1H\u{1f642}".as_bytes());
-            let (cols, rows) = e.size();
-            assert!(cols >= 1 && rows >= 1);
+            assert_eq!(e.size(), (c, r));
         }
+    });
+}
+
+#[test]
+fn rapid_resizes_with_output_between_always_end_at_the_last_size() {
+    every_engine(|new| {
+        let noise: Vec<u8> = (0..600u32)
+            .map(|i| (i.wrapping_mul(2_654_435_761) >> 11) as u8)
+            .collect();
+        let mut e = new(80, 24);
+        let sizes = [
+            (2, 2),
+            (200, 60),
+            (3, 2),
+            (2, 40),
+            (80, 24),
+            (2, 2),
+            (17, 5),
+        ];
+        for round in 0..700usize {
+            let (c, r) = sizes[round % sizes.len()];
+            e.resize(c, r);
+            assert_eq!(e.size(), (c, r));
+            if round % 3 != 0 {
+                e.feed(&noise[round % 200..]);
+            }
+            assert_eq!(e.size().0, c);
+        }
+        e.resize(33, 7);
+        e.feed(b"\x1b[H\x1b[2Jdone");
+        assert_eq!(e.size(), (33, 7));
+        assert_eq!(e.text(0, 0).as_deref(), Some("d"));
+        assert!(e.text(33, 0).is_none() && e.text(0, 7).is_none());
+    });
+}
+
+#[test]
+fn a_resize_in_the_middle_of_an_escape_sequence_leaves_a_working_screen() {
+    every_engine(|new| {
+        let mut e = new(40, 10);
+        e.feed(b"\x1b[3");
+        e.resize(25, 6);
+        e.feed(b"1mred\x1b[0m");
+        assert_eq!(e.size(), (25, 6));
+        e.feed(b"\x1b[H\x1b[2Jok");
+        assert_eq!(e.text(0, 0).as_deref(), Some("o"));
     });
 }

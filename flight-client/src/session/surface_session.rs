@@ -49,8 +49,7 @@ impl SessionConfig {
             input_stall: Duration::from_secs(3),
             lease_period: crate::terminal::LEASE_PERIOD,
             reattach_delays: Reattach::default_delays(),
-            reset: b"\x1b[?1049l\x1b[?25h\x1b[0m\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?2004l"
-                .to_vec(),
+            reset: crate::terminal::reset::FULL_SCREEN.to_vec(),
             say,
         }
     }

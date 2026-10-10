@@ -222,12 +222,15 @@ fn a_server_restart_is_reported_then_followed_without_stale_screens() {
     let _ = control.take_notes();
 
     live.tmux.kill_server().unwrap();
-    let down = control.observe(now());
+    // One reading of the clock for both: a round says when it was taken, and two readings can
+    // fall either side of a second.
+    let taken = now();
+    let down = control.observe(taken);
     assert_eq!(
         down[0].outcome,
         ServerOutcome::Unavailable(Unavailable::NoServer)
     );
-    assert_eq!(down, reference.observe(now()));
+    assert_eq!(down, reference.observe(taken));
 
     // The new server reuses pane ids for different processes.
     live.agent("a");

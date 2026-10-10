@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use crate::screens::{Modes, Painted};
+use crate::screens::Painted;
 use ratatui::backend::{Backend, CrosstermBackend};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
@@ -59,14 +59,9 @@ impl Frame {
         Buffer::empty(area)
     }
 
-    /// The bytes that bring the terminal to `next`, with the cursor where `painted` says and
-    /// the modes of the surface with the keyboard.
-    pub(super) fn bytes(
-        &mut self,
-        next: Buffer,
-        painted: Painted,
-        modes: Option<Modes>,
-    ) -> Vec<u8> {
+    /// The bytes that bring the terminal to `next`, with the cursor and the modes `painted`
+    /// says (those of the surface with the keyboard).
+    pub(super) fn bytes(&mut self, next: Buffer, painted: Painted) -> Vec<u8> {
         let updates = self.shown.diff(&next);
         if !updates.is_empty() {
             self.hide_cursor();
@@ -80,7 +75,7 @@ impl Frame {
             }
             None => self.hide_cursor(),
         }
-        if let Some(modes) = modes {
+        if let Some(modes) = painted.modes {
             let want = (modes.bracketed_paste, modes.application_cursor_keys);
             if self.applied != Some(want) {
                 let _ = self.sink.write_all(mode(2004, want.0).as_bytes());

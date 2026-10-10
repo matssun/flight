@@ -9,7 +9,7 @@ use flight_node::{
 };
 use flight_proto::RoleCode;
 use flight_state::ServerId;
-use flight_tmux::{ControlConnection, SystemRunner, TmuxEndpoint};
+use flight_tmux::ControlConnection;
 use flight_transport::{
     config_path, identity_dir, run_observer, run_saved_reporter, LinkEnd, NodeLink, NodeLinkConfig,
     SAVED_REPORT_INTERVAL,
@@ -112,13 +112,10 @@ fn run_node(args: &[String]) -> Result<(), String> {
         sockets.push("flight");
     }
     let mut servers = TmuxServers::new();
+    let mut endpoints = Vec::new();
     for socket in &sockets {
-        let endpoint = TmuxEndpoint::named(socket).map_err(|e| e.to_string())?;
-        servers.add(
-            ServerId::new(*socket),
-            Box::new(SystemRunner::new(endpoint.clone())),
-        );
-        servers.allow_terminal(ServerId::new(*socket), endpoint);
+        let endpoint = servers.add_local(socket).map_err(|e| e.to_string())?;
+        endpoints.push((ServerId::new(*socket), endpoint));
     }
     let host_id = identity.fingerprint().host_id();
     servers.enable_persistence(WorkspacePersistence::open(
@@ -132,9 +129,8 @@ fn run_node(args: &[String]) -> Result<(), String> {
         ObserverKind::Sequential => Box::new(SequentialObserver::new(servers.clone())),
         ObserverKind::ControlSkip => {
             let mut observer = ControlSkipObserver::new(servers.clone());
-            for socket in &sockets {
-                let endpoint = TmuxEndpoint::named(socket).map_err(|e| e.to_string())?;
-                observer.watch(ServerId::new(*socket), move || {
+            for (server, endpoint) in endpoints {
+                observer.watch(server, move || {
                     Ok(Box::new(ControlConnection::open(&endpoint)?) as Box<dyn ControlLink>)
                 });
             }
@@ -263,7 +259,7 @@ fn reconcile_saved_workspaces(servers: &TmuxServers, restore: bool) {
         start_missing: restore,
         ..RecoveryPolicy::default()
     };
-    match persistence.recover(servers, &policy) {
+    match servers.recover_saved(&policy) {
         Some(Ok(report)) => {
             crate::clock::log_line(&format!(
                 "saved workspaces: {} known, {} action(s), {} newly recorded",

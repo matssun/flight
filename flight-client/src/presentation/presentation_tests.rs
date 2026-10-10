@@ -597,3 +597,35 @@ async fn a_surface_that_is_unreachable_on_first_open_is_tried_again_as_it_is_in_
     assert_eq!(*rig.host.unavailable.lock().unwrap(), 0);
     assert!(!rig.outcome.is_finished());
 }
+
+#[tokio::test(start_paused = true)]
+async fn the_real_terminal_follows_the_modes_of_the_surface_that_has_the_keyboard() {
+    let mut rig = start(side_by_side(), (81, 24));
+    let (a, s) = (rig.remote().await, rig.remote().await);
+    let (agent, shell) = if a.choice == Agent { (a, s) } else { (s, a) };
+    // The agent asks for bracketed paste; the shell has not.
+    agent
+        .to_session
+        .send(FromRemote::Data(b"\x1b[?2004h".to_vec()))
+        .await
+        .unwrap();
+    rig.settle().await;
+    assert!(
+        rig.screen.modes().bracketed_paste,
+        "the agent has the keyboard"
+    );
+    // The keyboard moves to the shell: the real terminal follows it, not the agent.
+    rig.type_(b"\x00l").await;
+    assert!(!rig.screen.modes().bracketed_paste);
+    // And back.
+    rig.type_(b"\x00h").await;
+    assert!(rig.screen.modes().bracketed_paste);
+    // A mode asked for by a surface that does not have the keyboard changes nothing.
+    shell
+        .to_session
+        .send(FromRemote::Data(b"\x1b[?1h".to_vec()))
+        .await
+        .unwrap();
+    rig.settle().await;
+    assert!(!rig.screen.modes().application_cursor_keys);
+}

@@ -106,3 +106,11 @@ Layout edits added for it in `flight-present`: `replace` (same place, share and 
 - **Verified against the real stack** (`flight/tests/workspace_shell_e2e.rs`, real dashboard on a pty, orchestrator, node, private tmux server): two tmux clients each about half the width; keys typed go to the focused surface only and follow `Ctrl-Space h`; closing the focused tile lets only that client go (the agent window keeps running, the shell grows to the full width); leaving saves the arrangement.
 
 **Re-measured on vt100 0.16.2 (for #38).** A separate probe crate, 0.16.2 pinned: a one-row screen now works at 1x10 but 1x1 still panics, so the 2x2 minimum stays. Resizing a populated screen no longer panics in the shapes tried (24x80, 10x40, 5x5, 2x2 to sizes between 2x2 and 40x120) but resizing to 1x1 does, and 3 of 300 runs of random bytes with random resizes (never below 2x2) still panicked. So all three defences stay: the 2x2 minimum, no in-place resize, and `catch_unwind` around `feed`.
+
+## The terminal engine boundary
+
+The terminal emulator is behind one Flight-owned trait, `TerminalEngine` (`flight-client/src/screens/engine.rs`): feed bytes, resize, size, cell, cursor, modes, and nothing else. It has one implementation, `Emulator` (`screens/emulator.rs`), which is the only source file that names the emulator library, and `flight-client/Cargo.toml` is the only manifest that depends on it. `ScreenModel` is what the rest of Flight holds; the one line `type Engine = Emulator;` in `screen_model.rs` is where an engine is chosen. There is no registry, plugin mechanism or configuration, and a second implementation is not planned: the trait is there to state the contract, which `engine_contract_tests.rs` runs against every engine, and to make a replacement a matter of one new file.
+
+Everything that depends on how the library behaves lives in `emulator.rs`: the minimum screen size, the deferred resize, and the containment of parser panics (above). `tests/engine_isolation.rs` fails the build if any other `.rs` or `.toml` file in the workspace names the library.
+
+What is not yet done (tracked in the terminal-engine series of PRs): cells are still handed out as owned values, one allocation per cell per frame; the minimum size is clamped silently inside the adapter instead of being a stated rule of the interface; and a parser failure is a `bool`.

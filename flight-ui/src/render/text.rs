@@ -9,9 +9,8 @@ use ratatui::Terminal;
 /// Render one frame to plain text (rows joined by newlines, trailing spaces trimmed). Used by
 /// `flight --once` and by tests, so the real renderer is exercised without a terminal.
 pub fn render_to_string(vm: &ViewModel, width: u16, height: u16) -> String {
-    let Ok(mut terminal) = Terminal::new(TestBackend::new(width, height)) else {
-        return String::new();
-    };
+    // The test backend cannot fail (its error type is `Infallible`).
+    let Ok(mut terminal) = Terminal::new(TestBackend::new(width, height));
     if terminal.draw(|f| render(f, vm)).is_err() {
         return String::new();
     }

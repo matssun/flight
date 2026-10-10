@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::cell::Colour;
-use super::{Geometry, ScreenModel};
+use super::{Geometry, Modes, ScreenModel};
 use flight_present::{Divider, Rect, Solved, TabBar, Tile};
 use flight_state::SurfaceId;
 use ratatui::buffer::Buffer;
@@ -37,6 +37,10 @@ pub struct Painted {
     /// Where to put the real cursor: the focused surface's cursor, if it shows one inside its
     /// tile. (Column, row) on the terminal.
     pub cursor: Option<(u16, u16)>,
+    /// The modes the real terminal has to be in: those of the focused surface's screen, if it
+    /// has one. The focused surface is the one the keyboard (and so the cursor and the key
+    /// reporting) belongs to; no other surface's modes reach the real terminal.
+    pub modes: Option<Modes>,
 }
 
 /// Draw a solved layout into `buf`: every showing surface's screen in its tile, the lines
@@ -51,11 +55,13 @@ pub fn paint<'a>(
 ) -> Painted {
     let focused_area = solved.focused().map(|t| t.area);
     let mut cursor = None;
+    let mut modes = None;
     for tile in &solved.tiles {
         let model = screen(&tile.surface);
         paint_tile(buf, tile, model);
         if tile.focused {
             cursor = model.and_then(|m| tile_cursor(tile, m));
+            modes = model.map(ScreenModel::modes);
         }
     }
     for divider in &solved.dividers {
@@ -64,7 +70,7 @@ pub fn paint<'a>(
     for bar in &solved.tab_bars {
         paint_tabs(buf, bar, label, theme);
     }
-    Painted { cursor }
+    Painted { cursor, modes }
 }
 
 fn tile_cursor(tile: &Tile, model: &ScreenModel) -> Option<(u16, u16)> {

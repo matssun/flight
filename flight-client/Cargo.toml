@@ -17,7 +17,7 @@ flight-trust = { path = "../flight-trust" }
 flight-ui = { path = "../flight-ui" }
 crossterm = { workspace = true }
 ratatui = { workspace = true }
-vt100 = "0.15"
+vt100 = "0.16"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 flight-present = { path = "../flight-present" }

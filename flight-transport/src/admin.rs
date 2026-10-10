@@ -174,7 +174,12 @@ pub async fn admin_request(path: &Path, request: &str) -> Result<String, Transpo
         ))
     })?;
     stream.write_all(format!("{request}\n").as_bytes()).await?;
-    stream.shutdown().await?;
+    // The server answers once it has read the line and need not wait for this half-close, so it
+    // may be gone already; macOS then says `ENOTCONN`. The answer is still in the socket.
+    match stream.shutdown().await {
+        Err(e) if e.kind() != std::io::ErrorKind::NotConnected => return Err(e.into()),
+        _ => {}
+    }
     let mut reply = String::new();
     BufReader::new(stream).read_to_string(&mut reply).await?;
     match reply.strip_prefix("ok") {

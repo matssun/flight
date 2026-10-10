@@ -5,7 +5,7 @@
 
 use super::engine::TerminalEngine;
 use super::EngineFailure;
-use super::{CellView, Colour, Geometry, Modes, MouseMode};
+use super::{CellView, Colour, Geometry, Modes, MouseEncoding, MouseMode};
 use std::cell::{Cell, RefCell};
 use std::sync::Once;
 
@@ -173,11 +173,15 @@ impl TerminalEngine for Emulator {
             application_cursor_keys: screen.application_cursor(),
             mouse: match screen.mouse_protocol_mode() {
                 vt100::MouseProtocolMode::None => MouseMode::None,
-                vt100::MouseProtocolMode::Press | vt100::MouseProtocolMode::PressRelease => {
-                    MouseMode::Press
-                }
+                vt100::MouseProtocolMode::Press => MouseMode::Press,
+                vt100::MouseProtocolMode::PressRelease => MouseMode::PressRelease,
                 vt100::MouseProtocolMode::ButtonMotion => MouseMode::Drag,
                 vt100::MouseProtocolMode::AnyMotion => MouseMode::Motion,
+            },
+            mouse_encoding: match screen.mouse_protocol_encoding() {
+                vt100::MouseProtocolEncoding::Default => MouseEncoding::Default,
+                vt100::MouseProtocolEncoding::Utf8 => MouseEncoding::Utf8,
+                vt100::MouseProtocolEncoding::Sgr => MouseEncoding::Sgr,
             },
         }
     }

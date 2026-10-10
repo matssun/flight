@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::cell::Colour;
-use super::{paint, Geometry, MouseMode, ScreenModel, Theme};
+use super::{paint, Geometry, MouseEncoding, MouseMode, ScreenModel, Theme};
 use flight_present::{solve, Axis, Child, Layout, Rect, Region, Style as LayoutStyle};
 use flight_state::SurfaceId;
 use ratatui::buffer::Buffer;
@@ -63,7 +63,11 @@ fn the_modes_the_program_asks_for_are_visible() {
         .unwrap();
     let off = m.modes();
     assert!(!off.alternate_screen && !off.bracketed_paste && !off.application_cursor_keys);
-    assert_eq!(off.mouse, MouseMode::Press);
+    assert_eq!(off.mouse, MouseMode::PressRelease);
+    assert_eq!(off.mouse_encoding, MouseEncoding::Default);
+    m.feed(b"\x1b[?9h\x1b[?1006h").unwrap();
+    assert_eq!(m.modes().mouse, MouseMode::Press);
+    assert_eq!(m.modes().mouse_encoding, MouseEncoding::Sgr);
 }
 
 #[test]

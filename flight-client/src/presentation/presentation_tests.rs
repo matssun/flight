@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use crate::screens::{Geometry, ScreenModel};
+use crate::screens::{Geometry, MouseEncoding, MouseMode, ScreenModel};
 use crate::session::{
     Attachment, Binding, FromRemote, OpenFailure, OpenRequest, SurfaceHost, ToRemote,
 };
@@ -628,4 +628,80 @@ async fn the_real_terminal_follows_the_modes_of_the_surface_that_has_the_keyboar
         .unwrap();
     rig.settle().await;
     assert!(!rig.screen.modes().application_cursor_keys);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_click_moves_the_keyboard_to_its_tile_and_is_not_also_given_to_the_program() {
+    let mut rig = start(side_by_side(), (81, 24));
+    let (a, s) = (rig.remote().await, rig.remote().await);
+    let (mut agent, mut shell) = if a.choice == Agent { (a, s) } else { (s, a) };
+    // Both programs ask for the mouse; the real terminal reports it, in the form Flight reads.
+    for remote in [&agent, &shell] {
+        remote
+            .to_session
+            .send(FromRemote::Data(b"\x1b[?1000h\x1b[?1006h".to_vec()))
+            .await
+            .unwrap();
+    }
+    rig.settle().await;
+    assert_eq!(rig.screen.modes().mouse, MouseMode::PressRelease);
+    assert_eq!(rig.screen.modes().mouse_encoding, MouseEncoding::Sgr);
+    // Column 60, row 5 is in the shell's tile.
+    rig.type_(b"\x1b[<0;60;6M\x1b[<0;60;6mok").await;
+    assert_eq!(data(&received(&mut shell).await), b"ok");
+    assert_eq!(data(&received(&mut agent).await), b"");
+    // Now a click in the shell's own tile is the shell's.
+    rig.type_(b"\x1b[<0;60;6M").await;
+    assert_eq!(data(&received(&mut shell).await), b"\x1b[<0;19;6M");
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_program_is_told_only_what_it_asked_for_in_its_own_columns_and_the_terminal_follows_it() {
+    let mut rig = start(side_by_side(), (81, 24));
+    let (a, s) = (rig.remote().await, rig.remote().await);
+    let (mut agent, mut shell) = if a.choice == Agent { (a, s) } else { (s, a) };
+    // Two tiles: clicks are reported to Flight even though no program asked.
+    rig.settle().await;
+    assert_eq!(rig.screen.modes().mouse, MouseMode::PressRelease);
+    // The agent asks for drags, and for the numbers in the long form.
+    agent
+        .to_session
+        .send(FromRemote::Data(b"\x1b[?1002h\x1b[?1006h".to_vec()))
+        .await
+        .unwrap();
+    rig.settle().await;
+    assert_eq!(rig.screen.modes().mouse, MouseMode::Drag);
+    rig.type_(b"\x1b[<0;4;3M\x1b[<32;9;3M\x1b[<0;9;3m\x1b[<64;5;5M")
+        .await;
+    assert_eq!(
+        data(&received(&mut agent).await),
+        b"\x1b[<0;4;3M\x1b[<32;9;3M\x1b[<0;9;3m\x1b[<64;5;5M"
+    );
+    // A drag that began in the agent's tile and ended over the shell's stays the agent's.
+    rig.type_(b"\x1b[<0;4;3M\x1b[<32;60;3M\x1b[<0;60;3m").await;
+    assert_eq!(
+        data(&received(&mut agent).await),
+        b"\x1b[<0;4;3M\x1b[<32;40;3M\x1b[<0;40;3m"
+    );
+    // The shell asked for nothing, so the wheel over it is not sent to it.
+    rig.type_(b"\x1b[<64;60;3M").await;
+    assert_eq!(data(&received(&mut shell).await), b"");
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_report_cut_between_reads_is_not_typed_into_the_program() {
+    let mut rig = start(side_by_side(), (81, 24));
+    let (a, s) = (rig.remote().await, rig.remote().await);
+    let (mut agent, _shell) = if a.choice == Agent { (a, s) } else { (s, a) };
+    rig.type_(b"\x1b[<0;6").await;
+    rig.type_(b"0;6M").await;
+    assert_eq!(data(&received(&mut agent).await), b"");
+}
+
+#[tokio::test(start_paused = true)]
+async fn one_tile_whose_program_wants_no_mouse_leaves_the_mouse_to_the_terminal() {
+    let mut rig = start(Layout::single(id("agent")), (80, 24));
+    let _agent = rig.remote().await;
+    rig.settle().await;
+    assert_eq!(rig.screen.modes().mouse, MouseMode::None);
 }

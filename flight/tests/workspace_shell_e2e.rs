@@ -454,3 +454,42 @@ fn the_agent_and_the_shell_are_shown_side_by_side_each_with_its_own_keys_size_an
         "the shell alone, as left: {saved}"
     );
 }
+
+#[test]
+fn a_click_moves_the_keyboard_between_tiles_and_a_program_that_asked_for_the_mouse_is_told() {
+    let mut rig = boot("mouse");
+    workspace_with_shell(&mut rig);
+    rig.send(b"\x00v");
+    wait("both tiles on screen", || {
+        rig.clients() == 2 && rig.seen("│")
+    });
+    // The shell has the keyboard. It asks for the mouse, in the form Flight can read back.
+    rig.send(b"printf '\\033[?1000h\\033[?1006h'; cat -v\r");
+    wait("the shell is reading", || {
+        pane(&rig, "shell").contains("cat -v")
+    });
+    std::thread::sleep(Duration::from_millis(500));
+
+    // A click in the shell's tile (the right half) is reported to its program, in its own columns.
+    rig.send(b"\x1b[<0;80;5M\x1b[<0;80;5m");
+    wait("the program was told of the click", || {
+        let shell = pane(&rig, "shell");
+        shell.contains("^[[<0;") && shell.contains('M') && shell.contains('m')
+    });
+
+    // A click in the agent's tile (the left half) gives it the keyboard, and is not reported.
+    rig.send(b"\x1b[<0;10;5M\x1b[<0;10;5m");
+    std::thread::sleep(Duration::from_millis(300));
+    rig.send(b"FOR-THE-AGENT");
+    wait("the agent got its keys", || {
+        pane(&rig, "agent").contains("FOR-THE-AGENT")
+    });
+    assert!(
+        !pane(&rig, "shell").contains("FOR-THE-AGENT"),
+        "misdelivered"
+    );
+    assert!(
+        !pane(&rig, "agent").contains("^[[<"),
+        "the click reached the agent's program"
+    );
+}

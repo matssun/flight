@@ -25,8 +25,8 @@ pub use presentation::{
     PresentationOutcome, PresentationSession, Shown,
 };
 pub use screens::{
-    paint, CellView, Colour, EngineFailure, Geometry, Modes, MouseMode, Painted, ScreenModel,
-    Theme, TooSmall,
+    paint, CellView, Colour, EngineFailure, Geometry, Modes, MouseEncoding, MouseMode, Painted,
+    ScreenModel, Theme, TooSmall,
 };
 pub use session::{
     Attachment, Binding, FromRemote, InputEvent, InputQueue, OpenFailure, OpenRequest,

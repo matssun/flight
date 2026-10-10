@@ -309,6 +309,7 @@ impl<H: SurfaceHost> Run<H> {
         let (choice, connect) = (opening.choice, opening.connect.take());
         let request = OpenRequest {
             choice,
+            surface: None,
             cols: size.0,
             rows: size.1,
             expect: opening.expect.clone(),

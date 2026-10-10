@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use crate::presentation::{side_by_side, PresentationOutcome};
+use crate::presentation::{side_by_side, PresentationOutcome, WorkspaceSurfaces};
 use crate::session::{Binding, SessionOutcome};
 use crate::terminal::{SessionRequest, TerminalEnd};
 use crate::ShownSurface;
@@ -49,6 +49,8 @@ struct Fake {
     presentations: RefCell<Vec<Layout>>,
     /// What each presentation was handed.
     handed: RefCell<Vec<Option<SurfaceChoice>>>,
+    /// The surfaces the workspace has.
+    surfaces: WorkspaceSurfaces,
 }
 
 impl Fake {
@@ -62,6 +64,7 @@ impl Fake {
             sessions: RefCell::default(),
             presentations: RefCell::default(),
             handed: RefCell::default(),
+            surfaces: WorkspaceSurfaces::standard(),
         }
     }
 }
@@ -82,9 +85,14 @@ impl Terminals for Fake {
         (outcome, held)
     }
 
+    fn surfaces(&self, _workspace: &WorkspaceKey) -> WorkspaceSurfaces {
+        self.surfaces.clone()
+    }
+
     fn presentation(
         &self,
         _workspace: WorkspaceKey,
+        _surfaces: WorkspaceSurfaces,
         layout: Layout,
         held: Option<SurfaceChoice>,
     ) -> PresentationOutcome {
@@ -193,4 +201,53 @@ fn what_the_session_kept_goes_to_the_presentation_and_the_keyboard_is_where_the_
     let plain = Fake::new(TerminalEnd::UserLeft);
     visit(&plain, &dir("nothing-kept"), request(SurfaceChoice::Agent));
     assert!(plain.handed.borrow().is_empty());
+}
+
+#[test]
+fn a_remembered_arrangement_keeps_a_third_surface_while_it_exists_and_the_agent_and_shell_always() {
+    use crate::presentation::workspace_surfaces::fixtures::{pane, snapshot};
+    let dir = dir("third");
+    let with_third = {
+        let snapshot = snapshot(vec![
+            pane(
+                "s-1",
+                flight_ui::SurfaceKind::Agent(flight_classify::AgentKind::Claude),
+                "agent",
+                1,
+            ),
+            pane("s-2", flight_ui::SurfaceKind::Shell, "shell", 2),
+            pane("s-3", flight_ui::SurfaceKind::Shell, "logs", 3),
+        ]);
+        WorkspaceSurfaces::of(&flight_ui::workspaces(&snapshot, "")[0])
+    };
+    let (agent, shell, logs) = (
+        SurfaceId::new("agent"),
+        SurfaceId::new("shell"),
+        SurfaceId::new("s-3"),
+    );
+    let three = side_by_side(&agent)
+        .split(
+            &shell,
+            flight_present::Axis::Down,
+            logs.clone(),
+            flight_present::Placement::After,
+        )
+        .unwrap();
+    // The user leaves with three tiles.
+    let mut first = Fake::new(TerminalEnd::Presenting);
+    first.surfaces = with_third.clone();
+    first.presentation_layout = Some(three.clone());
+    visit(&first, &dir, request(SurfaceChoice::Agent));
+    // Next time the workspace still has it: all three come back.
+    let mut again = Fake::new(TerminalEnd::Presenting);
+    again.surfaces = with_third;
+    visit(&again, &dir, request(SurfaceChoice::Agent));
+    assert_eq!(again.presentations.borrow()[0].surfaces().len(), 3);
+    // When it is gone the arrangement is cut down to what is there; the agent and shell stay
+    // even if they are down for a moment.
+    let gone = Fake::new(TerminalEnd::Presenting);
+    visit(&gone, &dir, request(SurfaceChoice::Agent));
+    let shown = gone.presentations.borrow();
+    assert_eq!(shown[0].surfaces().len(), 2);
+    assert!(shown[0].contains(&agent) && shown[0].contains(&shell));
 }

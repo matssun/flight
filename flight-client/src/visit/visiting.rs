@@ -2,7 +2,7 @@
 
 use super::returning::Returning;
 use super::terminals::Terminals;
-use crate::presentation::{remember, side_by_side, starting_layout, surface_choice, surface_id};
+use crate::presentation::{remember, side_by_side, starting_layout, surface_id};
 use crate::session::SessionOutcome;
 use crate::terminal::{SessionRequest, TerminalEnd};
 use crate::LayoutStore;
@@ -56,14 +56,13 @@ fn present<T: Terminals>(
     problems: &mut Vec<String>,
 ) -> SessionOutcome {
     let focus = surface_id(choice);
+    let surfaces = terminals.surfaces(workspace);
     let mut store = LayoutStore::open(layout_dir);
     let layout = match &store {
-        Ok(store) => starting_layout(Some(store), workspace, &focus, |s| {
-            surface_choice(s).is_some()
-        }),
+        Ok(store) => starting_layout(Some(store), workspace, &focus, |s| surfaces.is_known(s)),
         Err(_) => side_by_side(&focus),
     };
-    let outcome = terminals.presentation(workspace.clone(), layout, held);
+    let outcome = terminals.presentation(workspace.clone(), surfaces, layout, held);
     let saved = match &mut store {
         Ok(store) => remember(store, workspace, &outcome.layout),
         Err(why) => Err(why.clone()),

@@ -287,11 +287,10 @@ impl<H: SurfaceHost> Run<H> {
             self.log.push(&focus, typed_ahead);
         }
         let solved = self.solved();
-        let Some(tile) = solved
-            .tiles
-            .iter()
-            .find(|t| (self.cfg.resolve)(&t.surface) == Some(choice))
-        else {
+        let Some(tile) = solved.tiles.iter().find(|t| {
+            (self.cfg.resolve)(&t.surface)
+                .is_some_and(|target| target.surface.is_none() && target.choice == choice)
+        }) else {
             // Not on screen in this arrangement: the surface keeps running, only this stream goes.
             let _ = attachment.to_remote.try_send(ToRemote::Close);
             return;
@@ -369,7 +368,7 @@ impl<H: SurfaceHost> Run<H> {
         if self.retiring.contains(&surface) {
             return;
         }
-        let Some(choice) = (self.cfg.resolve)(&surface) else {
+        let Some(target) = (self.cfg.resolve)(&surface) else {
             let mut model = ScreenModel::new(size);
             notice(&mut model, "this surface cannot be attached");
             self.last_end = Some(TerminalEnd::Lost("nothing to attach".to_owned()));
@@ -385,7 +384,8 @@ impl<H: SurfaceHost> Run<H> {
         );
         let expect_kept = expect.clone();
         let request = OpenRequest {
-            choice,
+            choice: target.choice,
+            surface: target.surface,
             cols: size.cols(),
             rows: size.rows(),
             expect,

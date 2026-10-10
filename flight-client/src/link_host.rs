@@ -8,8 +8,9 @@ use crate::OrchestratedBackend;
 use flight_proto::{
     terminal_body, TerminalClose, TerminalFrame, TerminalResize, MAX_TERMINAL_DATA,
 };
+use flight_state::SurfaceId;
 use flight_transport::TerminalReceiver;
-use flight_ui::{SurfaceChoice, WorkspaceKey};
+use flight_ui::{workspaces, SurfaceChoice, UiSnapshot, WorkspaceKey};
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
 
@@ -31,25 +32,21 @@ impl LinkHost {
         Self { link, workspace }
     }
 
-    /// The pane showing `choice` for this workspace, as the link last saw the fleet. When
-    /// `expect` is set only that exact process will do.
+    /// The pane showing the wanted surface of this workspace, as the link last saw the fleet:
+    /// `surface` if one is named, else the workspace's agent or shell (`choice`). When `expect`
+    /// is set only that exact process will do.
     fn resolve(
         &self,
         choice: SurfaceChoice,
+        surface: Option<&SurfaceId>,
         expect: Option<&Binding>,
     ) -> Result<Binding, OpenFailure> {
-        let snapshot = self.link.current_snapshot();
-        let found = snapshot
-            .hosts
-            .iter()
-            .filter(|h| h.host == self.workspace.host)
-            .flat_map(|h| h.panes.iter())
-            .filter(|p| p.workspace == self.workspace.workspace && choice.is(p.kind))
-            .map(|p| Binding {
-                pane: p.pane_ref.clone(),
-                pid: p.pid,
-            })
-            .next();
+        let found = find(
+            &self.link.current_snapshot(),
+            &self.workspace,
+            choice,
+            surface,
+        );
         match (found, expect) {
             (Some(now), Some(then)) if now != *then => Err(OpenFailure::Refused(format!(
                 "the {} changed while it was disconnected",
@@ -68,9 +65,40 @@ impl LinkHost {
     }
 }
 
+/// The pane of a surface of the workspace `key`: the one called `surface` if given, else the
+/// workspace's agent or shell, in the order the dashboard lists them.
+fn find(
+    snapshot: &UiSnapshot,
+    key: &WorkspaceKey,
+    choice: SurfaceChoice,
+    surface: Option<&SurfaceId>,
+) -> Option<Binding> {
+    let workspace = workspaces(snapshot, "")
+        .into_iter()
+        .find(|w| &w.key() == key)?;
+    let found = match surface {
+        Some(id) => workspace
+            .surfaces
+            .iter()
+            .find(|s| &s.id == id && choice.is(s.kind)),
+        None => match choice {
+            SurfaceChoice::Agent => workspace.agent(),
+            SurfaceChoice::Shell => workspace.shell(),
+        },
+    }?;
+    Some(Binding {
+        pane: found.pane.pane_ref.clone(),
+        pid: found.pane.pid,
+    })
+}
+
 impl SurfaceHost for LinkHost {
     async fn open(&self, request: OpenRequest) -> Result<Attachment, OpenFailure> {
-        let binding = self.resolve(request.choice, request.expect.as_ref())?;
+        let binding = self.resolve(
+            request.choice,
+            request.surface.as_ref(),
+            request.expect.as_ref(),
+        )?;
         let (_, _, term) = terminal_request_shape();
         let id = self
             .link
@@ -192,4 +220,47 @@ async fn finish_reading(mut receiver: TerminalReceiver) {
         while let Ok(Some(_)) = receiver.next().await {}
     })
     .await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::presentation::workspace_surfaces::fixtures::*;
+    use flight_classify::AgentKind;
+    use flight_ui::SurfaceKind;
+
+    #[test]
+    fn the_agent_and_shell_are_found_by_kind_and_any_other_surface_by_its_own_id() {
+        let snapshot = snapshot(vec![
+            pane("s-3", SurfaceKind::Shell, "logs", 3),
+            pane("s-1", SurfaceKind::Agent(AgentKind::Claude), "agent", 1),
+            pane("s-2", SurfaceKind::Shell, "shell", 2),
+        ]);
+        let pid = |choice, surface: Option<&str>| {
+            find(
+                &snapshot,
+                &key(),
+                choice,
+                surface.map(SurfaceId::new).as_ref(),
+            )
+            .map(|b| b.pid)
+        };
+        assert_eq!(pid(SurfaceChoice::Agent, None), Some(1));
+        // The first shell in the order the dashboard lists them.
+        assert_eq!(pid(SurfaceChoice::Shell, None), Some(2));
+        assert_eq!(pid(SurfaceChoice::Shell, Some("s-3")), Some(3));
+        // Named, but not of that kind or not there: nothing, never another surface.
+        assert_eq!(pid(SurfaceChoice::Agent, Some("s-3")), None);
+        assert_eq!(pid(SurfaceChoice::Shell, Some("s-9")), None);
+    }
+
+    #[test]
+    fn a_workspace_that_is_not_in_the_snapshot_has_nothing() {
+        let other = WorkspaceKey {
+            host: flight_state::HostId::new("h"),
+            workspace: flight_state::WorkspaceId::new("nope"),
+        };
+        let snapshot = snapshot(vec![pane("s-2", SurfaceKind::Shell, "shell", 2)]);
+        assert!(find(&snapshot, &other, SurfaceChoice::Shell, None).is_none());
+    }
 }

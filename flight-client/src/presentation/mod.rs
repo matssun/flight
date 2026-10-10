@@ -21,7 +21,9 @@ mod pointer;
 mod presentation_session;
 mod rebuild_budget;
 mod surface_names;
+mod target;
 mod tile_link;
+pub(crate) mod workspace_surfaces;
 
 #[cfg(test)]
 mod presentation_tests;
@@ -32,4 +34,6 @@ pub use config::PresentationConfig;
 pub use keys::{Key, KeyFilter};
 pub use outcome::PresentationOutcome;
 pub use presentation_session::PresentationSession;
-pub use surface_names::{surface_choice, surface_id};
+pub use surface_names::surface_id;
+pub use target::Target;
+pub use workspace_surfaces::WorkspaceSurfaces;

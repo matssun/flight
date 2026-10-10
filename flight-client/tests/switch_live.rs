@@ -4,8 +4,8 @@
 //! with terminals attached through a pty (skipped without tmux and python3).
 
 use flight_client::{
-    detect_placement, Presented, RemoteOps, SwitchError, SwitchTarget, Switcher, TmuxEnv,
-    UiPlacement,
+    detect_placement, Presented, RemoteError, RemoteOps, SwitchError, SwitchTarget, Switcher,
+    TmuxEnv, UiPlacement,
 };
 use flight_state::{HostId, PaneId, PaneRef, ServerId};
 use flight_tmux::{Tmux, TmuxEndpoint, TmuxRunner};
@@ -245,7 +245,7 @@ impl RemoteOps for NeverRemote {
         panic!("a local pane must not go through the orchestrator");
     }
 
-    fn open_terminal(&mut self, _: &PaneRef, _: u32) -> Result<Vec<u8>, String> {
+    fn open_terminal(&mut self, _: &PaneRef, _: u32) -> Result<Vec<u8>, RemoteError> {
         panic!("a local pane must not go through the orchestrator");
     }
 }

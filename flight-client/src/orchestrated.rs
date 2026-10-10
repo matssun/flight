@@ -3,7 +3,8 @@
 use crate::session::{Binding, OpenFailure};
 use crate::snapshot_view::ui_snapshot;
 use crate::switch::{
-    Handoff, HandoffSlot, Presented, RemoteOps, ShownSurface, SwitchTarget, Switcher, TmuxEnv,
+    Handoff, HandoffSlot, Presented, RemoteError, RemoteOps, ShownSurface, SwitchTarget, Switcher,
+    TmuxEnv,
 };
 use crate::terminal::terminal_request_shape;
 use flight_proto::{
@@ -426,7 +427,7 @@ impl RemoteOps for LinkOps<'_> {
             .map_err(|f| f.message)
     }
 
-    fn open_terminal(&mut self, pane: &PaneRef, pid: u32) -> Result<Vec<u8>, String> {
+    fn open_terminal(&mut self, pane: &PaneRef, pid: u32) -> Result<Vec<u8>, RemoteError> {
         let (cols, rows, term) = terminal_request_shape();
         let kind = ck::Kind::OpenTerminal(ck::OpenTerminal {
             pane_ref: Some(PaneRefMsg::from(pane)),
@@ -438,10 +439,15 @@ impl RemoteOps for LinkOps<'_> {
         });
         self.runtime
             .block_on(call(self.requests, kind, REVEAL_TIMEOUT))
-            .map_err(|f| f.message)
+            .map_err(|f| match f.kind {
+                Some(ErrorKindCode::Unsupported) => RemoteError::Unsupported(f.message),
+                _ => RemoteError::Failed(f.message),
+            })
             .and_then(|answer| match answer {
                 Answer::Terminal(id) => Ok(id),
-                _ => Err("the orchestrator answered without a terminal".to_owned()),
+                _ => Err(RemoteError::Failed(
+                    "the orchestrator answered without a terminal".to_owned(),
+                )),
             })
     }
 }

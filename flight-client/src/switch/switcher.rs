@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use crate::switch::{
-    detect_placement, plan_switch, AttachCommand, RemoteOps, SwitchError, SwitchPlan, SwitchTarget,
-    TmuxEnv, UiContext,
+    detect_placement, plan_switch, AttachCommand, RemoteError, RemoteOps, SwitchError, SwitchPlan,
+    SwitchTarget, TmuxEnv, UiContext,
 };
 use flight_state::HostId;
 use flight_tmux::{GuardError, Tmux, TmuxEndpoint};
@@ -18,8 +18,8 @@ pub enum Presented {
     Terminal(Vec<u8>),
 }
 
-/// Plans a switch and runs it in two explicit stages: reveal (select the window and pane),
-/// then present (show them in a terminal).
+/// Plans a switch and runs it: a local pane is selected and then shown; a remote one is shown
+/// by a terminal that selects it in its own view.
 #[derive(Debug, Clone, Default)]
 pub struct Switcher {
     local_host: Option<HostId>,
@@ -30,9 +30,9 @@ impl Switcher {
         Self { local_host }
     }
 
-    /// `remote` carries a switch to a pane on another machine through the orchestrator:
-    /// first a guarded reveal, then a guarded terminal. It is used only for a remote pane, and
-    /// only after planning has accepted the switch.
+    /// `remote` carries a switch to a pane on another machine through the orchestrator: a
+    /// guarded terminal. It is used only for a remote pane, and only after planning has accepted
+    /// the switch.
     pub fn switch(
         &self,
         target: &SwitchTarget,
@@ -65,14 +65,22 @@ impl Switcher {
                 }))
             }
             SwitchPlan::RemoteTerminal { target, .. } => {
-                remote
-                    .reveal(&target.pane, target.pid)
-                    .map_err(SwitchError::Reveal)?;
-                // The pane is selected; from here a failure is a failure to show it.
-                let id = remote
-                    .open_terminal(&target.pane, target.pid)
-                    .map_err(|e| SwitchError::Present(format!("cannot open a terminal: {e}")))?;
-                Ok(Presented::Terminal(id))
+                // The terminal selects the pane in its own view, so the node's own session is
+                // not touched (a user at the node keeps their window).
+                match remote.open_terminal(&target.pane, target.pid) {
+                    Ok(id) => Ok(Presented::Terminal(id)),
+                    Err(RemoteError::Failed(why)) => Err(SwitchError::Open(why)),
+                    // A node that cannot show a terminal can still be told to select the pane
+                    // (ADR-003): the user is told which stage failed.
+                    Err(RemoteError::Unsupported(why)) => {
+                        remote
+                            .reveal(&target.pane, target.pid)
+                            .map_err(SwitchError::Reveal)?;
+                        Err(SwitchError::Present(format!(
+                            "cannot open a terminal: {why}"
+                        )))
+                    }
+                }
             }
         }
     }

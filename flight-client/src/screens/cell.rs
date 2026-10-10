@@ -8,12 +8,12 @@ pub enum Colour {
     Rgb(u8, u8, u8),
 }
 
-/// One cell of a screen.
+/// One cell of a screen, read in place: it borrows the text from the screen it came from.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CellView {
+pub struct CellView<'a> {
     /// What is shown in it: a character with any combining marks; empty for a blank, and for
     /// the right half of a wide character.
-    pub text: String,
+    pub text: &'a str,
     pub fg: Colour,
     pub bg: Colour,
     pub bold: bool,

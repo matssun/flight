@@ -34,7 +34,7 @@ impl<E: TerminalEngine> Probe for E {
         TerminalEngine::size(self)
     }
     fn text(&self, col: u16, row: u16) -> Option<String> {
-        self.cell(col, row).map(|c| c.text)
+        self.cell(col, row).map(|c| c.text.to_owned())
     }
     fn fg(&self, col: u16, row: u16) -> Option<Colour> {
         self.cell(col, row).map(|c| c.fg)

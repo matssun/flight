@@ -89,10 +89,10 @@ impl TerminalEngine for Emulator {
         (cols, rows)
     }
 
-    fn cell(&self, col: u16, row: u16) -> Option<CellView> {
+    fn cell(&self, col: u16, row: u16) -> Option<CellView<'_>> {
         let cell = self.parser.screen().cell(row, col)?;
         Some(CellView {
-            text: cell.contents().to_owned(),
+            text: cell.contents(),
             fg: convert(cell.fgcolor()),
             bg: convert(cell.bgcolor()),
             bold: cell.bold(),

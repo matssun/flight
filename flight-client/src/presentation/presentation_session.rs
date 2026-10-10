@@ -6,8 +6,9 @@ use super::frame::Frame;
 use super::input_log::InputLog;
 use super::keys::{Key, KeyFilter};
 use super::outcome::PresentationOutcome;
+use super::rebuild_budget::RebuildBudget;
 use super::tile_link::{LinkState, Live, TileLink};
-use crate::screens::{paint, Geometry, ScreenModel};
+use crate::screens::{paint, EngineFailure, Geometry, ScreenModel};
 use crate::session::{
     Attachment, Binding, FromRemote, OpenFailure, OpenRequest, SurfaceHost, ToRemote,
 };
@@ -311,13 +312,13 @@ impl<H: SurfaceHost> Run<H> {
                 })
                 .await;
         });
-        let model = match self.tiles.remove(&surface) {
-            Some(old) => old.model,
-            None => ScreenModel::new(size),
+        let (model, budget) = match self.tiles.remove(&surface) {
+            Some(old) => (old.model, old.budget),
+            None => (ScreenModel::new(size), RebuildBudget::default()),
         };
         self.tiles.insert(
             surface,
-            TileLink::opening(model, generation, task, attempts, expect_kept),
+            TileLink::opening(model, budget, generation, task, attempts, expect_kept),
         );
     }
 
@@ -329,6 +330,7 @@ impl<H: SurfaceHost> Run<H> {
                 model,
                 state,
                 generation,
+                budget: RebuildBudget::default(),
             },
         );
         self.dirty = true;
@@ -419,6 +421,36 @@ impl<H: SurfaceHost> Run<H> {
         self.dirty = true;
     }
 
+    /// The emulator failed on what `surface` wrote, and its screen was emptied. Only this tile is
+    /// affected: its attachment is dropped and made again to the same process, whose first
+    /// output is a full drawing, so the screen is rebuilt from the live surface. The surface
+    /// itself (its tmux session and process) is never touched. If that keeps failing, the tile
+    /// is given up and says so; the other tiles and the session carry on.
+    fn screen_failed(&mut self, surface: &SurfaceId, failure: &EngineFailure) {
+        self.say(&format!("{surface}: {failure}"));
+        let Some(tile) = self.tiles.get_mut(surface) else {
+            return;
+        };
+        let again = tile.budget.rebuild();
+        let LinkState::Live(live) = &tile.state else {
+            return;
+        };
+        live.pump.abort();
+        if again {
+            tile.state = LinkState::Retrying {
+                binding: Some(live.binding.clone()),
+                attempts: live.attempts,
+                at: Instant::now(),
+            };
+        } else {
+            let why = "its screen cannot follow what it writes".to_owned();
+            notice(&mut tile.model, &why);
+            tile.state = LinkState::Down;
+            self.last_end = Some(TerminalEnd::Lost(why));
+        }
+        self.dirty = true;
+    }
+
     fn on_remote(&mut self, surface: SurfaceId, generation: u64, what: FromRemote) {
         let Some(tile) = self.tiles.get_mut(&surface) else {
             return;
@@ -431,10 +463,9 @@ impl<H: SurfaceHost> Run<H> {
                 if let LinkState::Live(live) = &mut tile.state {
                     live.attempts = 0;
                 }
-                if !tile.model.feed(&bytes) {
-                    self.say(
-                        "a surface wrote something its screen could not follow; it was cleared",
-                    );
+                match tile.model.feed(&bytes) {
+                    Ok(()) => tile.budget.followed(bytes.len()),
+                    Err(failure) => self.screen_failed(&surface, &failure),
                 }
             }
             FromRemote::Exit { reason, status } => {

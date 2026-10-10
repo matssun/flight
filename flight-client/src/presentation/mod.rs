@@ -16,6 +16,7 @@ mod input_log;
 mod keys;
 mod outcome;
 mod presentation_session;
+mod rebuild_budget;
 mod tile_link;
 
 #[cfg(test)]

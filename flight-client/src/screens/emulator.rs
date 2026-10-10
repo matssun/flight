@@ -4,7 +4,10 @@
 //! file that names it.
 
 use super::engine::TerminalEngine;
+use super::EngineFailure;
 use super::{CellView, Colour, Geometry, Modes, MouseMode};
+use std::cell::{Cell, RefCell};
+use std::sync::Once;
 
 /// A resize does not resize the parser: `vt100` panics when a populated screen is resized (found
 /// by feeding it random bytes with random resizes; feeding alone never panics, over 72 MB of
@@ -24,14 +27,63 @@ fn convert(c: vt100::Color) -> Colour {
     }
 }
 
-/// Run `work`, and say whether it finished. What a program writes to a terminal is untrusted
-/// input to a parser that is not ours; if it ever panics, the surface must lose its picture, not
-/// take the dashboard (and every other surface) with it.
-fn contain(work: impl FnOnce()) -> bool {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(work)).is_ok()
+thread_local! {
+    /// Set while a parser call is being contained on this thread, so the panic hook stays quiet
+    /// (a message on stderr would be drawn into the terminal Flight is running in) and keeps
+    /// what the panic said.
+    static CONTAINING: Cell<bool> = const { Cell::new(false) };
+    static SAID: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+/// Make panics inside [`contain`] silent and recorded, and leave every other panic to the hook
+/// that was there.
+fn install_quiet_hook() {
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        let before = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            if !CONTAINING.with(Cell::get) {
+                before(info);
+                return;
+            }
+            let payload = info.payload();
+            let what = payload
+                .downcast_ref::<&str>()
+                .map(|s| (*s).to_owned())
+                .or_else(|| payload.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "a panic without a message".to_owned());
+            let said = match info.location() {
+                Some(at) => format!("{what} (at {}:{})", at.file(), at.line()),
+                None => what,
+            };
+            SAID.with(|slot| *slot.borrow_mut() = Some(said));
+        }));
+    });
+}
+
+/// Run `work`, and say what the parser reported if it panicked. What a program writes to a
+/// terminal is untrusted input to a parser that is not ours; if it ever panics, the surface must
+/// lose its picture, not take the dashboard (and every other surface) with it.
+fn contain(work: impl FnOnce()) -> Result<(), String> {
+    install_quiet_hook();
+    CONTAINING.with(|flag| flag.set(true));
+    let finished = std::panic::catch_unwind(std::panic::AssertUnwindSafe(work));
+    CONTAINING.with(|flag| flag.set(false));
+    finished.map_err(|_| {
+        SAID.with(|slot| slot.borrow_mut().take())
+            .unwrap_or_else(|| "a panic without a message".to_owned())
+    })
 }
 
 impl Emulator {
+    fn failure(&self, message: String, bytes: usize) -> EngineFailure {
+        EngineFailure {
+            message,
+            bytes,
+            geometry: self.size(),
+        }
+    }
+
     fn reset(&mut self) {
         let (rows, cols) = self.parser.screen().size();
         self.parser = vt100::Parser::new(rows, cols, 0);
@@ -46,23 +98,30 @@ impl TerminalEngine for Emulator {
         }
     }
 
-    fn feed(&mut self, bytes: &[u8]) -> bool {
+    fn feed(&mut self, bytes: &[u8]) -> Result<(), EngineFailure> {
         // The first bytes after a resize are the surface's repaint: they go to the new screen,
         // which then replaces the old picture.
         if let Some(mut fresh) = self.resized.take() {
-            if contain(|| fresh.process(bytes)) {
-                self.parser = fresh;
-                return true;
-            }
-            self.parser = vt100::Parser::new(fresh.screen().size().0, fresh.screen().size().1, 0);
-            return false;
+            return match contain(|| fresh.process(bytes)) {
+                Ok(()) => {
+                    self.parser = fresh;
+                    Ok(())
+                }
+                Err(message) => {
+                    let (rows, cols) = fresh.screen().size();
+                    self.parser = vt100::Parser::new(rows, cols, 0);
+                    Err(self.failure(message, bytes.len()))
+                }
+            };
         }
         let parser = &mut self.parser;
-        if contain(|| parser.process(bytes)) {
-            return true;
+        match contain(|| parser.process(bytes)) {
+            Ok(()) => Ok(()),
+            Err(message) => {
+                self.reset();
+                Err(self.failure(message, bytes.len()))
+            }
         }
-        self.reset();
-        false
     }
 
     fn resize(&mut self, geometry: Geometry) {
@@ -129,8 +188,13 @@ mod tests {
     use super::contain;
 
     #[test]
-    fn a_panic_in_the_parser_is_contained() {
-        assert!(contain(|| ()));
-        assert!(!contain(|| panic!("the parser failed")));
+    fn a_panic_in_the_parser_is_contained_and_says_what_it_was_and_where() {
+        assert_eq!(contain(|| ()), Ok(()));
+        let said = contain(|| panic!("the parser failed")).unwrap_err();
+        assert!(said.starts_with("the parser failed (at "), "{said}");
+        assert!(said.contains("emulator.rs"), "{said}");
+        // The next one is reported on its own.
+        let again = contain(|| panic!("{}", String::from("another"))).unwrap_err();
+        assert!(again.starts_with("another"), "{again}");
     }
 }

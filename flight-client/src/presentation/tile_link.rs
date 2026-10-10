@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use super::rebuild_budget::RebuildBudget;
 use crate::screens::ScreenModel;
 use crate::session::{Binding, ToRemote};
 use tokio::sync::{mpsc, oneshot};
@@ -13,6 +14,8 @@ pub(super) struct TileLink {
     pub(super) state: LinkState,
     /// Incremented for each attachment of this surface; reports from older ones are ignored.
     pub(super) generation: u64,
+    /// How often this screen may be rebuilt from its surface after the emulator failed.
+    pub(super) budget: RebuildBudget,
 }
 
 pub(super) enum LinkState {
@@ -52,6 +55,7 @@ pub(super) struct Live {
 impl TileLink {
     pub(super) fn opening(
         model: ScreenModel,
+        budget: RebuildBudget,
         generation: u64,
         task: JoinHandle<()>,
         attempts: usize,
@@ -59,6 +63,7 @@ impl TileLink {
     ) -> Self {
         Self {
             model,
+            budget,
             state: LinkState::Opening {
                 task,
                 attempts,

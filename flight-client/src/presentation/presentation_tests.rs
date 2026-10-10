@@ -154,7 +154,7 @@ impl Rig {
     async fn settle(&mut self) {
         tokio::time::sleep(Duration::from_millis(200)).await;
         while let Ok(bytes) = self.output.try_recv() {
-            self.screen.feed(&bytes);
+            self.screen.feed(&bytes).unwrap();
         }
     }
 
@@ -466,4 +466,86 @@ async fn a_split_with_every_surface_already_shown_says_so_and_changes_nothing() 
         .iter()
         .any(|n| n.contains("already shown")));
     assert!(rig.remotes.try_recv().is_err());
+}
+
+fn failing() -> FromRemote {
+    let mut bytes = b"output that breaks the emulator".to_vec();
+    bytes.extend_from_slice(crate::screens::faulty_engine::FAIL);
+    FromRemote::Data(bytes)
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_screen_the_emulator_failed_on_is_rebuilt_from_its_surface_and_nothing_else_is_touched() {
+    let mut rig = start(side_by_side(), (81, 24));
+    let (a, s) = (rig.remote().await, rig.remote().await);
+    let (agent, mut shell) = if a.choice == Agent { (a, s) } else { (s, a) };
+    received(&mut shell).await;
+    agent.to_session.send(failing()).await.unwrap();
+    rig.settle().await;
+    // The agent is attached again, to the same process; that attachment's first output is a
+    // full drawing.
+    let again = rig.remote().await;
+    assert_eq!(again.choice, Agent);
+    assert_eq!(again.expect, Some(binding(Agent)));
+    again
+        .to_session
+        .send(FromRemote::Data(b"agent redrawn".to_vec()))
+        .await
+        .unwrap();
+    shell
+        .to_session
+        .send(FromRemote::Data(b"shell untouched".to_vec()))
+        .await
+        .unwrap();
+    rig.settle().await;
+    let row = rig.screen.row_text(0);
+    assert!(
+        row.contains("agent redrawn") && row.contains("shell untouched"),
+        "{row:?}"
+    );
+    // The shell heard nothing: not closed, not resized, not attached again.
+    assert!(received(&mut shell).await.is_empty());
+    assert!(rig.remotes.try_recv().is_err());
+    // The failure was reported with what it was.
+    let said = rig.notices.lock().unwrap().join("\n");
+    assert!(said.contains("terminal emulator failed on"), "{said}");
+    assert!(!rig.outcome.is_finished());
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_surface_that_keeps_failing_the_emulator_is_given_up_alone_and_the_session_goes_on() {
+    let mut rig = start(side_by_side(), (81, 24));
+    let (a, s) = (rig.remote().await, rig.remote().await);
+    let (mut agent, mut shell) = if a.choice == Agent { (a, s) } else { (s, a) };
+    // Three rebuilds are allowed; the fourth failure in a row gives the tile up.
+    for _ in 0..3 {
+        agent.to_session.send(failing()).await.unwrap();
+        rig.settle().await;
+        agent = rig.remote().await;
+        assert_eq!(agent.choice, Agent);
+    }
+    agent.to_session.send(failing()).await.unwrap();
+    rig.settle().await;
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    assert!(rig.remotes.try_recv().is_err(), "no fifth attachment");
+    rig.settle().await;
+    let row = rig.screen.row_text(0);
+    assert!(row.contains("cannot follow"), "{row:?}");
+    // The other surface is as it was, and the session is still running and still ours.
+    shell
+        .to_session
+        .send(FromRemote::Data(b"shell still here".to_vec()))
+        .await
+        .unwrap();
+    rig.type_(b"\x00l").await;
+    rig.type_(b"typed").await;
+    rig.settle().await;
+    assert!(rig.screen.row_text(0).contains("shell still here"));
+    assert_eq!(data(&received(&mut shell).await), b"typed");
+    assert!(!rig.outcome.is_finished());
+    // Leaving still hands back the arrangement the user had: both surfaces.
+    rig.type_(b"\x00q").await;
+    let outcome = rig.outcome.await.unwrap();
+    assert_eq!(outcome.end, TerminalEnd::UserLeft);
+    assert!(outcome.layout.contains(&id("agent")) && outcome.layout.contains(&id("shell")));
 }

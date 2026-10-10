@@ -12,12 +12,14 @@
 mod cell;
 mod emulator;
 mod engine;
+mod engine_failure;
 mod geometry;
 mod modes;
 mod paint;
 mod screen_model;
 
 pub use cell::{CellView, Colour};
+pub use engine_failure::EngineFailure;
 pub use geometry::{Geometry, TooSmall};
 pub use modes::{Modes, MouseMode};
 pub use paint::{paint, Painted, Theme};
@@ -25,5 +27,7 @@ pub use screen_model::ScreenModel;
 
 #[cfg(test)]
 mod engine_contract_tests;
+#[cfg(test)]
+pub(crate) mod faulty_engine;
 #[cfg(test)]
 mod screen_tests;

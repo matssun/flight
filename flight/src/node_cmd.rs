@@ -25,7 +25,7 @@ pub const USAGE: &str = "usage: flight node <command>
         enroll this machine with an orchestrator (the bundle comes from
         `flight orchestrator enrollment create`)
   run [--socket NAME]... [--interval SECS] [--observer ctl-skip|seq] [--exit-after-link-down SECS]
-      [--no-terminal] [--restore] [--config-dir DIR]
+      [--no-terminal] [--terminals N] [--restore] [--config-dir DIR]
         observe local tmux (tmux -L NAME; default 'flight') and report to the orchestrator.
         --interval: seconds between polls (fractions allowed; default 0.5). A round that takes
         longer than the interval is followed by at least as much idle time, and is reported.
@@ -36,7 +36,8 @@ pub const USAGE: &str = "usage: flight node <command>
         command; roughly 10 times the CPU at 100 panes) for comparison and debugging.
         --no-terminal: do not offer interactive terminals. By default an authorized UI can open
         a terminal onto a pane of this node (a tmux client in a PTY owned by the node, relayed
-        through the orchestrator). Turn it off for a read-only node.
+        through the orchestrator). Turn it off for a read-only node. --terminals: how many at
+        once (default 16; the orchestrator has its own limit per node).
         --restore: at start, also start the saved workspaces that are not running, in a verified
         directory. A Claude agent continues its earlier conversation when the node kept its
         session and Claude still has it (never with permission prompts switched off, and never
@@ -81,6 +82,7 @@ fn run_node(args: &[String]) -> Result<(), String> {
             "--interval",
             "--observer",
             "--exit-after-link-down",
+            "--terminals",
             "--config-dir",
         ],
         &["--no-terminal", "--restore"],
@@ -162,6 +164,10 @@ fn run_node(args: &[String]) -> Result<(), String> {
         servers.clone(),
     )
     .with_log(Arc::new(|line| crate::clock::log_line(&line)));
+    let link = match args.limit("--terminals")? {
+        Some(limit) => link.with_max_terminals(limit),
+        None => link,
+    };
     let link = Arc::new(match exit_after {
         Some(limit) => link.with_unreachable_limit(limit),
         None => link,

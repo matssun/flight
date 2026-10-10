@@ -768,7 +768,7 @@ async fn fifty_terminals_come_and_go_and_leave_nothing_behind() {
         return;
     }
     let (mut rig, pane, pid) = Rig::start_full("fifty", "cat", Duration::from_secs(30), 2).await;
-    // More than the node's limit of four: a leaked slot would make a later open Busy.
+    // More than the node's limit (sixteen): a leaked slot would make a later open Busy.
     for n in 0..50 {
         // A slot is freed a moment after its terminal ends, so Busy is retried; a slot that is
         // never freed stays Busy and fails the test.

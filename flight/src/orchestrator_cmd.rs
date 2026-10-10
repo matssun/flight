@@ -11,8 +11,11 @@ use std::time::Duration;
 pub const USAGE: &str = "usage: flight orchestrator <command>
 
   run [--listen ADDR] [--advertise ADDR] [--name NAME] [--config-dir DIR]
+      [--terminals-per-ui N] [--terminals-per-node N] [--terminals N]
         serve this machine as the orchestrator (default listen 127.0.0.1:7676; for a LAN,
-        --listen 0.0.0.0:7676 --advertise <this machine's address>:7676)
+        --listen 0.0.0.0:7676 --advertise <this machine's address>:7676). Open terminals are
+        limited per interface (default 8), per node (16) and in all (64); a presentation uses
+        one per tile on screen.
   enrollment create [--ttl SECS] [--config-dir DIR]
         print a one-time bundle for `flight node join` / `flight ui join`
   trust list | revoke <id> | status [--config-dir DIR]
@@ -46,9 +49,24 @@ fn runtime() -> Result<tokio::runtime::Runtime, String> {
 fn serve_command(args: &[String]) -> Result<(), String> {
     let args = Args::parse(
         args,
-        &["--listen", "--advertise", "--name", "--config-dir"],
+        &[
+            "--listen",
+            "--advertise",
+            "--name",
+            "--config-dir",
+            "--terminals-per-ui",
+            "--terminals-per-node",
+            "--terminals",
+        ],
         &[],
     )?;
+    let mut core = OrchestratorConfig::default();
+    let limits = &mut core.terminal_limits;
+    limits.per_ui = args.limit("--terminals-per-ui")?.unwrap_or(limits.per_ui);
+    limits.per_node = args
+        .limit("--terminals-per-node")?
+        .unwrap_or(limits.per_node);
+    limits.total = args.limit("--terminals")?.unwrap_or(limits.total);
     let dir = orchestrator_dir(&config_dir(&args)?);
     let identity = Identity::load_or_create(&identity_dir(&dir)).map_err(|e| e.to_string())?;
     let fingerprint = identity.fingerprint().clone();
@@ -71,7 +89,7 @@ fn serve_command(args: &[String]) -> Result<(), String> {
             identity,
             trust,
             trust_path: Some(trust_path),
-            core: OrchestratorConfig::default(),
+            core,
             incarnation: fresh_incarnation().map_err(|e| e.to_string())?,
             tick_interval: Duration::from_secs(1),
         })

@@ -6,7 +6,7 @@
 
 mod support;
 
-use flight_orchestrator::{Side, TerminalId, UiId};
+use flight_orchestrator::{OrchestratorConfig, Side, TerminalId, TerminalLimits, UiId};
 use flight_proto::{
     command_kind as ck, node_body, orchestrator_body, response_result, ui_event_body,
     ui_request_body, Command, ErrorKindCode, ExitReasonCode, NodeFrame, Request, Response,
@@ -34,8 +34,23 @@ fn open(id: u64, node: &str, pane: &str, pid: u32) -> UiRequest {
     }
 }
 
+/// A world with small limits, so what happens at a limit is cheap to reach: two terminals per
+/// UI, four per node.
 fn world() -> World {
-    let mut w = simple_world();
+    let mut w = World::with_config(
+        vec![
+            SimNode::new("node-a", "mini-1", 1),
+            SimNode::new("node-b", "mini-2", 1),
+        ],
+        OrchestratorConfig {
+            terminal_limits: TerminalLimits {
+                per_ui: 2,
+                per_node: 4,
+                total: 32,
+            },
+            ..OrchestratorConfig::default()
+        },
+    );
     w.subscribe(UiId(1));
     w.connect_offering(0, TERMINAL);
     w.observe(
@@ -464,4 +479,38 @@ fn an_ended_terminal_is_dead_for_good() {
     w.orch.terminal_ended(&dead);
     assert!(w.orch.terminal_attach(Side::Node, &id, "node-a").is_err());
     assert!(w.orch.terminal_attach(Side::Ui, &id, "ui-a").is_err());
+}
+
+#[test]
+fn the_default_limits_leave_room_for_eight_tiles_on_each_of_two_interfaces() {
+    let mut w = simple_world();
+    w.subscribe(UiId(1));
+    w.connect_offering(0, TERMINAL);
+    let panes: Vec<String> = (1..=17).map(|n| format!("%{n}")).collect();
+    w.observe(
+        0,
+        round(
+            1,
+            panes
+                .iter()
+                .zip(1u32..)
+                .map(|(p, pid)| obs(p, pid, PERMIT_SCREEN))
+                .collect(),
+        ),
+    );
+    w.orch.ui_identified(UiId(1), "ui-a");
+    w.orch.ui_identified(UiId(2), "ui-b");
+    for (n, pane) in panes.iter().take(8).enumerate() {
+        open_one(&mut w, UiId(1), n as u64 + 1, pane, n as u32 + 1);
+    }
+    // A ninth for the same interface is refused; another interface is not.
+    send(&mut w, UiId(1), open(9, "node-a", "%9", 9));
+    assert_eq!(errors(&w).last(), Some(&(ErrorKindCode::Busy as i32)));
+    for (n, pane) in panes.iter().skip(8).take(8).enumerate() {
+        open_one(&mut w, UiId(2), n as u64 + 20, pane, n as u32 + 9);
+    }
+    assert_eq!(w.orch.terminal_count(), 16);
+    // The node's own sixteen are used up.
+    send(&mut w, UiId(2), open(40, "node-a", "%17", 17));
+    assert_eq!(errors(&w).last(), Some(&(ErrorKindCode::Busy as i32)));
 }

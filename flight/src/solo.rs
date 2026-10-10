@@ -40,7 +40,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         println!("{USAGE}");
         return Ok(());
     }
-    let parsed = Args::parse(args, &["--config-dir", "--socket"], &[])?;
+    let parsed = Args::parse(args, &["--config-dir", "--socket", "--listen"], &[])?;
     let base = config_dir(&parsed)?;
     std::fs::create_dir_all(&base).map_err(|e| format!("{}: {e}", base.display()))?;
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
@@ -49,14 +49,19 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let admin = orchestrator_dir(&base).join("admin.sock");
 
     if !orchestrator_up(&admin) {
-        children.0.push(spawn(
-            &exe,
-            &["orchestrator", "run", "--config-dir", &path(&base)],
-            &log,
-        )?);
+        // Where the orchestrator listens is given on the first run only: the node and the
+        // dashboard are enrolled with the address it advertises. (Not in the usage text: it is
+        // for running more than one, as the tests do.)
+        let mut orchestrator_args = vec!["orchestrator", "run", "--config-dir"];
+        let base_str = path(&base);
+        orchestrator_args.push(base_str.as_str());
+        if let Some(listen) = parsed.value("--listen") {
+            orchestrator_args.extend(["--listen", listen]);
+        }
+        children.0.push(spawn(&exe, &orchestrator_args, &log)?);
         wait_for("the orchestrator", || orchestrator_up(&admin)).map_err(|e| {
             format!(
-                "{e}. Is another program using port 7676? See {}",
+                "{e}. Is another program using the port (7676 unless --listen)? See {}",
                 log.display()
             )
         })?;

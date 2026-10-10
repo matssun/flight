@@ -273,6 +273,17 @@ impl Rig {
             .unwrap_or_default()
     }
 
+    /// The window the session itself is on (a terminal's view has a window of its own).
+    fn active_window(&self) -> String {
+        self.tmux
+            .runner()
+            .run(&["display-message", "-p", "-t", "work:", "#{window_id}"])
+            .expect("active window")
+            .stdout
+            .trim()
+            .to_owned()
+    }
+
     fn active_pane(&self) -> String {
         self.tmux
             .runner()
@@ -406,22 +417,21 @@ fn enter_opens_a_terminal_on_the_pane_without_moving_the_node_and_the_escape_lea
     if !tmux_available() {
         return;
     }
-    let mut rig = start("enter", "cat", true);
-    // Pane 0 is shown first; Enter on pane 1 shows pane 1 in the terminal's own view and leaves
-    // the node's session where it was (whoever sits at the node keeps their window).
-    let before = rig.active_pane();
-    assert_ne!(before, rig.panes[1].0);
+    // Pane 1 is a window of its own. Enter on it shows it in the terminal's own view and leaves
+    // the node's session on the window it was on (whoever sits at the node keeps their window).
+    let mut rig = start_with("enter", "cat", true, true);
+    let before = rig.active_window();
     let entered = rig.enter(1);
-    assert_eq!(
-        rig.active_pane(),
-        before,
-        "the node's session was not moved"
-    );
 
     let mut shown = rig.show(&entered);
     rig.wait(
         "tmux client attached",
         |r| matches!(r.clients().as_slice(), [only] if only.starts_with("flight-view-")),
+    );
+    assert_eq!(
+        rig.active_window(),
+        before,
+        "the node's session was not moved"
     );
     let view = rig.clients().remove(0);
     let shown_pane = rig

@@ -14,6 +14,7 @@ mod emulator;
 mod engine;
 mod engine_failure;
 mod geometry;
+mod insert_guard;
 mod modes;
 mod paint;
 mod screen_model;

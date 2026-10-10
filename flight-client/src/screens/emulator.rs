@@ -4,6 +4,7 @@
 //! file that names it.
 
 use super::engine::TerminalEngine;
+use super::insert_guard::InsertGuard;
 use super::EngineFailure;
 use super::{CellView, Colour, Geometry, Modes, MouseEncoding, MouseMode};
 use std::cell::{Cell, RefCell};
@@ -17,6 +18,7 @@ use std::sync::Once;
 pub(super) struct Emulator {
     parser: vt100::Parser,
     resized: Option<vt100::Parser>,
+    guard: InsertGuard,
 }
 
 fn convert(c: vt100::Color) -> Colour {
@@ -87,6 +89,7 @@ impl Emulator {
     fn reset(&mut self) {
         let (rows, cols) = self.parser.screen().size();
         self.parser = vt100::Parser::new(rows, cols, 0);
+        self.guard = InsertGuard::default();
     }
 }
 
@@ -95,10 +98,14 @@ impl TerminalEngine for Emulator {
         Self {
             parser: vt100::Parser::new(geometry.rows(), geometry.cols(), 0),
             resized: None,
+            guard: InsertGuard::default(),
         }
     }
 
     fn feed(&mut self, bytes: &[u8]) -> Result<(), EngineFailure> {
+        let given = bytes.len();
+        let guarded = self.guard.pass(bytes, self.size().cols());
+        let bytes = guarded.as_slice();
         // The first bytes after a resize are the surface's repaint: they go to the new screen,
         // which then replaces the old picture.
         if let Some(mut fresh) = self.resized.take() {
@@ -110,7 +117,8 @@ impl TerminalEngine for Emulator {
                 Err(message) => {
                     let (rows, cols) = fresh.screen().size();
                     self.parser = vt100::Parser::new(rows, cols, 0);
-                    Err(self.failure(message, bytes.len()))
+                    self.guard = InsertGuard::default();
+                    Err(self.failure(message, given))
                 }
             };
         }
@@ -119,7 +127,7 @@ impl TerminalEngine for Emulator {
             Ok(()) => Ok(()),
             Err(message) => {
                 self.reset();
-                Err(self.failure(message, bytes.len()))
+                Err(self.failure(message, given))
             }
         }
     }
@@ -127,6 +135,7 @@ impl TerminalEngine for Emulator {
     fn resize(&mut self, geometry: Geometry) {
         if self.size() != geometry {
             self.resized = Some(vt100::Parser::new(geometry.rows(), geometry.cols(), 0));
+            self.guard = InsertGuard::default();
         }
     }
 
@@ -189,7 +198,9 @@ impl TerminalEngine for Emulator {
 
 #[cfg(test)]
 mod tests {
-    use super::contain;
+    use super::{contain, Emulator};
+    use crate::screens::engine::TerminalEngine;
+    use crate::screens::Geometry;
 
     #[test]
     fn a_panic_in_the_parser_is_contained_and_says_what_it_was_and_where() {
@@ -200,5 +211,191 @@ mod tests {
         // The next one is reported on its own.
         let again = contain(|| panic!("{}", String::from("another"))).unwrap_err();
         assert!(again.starts_with("another"), "{again}");
+    }
+
+    /// What the library does with the bytes as they are, to compare with what Flight feeds it.
+    fn raw(cols: u16, rows: u16, bytes: &[u8]) -> Vec<u8> {
+        let mut parser = vt100::Parser::new(rows, cols, 0);
+        parser.process(bytes);
+        parser.screen().contents_formatted()
+    }
+
+    fn guarded(cols: u16, rows: u16, bytes: &[u8]) -> Vec<u8> {
+        let mut engine = Emulator::new(Geometry::new(cols, rows).unwrap());
+        engine.feed(bytes).unwrap();
+        engine.parser.screen().contents_formatted()
+    }
+
+    #[test]
+    fn writing_the_width_as_the_count_leaves_the_screen_as_the_larger_count_does() {
+        let mut seed = 0x2545_f491_4f6c_dd1d_u64;
+        let mut next = move |n: u64| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed % n
+        };
+        let texts = [
+            "hello world",
+            "日本語のテキスト",
+            "a日b本c",
+            "e\u{301}x\u{301}y",
+            "👨\u{200d}👩 ok",
+        ];
+        for _ in 0..300 {
+            let (cols, rows) = (2 + next(30) as u16, 2 + next(6) as u16);
+            let mut setup = Vec::new();
+            for _ in 0..rows {
+                setup.extend_from_slice(texts[next(5) as usize].as_bytes());
+                setup.extend_from_slice(b"\x1b[1m\r\n\x1b[0m");
+            }
+            setup.extend_from_slice(
+                format!(
+                    "\x1b[{};{}H",
+                    1 + next(u64::from(rows)),
+                    1 + next(u64::from(cols))
+                )
+                .as_bytes(),
+            );
+            let big = 1 + u64::from(cols) + next(1500);
+            let with = |count: u64| [setup.clone(), format!("\x1b[{count}@").into_bytes()].concat();
+            assert_eq!(
+                guarded(cols, rows, &with(big)),
+                raw(cols, rows, &with(big)),
+                "{cols}x{rows} count {big}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_count_that_would_take_the_library_seconds_takes_no_time_in_any_form_it_can_be_written() {
+        let mut engine = Emulator::new(Geometry::new(80, 24).unwrap());
+        engine.feed(b"hello\x1b[1;3H").unwrap();
+        let started = std::time::Instant::now();
+        for form in [
+            &b"\x1b[65535@"[..],
+            b"\x1b[4294967295@",
+            b"\x1b[99999999999999999999@",
+            b"\x1b[0000000065535@",
+            b"\x1b[65535;1@",
+            b"\x1b[65535:1@",
+            b"\x1b[6\n5535@",
+        ] {
+            engine.feed(form).unwrap();
+        }
+        // Cut in pieces, as a stream is.
+        for piece in [&b"\x1b[6"[..], b"55", b"35@"] {
+            engine.feed(piece).unwrap();
+        }
+        assert!(
+            started.elapsed() < std::time::Duration::from_millis(500),
+            "took {:?}",
+            started.elapsed()
+        );
+        assert_eq!(
+            engine.cell(0, 0).map(|c| c.text.to_owned()),
+            Some("h".to_owned())
+        );
+    }
+
+    /// Escape-sequence soup at every smallest size a `Geometry` allows and a few larger: the
+    /// parser must neither panic nor take long (a seeded stream, so a failure repeats). Found
+    /// the count-of-`@` stall; found no panic in 3.2 million streams of this kind (ADR-011).
+    #[test]
+    fn structured_garbage_at_valid_sizes_neither_panics_nor_stalls() {
+        const PARAMS: &[&str] = &[
+            "",
+            "0",
+            "1",
+            "2",
+            "5",
+            "24",
+            "80",
+            "255",
+            "1000",
+            "65535",
+            "65536",
+            "4294967295",
+            ";",
+            "1;1",
+            "0;0",
+            "999;1",
+            "?",
+            "?1049",
+            "?25",
+            "?6",
+            "?69",
+            "?47",
+            "38;5;300",
+            "38;2;1;2;3",
+            "48;2;999;0;0",
+            ":",
+            "1:2",
+        ];
+        const FINALS: &str = "@ABCDEFGHIJKLMPSTXZ`abcdefghilmnpqrstuvwxyz{|}~";
+        const TEXT: &[&str] = &[
+            "a",
+            "bc",
+            "日本",
+            "e\u{301}",
+            "\u{200d}",
+            "👨\u{200d}👩",
+            "\u{0}",
+            "\t",
+            "\r",
+            "\n",
+            "\u{8}",
+            "\u{b}",
+            "\u{c}",
+            "\u{e}",
+            "\u{f}",
+            "\u{ffff}",
+            "ｱ",
+            "０",
+            "\u{fe0f}",
+        ];
+        const ESC: &[&str] = &[
+            "c", "7", "8", "D", "E", "M", "H", "=", ">", "(0", "(B", "#8", "N",
+        ];
+        let mut seed = 0x9e37_79b9_7f4a_7c15_u64;
+        let mut next = move |n: usize| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            usize::try_from(seed % n as u64).unwrap_or(0)
+        };
+        let started = std::time::Instant::now();
+        for _ in 0..5_000 {
+            let (cols, rows) = ([2u16, 3, 5, 80][next(4)], [2u16, 3, 4, 24][next(4)]);
+            let mut bytes = Vec::new();
+            for _ in 0..1 + next(40) {
+                match next(10) {
+                    0..=3 => bytes.extend_from_slice(TEXT[next(TEXT.len())].as_bytes()),
+                    4..=7 => {
+                        bytes.extend_from_slice(b"\x1b[");
+                        for _ in 0..next(3) {
+                            bytes.extend_from_slice(PARAMS[next(PARAMS.len())].as_bytes());
+                        }
+                        bytes.push(FINALS.as_bytes()[next(FINALS.len())]);
+                    }
+                    8 => {
+                        bytes.push(0x1b);
+                        bytes.extend_from_slice(ESC[next(ESC.len())].as_bytes());
+                    }
+                    _ => bytes.push(u8::try_from(next(256)).unwrap_or(0)),
+                }
+            }
+            let mut engine = Emulator::new(Geometry::new(cols, rows).unwrap());
+            for piece in bytes.chunks(1 + next(9)) {
+                engine
+                    .feed(piece)
+                    .unwrap_or_else(|f| panic!("{cols}x{rows} {bytes:?}: {f}"));
+            }
+        }
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(20),
+            "took {:?}",
+            started.elapsed()
+        );
     }
 }
